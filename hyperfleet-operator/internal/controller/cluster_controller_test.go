@@ -33,9 +33,9 @@ import (
 
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	"github.com/openshift/hypershift/api/util/ipnet"
-	hyperfleetv1alpha1 "github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/api/v1alpha1"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/internal/dynamo"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/internal/render"
+	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/dynamo"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/render"
 )
 
 var _ = Describe("Cluster Controller", func() {

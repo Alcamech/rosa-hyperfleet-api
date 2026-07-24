@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/model"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/writer"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/model"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/writer"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"

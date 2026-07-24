@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and push the rosa-regional-platform-api container image.
+# Build and push the rosa-hyperfleet-api container image.
 #
 # Called by CI (Prow post-submit, GitHub Actions, or manually) after merging
 # to main to keep the published image in sync with the source code.
@@ -9,12 +9,12 @@
 #   QUAY_PASSWORD  - quay.io robot account password / token
 #
 # Optional env vars:
-#   IMAGE_REPO  - destination image (default: quay.io/cdoan0/rosa-regional-platform-api)
+#   IMAGE_REPO  - destination image (default: quay.io/cdoan0/rosa-hyperfleet-api)
 #   GIT_SHA     - commit SHA to tag the image with (default: git rev-parse HEAD)
 
 set -euo pipefail
 
-IMAGE_REPO="${IMAGE_REPO:-quay.io/cdoan0/rosa-regional-platform-api}"
+IMAGE_REPO="${IMAGE_REPO:-quay.io/openshift-online/rosa-hyperfleet-api}"
 GIT_SHA="${GIT_SHA:-$(git rev-parse HEAD)}"
 SHORT_SHA="${GIT_SHA:0:7}"
 

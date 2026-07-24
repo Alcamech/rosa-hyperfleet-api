@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/internal/dynamo"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/dynamo"
 )
 
 // fakeDynamo records DynamoDB calls made by controllers.

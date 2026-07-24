@@ -5,12 +5,11 @@
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
 	fmt vet verify deps \
 	manifests generate setup-envtest \
-	image-api image-operator image-e2e image-push-api image-push-operator \
-	run
+	image-api image-operator image-e2e image-push-api image-push-operator
 
 # ── Configuration ────────────────────────────────────────────────────────
 
-IMAGE_REPO_API      ?= quay.io/openshift-online/rosa-regional-platform-api
+IMAGE_REPO_API      ?= quay.io/openshift-online/rosa-hyperfleet-api
 IMAGE_REPO_OPERATOR ?= quay.io/openshift-online/hyperfleet-operator
 IMAGE_TAG           ?= latest
 GIT_SHA             := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -88,7 +87,7 @@ build-operator:
 	cd hyperfleet-operator && go build -o ../bin/compactor ./cmd/compactor
 
 build-api:
-	cd platform-api && go build -o ../bin/rosa-regional-platform-api ./cmd
+	cd platform-api && go build -o ../bin/rosa-hyperfleet-api ./cmd
 
 # ── Test ─────────────────────────────────────────────────────────────────
 
@@ -205,13 +204,13 @@ setup-envtest:
 # ── Images ───────────────────────────────────────────────────────────────
 
 image-api:
-	$(CONTAINER_ENGINE) build -f platform-api/Dockerfile \
+	$(CONTAINER_ENGINE) build -f platform-api/Containerfile \
 		--platform $(GOOS)/$(GOARCH) \
 		-t $(IMAGE_REPO_API):$(IMAGE_TAG) .
 	$(CONTAINER_ENGINE) tag $(IMAGE_REPO_API):$(IMAGE_TAG) $(IMAGE_REPO_API):$(GIT_SHA)
 
 image-operator:
-	$(CONTAINER_ENGINE) build -f hyperfleet-operator/Dockerfile \
+	$(CONTAINER_ENGINE) build -f hyperfleet-operator/Containerfile \
 		--platform $(GOOS)/$(GOARCH) \
 		-t $(IMAGE_REPO_OPERATOR):$(IMAGE_TAG) .
 	$(CONTAINER_ENGINE) tag $(IMAGE_REPO_OPERATOR):$(IMAGE_TAG) $(IMAGE_REPO_OPERATOR):$(GIT_SHA)
@@ -228,15 +227,6 @@ image-push-api: image-api
 image-push-operator: image-operator
 	$(CONTAINER_ENGINE) push $(IMAGE_REPO_OPERATOR):$(IMAGE_TAG)
 	$(CONTAINER_ENGINE) push $(IMAGE_REPO_OPERATOR):$(GIT_SHA)
-
-# ── Run ──────────────────────────────────────────────────────────────────
-
-run: build-api
-	./bin/rosa-regional-platform-api serve \
-		--log-level=debug \
-		--log-format=text \
-		--maestro-url=http://localhost:8001 \
-		--allowed-accounts=123456789012
 
 # ── Clean ────────────────────────────────────────────────────────────────
 

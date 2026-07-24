@@ -7,9 +7,9 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
-	"github.com/openshift/rosa-regional-platform-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift/rosa-regional-platform-api/platform-api/pkg/middleware"
-	"github.com/openshift/rosa-regional-platform-api/platform-api/pkg/types"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/types"
 )
 
 type NodePoolHandler struct {

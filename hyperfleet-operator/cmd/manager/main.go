@@ -29,7 +29,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodbstreams"
-	hyperfleetdb "github.com/openshift/rosa-regional-platform-api/hyperfleet-db"
+	hyperfleetdb "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -38,11 +38,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	v1alpha1 "github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/api/v1alpha1"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/internal/controller"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/internal/dynamo"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/internal/dynamo/statusstream"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/internal/render"
+	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/controller"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/dynamo"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/dynamo/statusstream"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/render"
 )
 
 var setupLog = ctrl.Log.WithName("setup")

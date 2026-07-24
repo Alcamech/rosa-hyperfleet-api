@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/compaction"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/reader"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/resourceversion"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/compaction"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/reader"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/resourceversion"
 )
 
 // R15 — Compaction mid-poll (B3: I6 direct violation).

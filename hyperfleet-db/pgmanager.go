@@ -11,8 +11,8 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/reader"
-	pgschema "github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/schema"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/reader"
+	pgschema "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/schema"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"

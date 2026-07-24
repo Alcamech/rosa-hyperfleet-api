@@ -1,4 +1,5 @@
 FROM registry.access.redhat.com/ubi9/go-toolset:1.26.4-1783442369 AS builder
+USER root
 
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
@@ -18,7 +19,7 @@ RUN cd platform-api && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -buildvcs=false \
     -ldflags="-w -s" \
-    -o /app/rosa-regional-platform-api \
+    -o /app/rosa-hyperfleet-api \
     ./cmd
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8-1782797275
@@ -40,11 +41,11 @@ LABEL name="rosa-hyperfleet-api" \
 
 WORKDIR /app
 
-COPY --from=builder /app/rosa-regional-platform-api /app/rosa-regional-platform-api
+COPY --from=builder /app/rosa-hyperfleet-api /app/rosa-hyperfleet-api
 
 EXPOSE 8000 8081 9090
 
 USER 65534:65534
 
-ENTRYPOINT ["/app/rosa-regional-platform-api"]
+ENTRYPOINT ["/app/rosa-hyperfleet-api"]
 CMD ["serve"]

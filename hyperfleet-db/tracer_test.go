@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	hyperfleetdb "github.com/openshift/rosa-regional-platform-api/hyperfleet-db"
+	hyperfleetdb "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

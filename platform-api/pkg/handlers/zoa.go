@@ -16,9 +16,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
-	"github.com/openshift/rosa-regional-platform-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift/rosa-regional-platform-api/platform-api/pkg/middleware"
-	"github.com/openshift/rosa-regional-platform-api/platform-api/pkg/zoa"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/zoa"
 )
 
 var jiraTicketRegex = regexp.MustCompile(`^[A-Z][A-Z0-9]+-\d+$`)

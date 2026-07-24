@@ -8,7 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	awstest "github.com/openshift/rosa-regional-platform-api/test/helpers/aws"
+	awstest "github.com/openshift-online/rosa-hyperfleet-api/test/helpers/aws"
 )
 
 var (
@@ -21,7 +21,7 @@ func TestE2EMonitoring(t *testing.T) {
 		t.Skip("E2E_RHOBS_API_URL not set — skipping monitoring tests")
 	}
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "ROSA Regional Platform API Monitoring E2E Suite")
+	RunSpecs(t, "Hyperfleet Monitoring E2E Suite")
 }
 
 var _ = BeforeSuite(func() {

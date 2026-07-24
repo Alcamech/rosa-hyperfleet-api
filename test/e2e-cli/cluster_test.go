@@ -45,8 +45,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	awstest "github.com/openshift/rosa-regional-platform-api/test/helpers/aws"
-	"github.com/openshift/rosa-regional-platform-api/test/helpers/thanos"
+	awstest "github.com/openshift-online/rosa-hyperfleet-api/test/helpers/aws"
+	"github.com/openshift-online/rosa-hyperfleet-api/test/helpers/thanos"
 )
 
 func recordTiming(phase string) func() {

@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/compaction"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/compaction"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/internal/metrics"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/metrics"
 )
 
 func main() {

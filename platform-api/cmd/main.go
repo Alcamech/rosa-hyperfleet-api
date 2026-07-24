@@ -12,9 +12,9 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/spf13/cobra"
 
-	"github.com/openshift/rosa-regional-platform-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift/rosa-regional-platform-api/platform-api/pkg/config"
-	"github.com/openshift/rosa-regional-platform-api/platform-api/pkg/server"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/config"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/server"
 )
 
 var (
@@ -39,9 +39,9 @@ func main() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "rosa-regional-platform-api",
-	Short: "ROSA Regional Platform API",
-	Long:  "Regional platform API for ROSA (Red Hat OpenShift Service on AWS)",
+	Use:   "rosa-hyperfleet-api",
+	Short: "Hyperfleet Platform API",
+	Long:  "Hyperfleet platform API for ROSA HCP regional cluster management",
 }
 
 var serveCmd = &cobra.Command{
@@ -69,7 +69,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Create logger
 	logger := createLogger(logLevel, logFormat)
 
-	logger.Info("starting rosa-regional-platform-api",
+	logger.Info("starting rosa-hyperfleet-api",
 		"log_level", logLevel,
 		"log_format", logFormat,
 	)

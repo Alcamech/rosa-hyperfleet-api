@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/model"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/reader"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/model"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/reader"
 )
 
 // B5 — Verifier state must be O(1), not O(events).

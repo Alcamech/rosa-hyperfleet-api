@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/reader"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/resourceversion"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/reader"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/resourceversion"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

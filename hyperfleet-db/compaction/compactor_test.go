@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/compaction"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/model"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/writer"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/test/testinfra"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/compaction"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/model"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/writer"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/test/testinfra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
