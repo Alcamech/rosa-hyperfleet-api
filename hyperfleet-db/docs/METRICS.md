@@ -67,7 +67,7 @@ instrumentation with zero overhead.
 ### Enabling metrics
 
 ```go
-import "github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/metrics"
+import "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/metrics"
 
 reg := prometheus.DefaultRegisterer
 

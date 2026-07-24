@@ -36,7 +36,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	hyperfleetiov1alpha1 "github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/api/v1alpha1"
+	hyperfleetiov1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 

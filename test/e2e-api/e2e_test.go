@@ -27,7 +27,7 @@ func getAndExpectOK(client *APIClient, path, accountID, bodyContains string) *AP
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "ROSA Regional Platform API E2E Suite")
+	RunSpecs(t, "Hyperfleet API E2E Suite")
 }
 
 // Ordered for now, as our test size is small

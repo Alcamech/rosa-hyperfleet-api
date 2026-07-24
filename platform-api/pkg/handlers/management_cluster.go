@@ -8,10 +8,10 @@ import (
 	"github.com/gorilla/mux"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	hyperfleetv1alpha1 "github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/api/v1alpha1"
+	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
 
-	"github.com/openshift/rosa-regional-platform-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift/rosa-regional-platform-api/platform-api/pkg/middleware"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 )
 
 // ManagementClusterHandler handles management cluster endpoints.

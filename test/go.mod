@@ -1,4 +1,4 @@
-module github.com/openshift/rosa-regional-platform-api/test
+module github.com/openshift-online/rosa-hyperfleet-api/test
 
 go 1.26.3
 

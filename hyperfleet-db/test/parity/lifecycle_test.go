@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/test/parity/greeting"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/test/parity/greeting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

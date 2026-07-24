@@ -9,5 +9,5 @@ import (
 
 func TestE2ECLI(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "ROSA Regional Platform API CLI E2E Suite")
+	RunSpecs(t, "Hyperfleet CLI E2E Suite")
 }

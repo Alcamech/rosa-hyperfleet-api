@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/reader"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/test/testinfra"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/reader"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/test/testinfra"
 	"github.com/stretchr/testify/require"
 )
 

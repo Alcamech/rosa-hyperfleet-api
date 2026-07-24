@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	hyperfleetdb "github.com/openshift/rosa-regional-platform-api/hyperfleet-db"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/test/parity/greeting"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/test/testinfra"
+	hyperfleetdb "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/test/parity/greeting"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/test/testinfra"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

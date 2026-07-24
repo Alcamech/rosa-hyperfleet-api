@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/model"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/resourceversion"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/model"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/resourceversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"

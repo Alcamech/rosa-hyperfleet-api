@@ -1,4 +1,4 @@
-module github.com/openshift/rosa-regional-platform-api/hack/tools
+module github.com/openshift-online/rosa-hyperfleet-api/hack/tools
 
 go 1.25.0
 

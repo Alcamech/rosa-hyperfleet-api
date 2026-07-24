@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	dynamo "github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/internal/dynamo"
+	dynamo "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/dynamo"
 )
 
 var _ = Describe("Cross-component interaction", func() {

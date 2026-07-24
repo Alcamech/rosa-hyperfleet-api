@@ -10,9 +10,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/model"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/reader"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/writer"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/model"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/reader"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/writer"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

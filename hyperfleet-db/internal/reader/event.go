@@ -1,6 +1,6 @@
 package reader
 
-import "github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/model"
+import "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/model"
 
 type EventType int
 

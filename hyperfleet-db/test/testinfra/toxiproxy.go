@@ -9,7 +9,7 @@ import (
 
 	toxiproxy "github.com/Shopify/toxiproxy/client"
 	"github.com/jackc/pgx/v5"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/schema"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/schema"
 )
 
 type ProxiedDB struct {

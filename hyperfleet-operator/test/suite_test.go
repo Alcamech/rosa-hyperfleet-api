@@ -18,7 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodbstreams"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	hyperfleetdb "github.com/openshift/rosa-regional-platform-api/hyperfleet-db"
+	hyperfleetdb "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -28,11 +28,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
-	hyperfleetv1alpha1 "github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/api/v1alpha1"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/internal/controller"
-	dynamo "github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/internal/dynamo"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/internal/dynamo/statusstream"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-operator/internal/render"
+	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/controller"
+	dynamo "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/dynamo"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/dynamo/statusstream"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/render"
 )
 
 const (

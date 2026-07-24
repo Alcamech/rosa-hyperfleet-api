@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/reader"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/resourceversion"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/reader"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/resourceversion"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"

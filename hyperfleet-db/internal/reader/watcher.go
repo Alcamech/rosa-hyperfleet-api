@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/metrics"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/model"
-	"github.com/openshift/rosa-regional-platform-api/hyperfleet-db/internal/resourceversion"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/metrics"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/model"
+	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/resourceversion"
 )
 
 var ErrGone = errors.New("410 Gone: resource version too old")
