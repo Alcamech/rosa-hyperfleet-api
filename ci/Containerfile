@@ -1,26 +1,4 @@
 FROM registry.ci.openshift.org/openshift/release:rhel-9-release-golang-1.26-openshift-4.23
 
-RUN mkdir -p /tmp/.golangci-lint-cache /tmp/.gocache /tmp/.gomodcache \
-             /tmp/.local/share/containers /tmp/.config/containers && \
-    chmod -R 777 /tmp/.golangci-lint-cache /tmp/.gocache /tmp/.gomodcache \
-                 /tmp/.local/share/containers /tmp/.config/containers
-
-ENV GOFLAGS="-mod=mod"
-ENV GOLANGCI_LINT_CACHE=/tmp/.golangci-lint-cache
-ENV GOCACHE=/tmp/.gocache
-ENV GOMODCACHE=/tmp/.gomodcache
-
-ARG GOLANGCI_LINT_VERSION=v2.12.2
-
-RUN go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION} && \
-    golangci-lint --version
-
-RUN go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.21.0
-RUN go install sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.24.1
-
 RUN dnf install -y podman --setopt=install_weak_deps=False && dnf clean all
 
-RUN printf '[storage]\ndriver = "vfs"\nrunroot = "/tmp/containers-run"\ngraphroot = "/tmp/.local/share/containers/storage"\n' \
-    > /tmp/.config/containers/storage.conf
-
-ENV CONTAINERS_STORAGE_CONF=/tmp/.config/containers/storage.conf

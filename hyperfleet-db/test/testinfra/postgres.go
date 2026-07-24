@@ -6,13 +6,39 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db/internal/schema"
 )
+
+var podmanEnv = sync.OnceValue(func() []string {
+	home := os.Getenv("HOME")
+	if home == "" || home == "/" {
+		tmp, err := os.MkdirTemp("", "podman-home-*")
+		if err != nil {
+			tmp = os.TempDir()
+		}
+		return append(os.Environ(),
+			"HOME="+tmp,
+			"XDG_RUNTIME_DIR="+tmp,
+			"XDG_CONFIG_HOME="+filepath.Join(tmp, ".config"),
+		)
+	}
+	return nil
+})
+
+func podmanCmd(args ...string) *exec.Cmd {
+	cmd := exec.Command("podman", args...)
+	if env := podmanEnv(); env != nil {
+		cmd.Env = env
+	}
+	return cmd
+}
 
 type TestDB struct {
 	ConnStr   string
@@ -50,7 +76,7 @@ func StartPostgres(t testing.TB) *TestDB {
 		"docker.io/library/postgres:16-alpine",
 	}
 
-	out, err := exec.Command("podman", args...).CombinedOutput()
+	out, err := podmanCmd(args...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("podman run: %v\n%s", err, out)
 	}
@@ -58,7 +84,7 @@ func StartPostgres(t testing.TB) *TestDB {
 	connStr := fmt.Sprintf("postgres://test:test@localhost:%d/pgctl_test?sslmode=disable", port)
 
 	t.Cleanup(func() {
-		_ = exec.Command("podman", "stop", container).Run()
+		_ = podmanCmd("stop", container).Run()
 	})
 
 	waitForPostgres(t, connStr)
@@ -135,7 +161,7 @@ func waitForPostgres(t testing.TB, connStr string) {
 		return
 	}
 	// show container logs on failure
-	out, _ := exec.Command("podman", "logs", extractContainer(connStr)).CombinedOutput()
+	out, _ := podmanCmd("logs", extractContainer(connStr)).CombinedOutput()
 	t.Fatalf("postgres not ready after 30s: %v\nlogs:\n%s", lastErr, out)
 }
 
@@ -174,7 +200,7 @@ func StartPostgresForTestMain() *TestDB {
 		"docker.io/library/postgres:16-alpine",
 	}
 
-	out, err := exec.Command("podman", args...).CombinedOutput()
+	out, err := podmanCmd(args...).CombinedOutput()
 	if err != nil {
 		panic(fmt.Sprintf("podman run: %v\n%s", err, out))
 	}
@@ -198,7 +224,7 @@ func StartPostgresForTestMain() *TestDB {
 }
 
 func (db *TestDB) Stop() {
-	_ = exec.Command("podman", "stop", db.container).Run()
+	_ = podmanCmd("stop", db.container).Run()
 }
 
 func freePortNoT() int {

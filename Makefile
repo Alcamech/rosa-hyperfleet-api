@@ -1,11 +1,11 @@
-.PHONY: help build test lint clean \
+.PHONY: help build test test-unit test-integration lint clean \
 	build-hyperfleet-db build-operator build-api \
 	test-hyperfleet-db test-operator test-operator-int test-api \
 	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz \
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
 	fmt vet verify deps \
 	manifests generate setup-envtest \
-	image-api image-operator image-e2e image-push-api image-push-operator
+	image-api image-operator image-push-api image-push-operator
 
 # ── Configuration ────────────────────────────────────────────────────────
 
@@ -31,9 +31,21 @@ CONTAINER_ENGINE ?= $(shell command -v podman 2>/dev/null || command -v docker 2
 TOOLS_DIR        := ./hack/tools
 TOOLS_BIN_DIR    := $(TOOLS_DIR)/bin
 GOLANGCI_LINT    := $(abspath $(TOOLS_BIN_DIR)/golangci-lint)
+CONTROLLER_GEN   := $(abspath $(TOOLS_BIN_DIR)/controller-gen)
+SETUP_ENVTEST    := $(abspath $(TOOLS_BIN_DIR)/setup-envtest)
+GINKGO           := $(abspath $(TOOLS_BIN_DIR)/ginkgo)
 
 $(GOLANGCI_LINT): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/golangci-lint github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+
+$(CONTROLLER_GEN): $(TOOLS_DIR)/go.mod
+	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/controller-gen sigs.k8s.io/controller-tools/cmd/controller-gen
+
+$(SETUP_ENVTEST): $(TOOLS_DIR)/go.mod
+	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/setup-envtest sigs.k8s.io/controller-runtime/tools/setup-envtest
+
+$(GINKGO): $(TOOLS_DIR)/go.mod
+	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/ginkgo github.com/onsi/ginkgo/v2/ginkgo
 
 # ── Help ─────────────────────────────────────────────────────────────────
 
@@ -47,14 +59,12 @@ help:
 	@echo "  build-hyperfleet-db  Hyperfleet DB library"
 	@echo ""
 	@echo "Test:"
-	@echo "  test                 All unit tests"
-	@echo "  test-api             Platform API"
-	@echo "  test-operator        Hyperfleet operator"
-	@echo "  test-operator-int    Operator integration (Postgres + DynamoDB)"
-	@echo "  test-hyperfleet-db   Hyperfleet DB"
+	@echo "  test                 All tests (unit + integration)"
+	@echo "  test-unit            Unit tests: API + operator (no external services)"
+	@echo "  test-integration     Integration tests: FleetDB + operator (podman)"
+	@echo "  test-e2e-authz       E2E authz (starts local infra)"
 	@echo "  test-e2e-api         E2E API"
 	@echo "  test-e2e-cli         E2E CLI"
-	@echo "  test-e2e-authz       E2E authz (starts local infra)"
 	@echo "  test-e2e-zoa         E2E ZOA"
 	@echo "  test-e2e-platform-monitoring  E2E monitoring"
 	@echo ""
@@ -73,7 +83,6 @@ help:
 	@echo "Images:"
 	@echo "  image-api            Platform API image"
 	@echo "  image-operator       Hyperfleet operator image"
-	@echo "  image-e2e            E2E test image"
 
 # ── Build ────────────────────────────────────────────────────────────────
 
@@ -91,46 +100,51 @@ build-api:
 
 # ── Test ─────────────────────────────────────────────────────────────────
 
-# TODO: add test-operator (needs setup-envtest in CI image) and test-hyperfleet-db (needs podman + postgres)
-test: test-api
+test: test-unit test-integration
 
-test-hyperfleet-db:
-	cd hyperfleet-db && go test -v -race -count=1 ./...
+test-unit: test-api test-operator
 
-test-operator:
-	cd hyperfleet-operator && KUBEBUILDER_ASSETS="$$(setup-envtest use --print path -p path 2>/dev/null || echo '')" go test -v -race -count=1 ./internal/...
-
-test-operator-int:
-	cd hyperfleet-operator && go test -v -race -count=1 ./test/...
+test-integration: test-hyperfleet-db test-operator-int
 
 test-api:
 	cd platform-api && go test -v -race -count=1 $$(go list ./... | grep -v '/test/e2e')
 
+test-operator: $(SETUP_ENVTEST)
+	@ASSETS=$$($(SETUP_ENVTEST) use -p path --bin-dir $(ENVTEST_BIN_DIR)) && \
+		echo "envtest assets: $$ASSETS" && \
+		cd hyperfleet-operator && KUBEBUILDER_ASSETS="$$ASSETS" go test -v -race -count=1 ./internal/...
+
+test-hyperfleet-db:
+	cd hyperfleet-db && go test -v -race -count=1 ./...
+
+test-operator-int:
+	cd hyperfleet-operator && go test -v -race -count=1 ./test/...
+
 test-e2e: test-e2e-api
 
-test-e2e-api:
+test-e2e-api: $(GINKGO)
 	E2E_BASE_URL="$${BASE_URL}" E2E_ACCOUNT_ID="$${E2E_ACCOUNT_ID}" \
 	E2E_RHOBS_API_URL="$${RHOBS_API_URL}" \
-	ginkgo -vv --skip="Authz" \
+	$(GINKGO) -vv --skip="Authz" \
 		--junit-report=junit-api.xml --output-dir=$(TEST_OUTPUT_DIR) \
 		./test/e2e-api
 
-test-e2e-cli:
+test-e2e-cli: $(GINKGO)
 	E2E_BASE_URL="$${BASE_URL}" E2E_ACCOUNT_ID="$${E2E_ACCOUNT_ID}" \
 	E2E_RHOBS_API_URL="$${RHOBS_API_URL}" \
 	ROSACTL_BIN="$${ROSACTL_BIN}" AWS_REGION="$${AWS_REGION}" \
-	ginkgo -vv --junit-report=junit-cli.xml \
+	$(GINKGO) -vv --junit-report=junit-cli.xml \
 		$(if $(E2E_LABEL_FILTER),--label-filter="$(E2E_LABEL_FILTER)") \
 		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-cli
 
-test-e2e-platform-monitoring:
+test-e2e-platform-monitoring: $(GINKGO)
 	E2E_RHOBS_API_URL="$${RHOBS_API_URL}" \
-	ginkgo -vv --junit-report=junit-platform-monitoring.xml \
+	$(GINKGO) -vv --junit-report=junit-platform-monitoring.xml \
 		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-platform-monitoring
 
-test-e2e-zoa:
+test-e2e-zoa: $(GINKGO)
 	E2E_BASE_URL="$${BASE_URL}" E2E_ACCOUNT_ID="$${E2E_ACCOUNT_ID}" \
-	ginkgo -vv --junit-report=junit-zoa.xml \
+	$(GINKGO) -vv --junit-report=junit-zoa.xml \
 		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-zoa
 
 # ── E2E Infrastructure ──────────────────────────────────────────────────
@@ -191,15 +205,16 @@ deps:
 
 # ── Code Generation ──────────────────────────────────────────────────────
 
-manifests:
-	cd hyperfleet-operator && controller-gen crd paths="./api/..." output:crd:dir=config/crd/bases
+manifests: $(CONTROLLER_GEN)
+	cd hyperfleet-operator && $(CONTROLLER_GEN) crd paths="./api/..." output:crd:dir=config/crd/bases
 
-generate:
-	cd hyperfleet-operator && controller-gen object paths="./api/..."
+generate: $(CONTROLLER_GEN)
+	cd hyperfleet-operator && $(CONTROLLER_GEN) object paths="./api/..."
 
-setup-envtest:
-	go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
-	setup-envtest use
+ENVTEST_BIN_DIR ?= $(shell pwd)/.envtest
+
+setup-envtest: $(SETUP_ENVTEST)
+	$(SETUP_ENVTEST) use --bin-dir $(ENVTEST_BIN_DIR)
 
 # ── Images ───────────────────────────────────────────────────────────────
 
@@ -214,11 +229,6 @@ image-operator:
 		--platform $(GOOS)/$(GOARCH) \
 		-t $(IMAGE_REPO_OPERATOR):$(IMAGE_TAG) .
 	$(CONTAINER_ENGINE) tag $(IMAGE_REPO_OPERATOR):$(IMAGE_TAG) $(IMAGE_REPO_OPERATOR):$(GIT_SHA)
-
-image-e2e:
-	$(CONTAINER_ENGINE) build -f platform-api/Containerfile.e2e \
-		--platform $(GOOS)/$(GOARCH) \
-		-t $(IMAGE_REPO_API)-e2e:$(IMAGE_TAG) .
 
 image-push-api: image-api
 	$(CONTAINER_ENGINE) push $(IMAGE_REPO_API):$(IMAGE_TAG)
