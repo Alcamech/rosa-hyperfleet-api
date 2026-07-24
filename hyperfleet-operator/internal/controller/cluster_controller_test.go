@@ -31,11 +31,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
-	"github.com/openshift/hypershift/api/util/ipnet"
 	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
 	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/dynamo"
 	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/render"
+	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
+	"github.com/openshift/hypershift/api/util/ipnet"
 )
 
 var _ = Describe("Cluster Controller", func() {
