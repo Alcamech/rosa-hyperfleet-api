@@ -273,9 +273,8 @@ var _ = BeforeSuite(func() {
 						"status":     &dynamodbtypes.AttributeValueMemberM{Value: statusAttrs},
 					}
 					_, _ = dynamoDBCli.PutItem(ctx, &dynamodb.PutItemInput{
-						TableName:           aws.String(statusTable),
-						Item:                statusItem,
-						ConditionExpression: aws.String("attribute_not_exists(documentID)"),
+						TableName: aws.String(statusTable),
+						Item:      statusItem,
 					})
 				}
 			}
@@ -320,7 +319,6 @@ var _ = BeforeSuite(func() {
 							"documentID":         docID,
 							"status_kubeContent": &dynamodbtypes.AttributeValueMemberS{Value: string(completedJob)},
 						},
-						ConditionExpression: aws.String("attribute_not_exists(documentID)"),
 					})
 				}
 			}

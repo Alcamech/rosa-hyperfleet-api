@@ -160,7 +160,7 @@ var _ = Describe("Cluster lifecycle", func() {
 			TableName: aws.String(statusTable),
 			Item: map[string]dynamodbtypes.AttributeValue{
 				"documentID":  &dynamodbtypes.AttributeValueMemberS{Value: readDocID},
-				"kubeContent": &dynamodbtypes.AttributeValueMemberB{Value: hcJSON},
+				"status_kubeContent": &dynamodbtypes.AttributeValueMemberS{Value: string(hcJSON)},
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os/exec"
 	"time"
 
 	toxiproxy "github.com/Shopify/toxiproxy/client"
@@ -111,9 +110,9 @@ func StartPostgresWithProxy() *ProxiedDB {
 }
 
 func (p *ProxiedDB) Stop() {
-	_ = exec.Command("podman", "stop", p.toxiContainer).Run()
-	_ = exec.Command("podman", "stop", p.pgContainer).Run()
-	_ = exec.Command("podman", "network", "rm", p.network).Run()
+	_ = podmanCmd("stop", p.toxiContainer).Run()
+	_ = podmanCmd("stop", p.pgContainer).Run()
+	_ = podmanCmd("network", "rm", p.network).Run()
 }
 
 func (p *ProxiedDB) DirectConn(ctx context.Context) (*pgx.Conn, error) {
@@ -125,7 +124,7 @@ func (p *ProxiedDB) ProxiedConn(ctx context.Context) (*pgx.Conn, error) {
 }
 
 func run(name string, args ...string) { //nolint:unparam
-	out, err := exec.Command(name, args...).CombinedOutput()
+	out, err := podmanCmd(args...).CombinedOutput()
 	if err != nil {
 		panic(fmt.Sprintf("%s %v: %v\n%s", name, args, err, out))
 	}
