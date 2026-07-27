@@ -159,7 +159,7 @@ var _ = Describe("Cluster lifecycle", func() {
 		_, err = dynamoDBCli.PutItem(ctx, &dynamodb.PutItemInput{
 			TableName: aws.String(statusTable),
 			Item: map[string]dynamodbtypes.AttributeValue{
-				"documentID":  &dynamodbtypes.AttributeValueMemberS{Value: readDocID},
+				"documentID":         &dynamodbtypes.AttributeValueMemberS{Value: readDocID},
 				"status_kubeContent": &dynamodbtypes.AttributeValueMemberS{Value: string(hcJSON)},
 			},
 		})
