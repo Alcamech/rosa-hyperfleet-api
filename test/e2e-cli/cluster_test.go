@@ -79,7 +79,8 @@ func customerEnv() []string {
 func fireAndForgetInfraDelete(rosactlBin, clusterName, region string, resources []string) {
 	for _, subCmd := range resources {
 		GinkgoWriter.Printf("Cleanup: firing %s delete %s (fire-and-forget)\n", subCmd, clusterName)
-		cmd := exec.Command(rosactlBin, subCmd, "delete", clusterName, "--region", region)
+		args := []string{subCmd, "delete", clusterName, "--region", region, "--no-wait"}
+		cmd := exec.Command(rosactlBin, args...)
 		cmd.Env = append(os.Environ(), customerEnv()...)
 		if err := cmd.Start(); err != nil {
 			GinkgoWriter.Printf("Cleanup WARNING: failed to start %s delete: %v\n", subCmd, err)
@@ -832,6 +833,12 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 
 	It("should be able to delete the cluster-oidc", Label("oidc-delete", "cleanup"), func() {
 		defer recordTiming("hcp-oidc-delete")()
+		if os.Getenv("ROSA_REGIONAL_TEARDOWN_FIRE_AND_FORGET") == "true" {
+			GinkgoWriter.Printf("Fire-and-forget mode: launching async deletes for infra stacks\n")
+			fireAndForgetInfraDelete(ROSACTL_BIN, clusterName, region, []string{"cluster-oidc"})
+			// cleanupCompleted = true
+			return
+		}
 		GinkgoWriter.Printf("Deleting the cluster-oidc: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_BIN, "cluster-oidc", "delete", clusterName, "--region", region)
 		cmd.Env = append(os.Environ(), customerEnv()...)
@@ -844,6 +851,12 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 
 	It("should be able to delete the cluster-vpc", Label("vpc-delete", "cleanup"), func() {
 		defer recordTiming("hcp-vpc-delete")()
+		if os.Getenv("ROSA_REGIONAL_TEARDOWN_FIRE_AND_FORGET") == "true" {
+			GinkgoWriter.Printf("Fire-and-forget mode: launching async deletes for infra stacks\n")
+			fireAndForgetInfraDelete(ROSACTL_BIN, clusterName, region, []string{"cluster-vpc"})
+			// cleanupCompleted = true
+			return
+		}
 		GinkgoWriter.Printf("Deleting cluster-vpc: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_BIN, "cluster-vpc", "delete", clusterName, "--region", region)
 		cmd.Env = append(os.Environ(), customerEnv()...)
@@ -856,6 +869,12 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 
 	It("should be able to delete the cluster-iam", Label("iam-delete", "cleanup"), func() {
 		defer recordTiming("hcp-iam-delete")()
+		if os.Getenv("ROSA_REGIONAL_TEARDOWN_FIRE_AND_FORGET") == "true" {
+			GinkgoWriter.Printf("Fire-and-forget mode: launching async deletes for infra stacks\n")
+			fireAndForgetInfraDelete(ROSACTL_BIN, clusterName, region, []string{"cluster-iam"})
+			cleanupCompleted = true
+			return
+		}
 		GinkgoWriter.Printf("Deleting the cluster-iam: %s\n", clusterName)
 		cmd := exec.Command(ROSACTL_BIN, "cluster-iam", "delete", clusterName, "--region", region)
 		cmd.Env = append(os.Environ(), customerEnv()...)
