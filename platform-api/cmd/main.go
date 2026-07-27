@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -162,6 +163,42 @@ func runServe(cmd *cobra.Command, args []string) error {
 			"job_config_dir", cfg.Zoa.JobConfigDir,
 			"audit_table", cfg.Zoa.AuditTableName,
 		)
+	}
+
+	// Rate limiting configuration from environment variables
+	if os.Getenv("RATE_LIMIT_ENABLED") == "true" {
+		cfg.RateLimit.Enabled = true
+		cfg.RateLimit.RedisAddr = os.Getenv("REDIS_ENDPOINT")
+		cfg.RateLimit.InMemory = os.Getenv("RATE_LIMIT_IN_MEMORY") == "true"
+		cfg.RateLimit.ConfigFile = os.Getenv("RATE_LIMIT_CONFIG_FILE")
+		if v := os.Getenv("RATE_LIMIT_DEFAULT_RATE"); v != "" {
+			if rate, err := strconv.Atoi(v); err == nil {
+				cfg.RateLimit.DefaultRate = rate
+			}
+		}
+		if v := os.Getenv("RATE_LIMIT_DEFAULT_BURST"); v != "" {
+			if burst, err := strconv.Atoi(v); err == nil {
+				cfg.RateLimit.DefaultBurst = burst
+			}
+		}
+		if v := os.Getenv("RATE_LIMIT_DEFAULT_WINDOW"); v != "" {
+			if window, err := strconv.Atoi(v); err == nil {
+				cfg.RateLimit.DefaultWindow = window
+			}
+		}
+		if os.Getenv("RATE_LIMIT_TEST_MODE") == "true" {
+			cfg.RateLimit.DefaultRate = 3
+			cfg.RateLimit.DefaultBurst = 6
+			cfg.RateLimit.DefaultWindow = 1
+			cfg.RateLimit.InMemory = true
+			logger.Info("rate limiting in TEST MODE (rate=3, burst=6, window=1s, in-memory)")
+		} else {
+			logger.Info("rate limiting enabled",
+				"redis_addr", cfg.RateLimit.RedisAddr,
+				"in_memory", cfg.RateLimit.InMemory,
+				"config_file", cfg.RateLimit.ConfigFile,
+			)
+		}
 	}
 
 	// Create hyperfleet DB client (Postgres via pgruntime)

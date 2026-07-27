@@ -13,7 +13,18 @@ type Config struct {
 	Logging         LoggingConfig
 	Authz           *authz.Config
 	Zoa             ZoaConfig
+	RateLimit       RateLimitConfig
 	AllowedAccounts []string
+}
+
+type RateLimitConfig struct {
+	Enabled       bool
+	RedisAddr     string
+	InMemory      bool
+	ConfigFile    string
+	DefaultRate   int
+	DefaultBurst  int
+	DefaultWindow int
 }
 
 type DBConfig struct {
