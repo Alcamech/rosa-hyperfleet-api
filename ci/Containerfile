@@ -1,7 +1,10 @@
-# TODO: Remove this file after we swap to .ci-operator.yaml. 
-# Podman in podman is not possible via rhel-9-release-golang-1.26-openshift-4.23 anyway, 
-# so the addition we have here is unnecessary.
+# CI build-root image for rosa-hyperfleet-api.
+# Extends the standard Go builder with rootless podman support so that
+# integration tests can spin up containers (e.g. postgres) via nested podman.
 FROM registry.ci.openshift.org/openshift/release:rhel-9-release-golang-1.26-openshift-4.23
 
-RUN dnf install -y podman --setopt=install_weak_deps=False && dnf clean all
-
+RUN dnf install -y podman fuse-overlayfs --setopt=install_weak_deps=False && dnf clean all && \
+    setcap cap_setuid+ep /usr/bin/newuidmap && \
+    setcap cap_setgid+ep /usr/bin/newgidmap && \
+    echo '1000:10000:65536' >> /etc/subuid && \
+    echo '1000:10000:65536' >> /etc/subgid
