@@ -1,6 +1,6 @@
 # V2 SDK Integration into the rosa CLI
 
-**Last Updated Date**: 2026-07-18
+**Last Updated Date**: 2026-07-28
 
 ## Summary
 
@@ -290,8 +290,7 @@ Acceptance tests for `WithHyperFleet()` must cover:
 4. **Type divergence** — how far do `v1alpha1.Cluster` / `NodePool` diverge
    from the `cmv1` fields the printers read? This sizes the display mapper
    (see also Open Question 3 in the initiative doc).
-5. **Waiting/status UX** — v1 create supports `--watch`-style polling via OCM;
-   what does the v2 path poll (`Status` conditions on the CRD-shaped resource)?
+5. **Waiting/status UX** — v1 create supports `--watch`-style polling via OCM. The v2 path uses `WaitUntil(ctx, id string, condition func(*v1alpha1.T) bool, interval, timeout time.Duration) error`, available on each resource client. The condition function receives the live resource on each poll, or `nil` when the resource is absent (404). For create, the condition checks `Status.Phase == ClusterPhaseReady`; for delete, it returns `true` when the resource is `nil`. The Platform API does not support the Kubernetes watch stream protocol — polling via `WaitUntil` is the only synchronization mechanism.
 
 ## Suggested First Steps
 
