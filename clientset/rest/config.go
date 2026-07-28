@@ -24,9 +24,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
-// executeAPIRegionRE matches execute-api hostnames and captures the region.
-// Example: abc123.execute-api.us-east-1.amazonaws.com
-var executeAPIRegionRE = regexp.MustCompile(`\.execute-api\.([a-z0-9-]+)\.amazonaws\.com$`)
+// awsRegionRE matches an AWS region name within a URL host.
+// Example: abc123.execute-api.us-east-1.amazonaws.com → us-east-1
+var awsRegionRE = regexp.MustCompile(`[a-z]+-[a-z]+-\d+`)
 
 // Config holds the parameters needed to connect to the Hyperfleet platform API.
 type Config struct {
@@ -67,9 +67,9 @@ func regionFromHost(host string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invalid host %q: %w", host, err)
 	}
-	m := executeAPIRegionRE.FindStringSubmatch(u.Hostname())
-	if m == nil {
-		return "", fmt.Errorf("cannot derive region from host %q: expected format {id}.execute-api.{region}.amazonaws.com; set Config.Region explicitly", host)
+	region := awsRegionRE.FindString(u.Hostname())
+	if region == "" {
+		return "", fmt.Errorf("cannot derive region from host %q; set Config.Region explicitly", host)
 	}
-	return m[1], nil
+	return region, nil
 }

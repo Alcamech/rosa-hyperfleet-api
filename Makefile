@@ -1,5 +1,5 @@
 .PHONY: help build test test-unit test-integration lint clean \
-	build-hyperfleet-db build-operator build-api \
+	build-hyperfleet-db build-operator build-api build-examples \
 	test-hyperfleet-db test-operator test-operator-int test-api \
 	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz \
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
@@ -44,10 +44,14 @@ SDK_INPUT         ?= v1alpha1
 SDK_CLIENTSET     ?= clientset
 SDK_OUTPUT_DIR    ?= $(abspath clientset/clientset)
 SDK_OUTPUT_PKG    ?= $(SDK_MODULE)/clientset/clientset
-WIRE_INPUT_DIR    ?= $(abspath hyperfleet-operator/api/v1alpha1)
-WIRE_OUTPUT_DIR   ?= $(abspath clientset/transport)
-WIRE_OUTPUT_PKG   ?= transport
-SDK_HEADER_FILE   ?= $(abspath hack/clientset/license-boilerplate.go.txt)
+WIRE_INPUT_DIR        ?= $(abspath hyperfleet-operator/api/v1alpha1)
+WIRE_OUTPUT_DIR       ?= $(abspath clientset/transport)
+WIRE_OUTPUT_PKG       ?= transport
+WRAPPERS_OUTPUT_DIR   ?= $(abspath clientset/wrappers)
+WRAPPERS_OUTPUT_PKG   ?= wrappers
+TYPED_PKG_IMPORT      ?= $(SDK_MODULE)/clientset/clientset/clientset/typed/v1alpha1/internalversion
+API_PKG_IMPORT        ?= $(SDK_MODULE)/hyperfleet-operator/api/v1alpha1
+SDK_HEADER_FILE       ?= $(abspath hack/clientset/license-boilerplate.go.txt)
 
 $(GOLANGCI_LINT): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/golangci-lint github.com/golangci/golangci-lint/v2/cmd/golangci-lint
@@ -77,6 +81,7 @@ help:
 	@echo "  build-api            Platform API server"
 	@echo "  build-operator       Hyperfleet operator (manager + compactor)"
 	@echo "  build-hyperfleet-db  Hyperfleet DB library"
+	@echo "  build-examples       Compile SDK examples to clientset/examples/bin/"
 	@echo ""
 	@echo "Test:"
 	@echo "  test                 All tests (unit + integration)"
@@ -108,6 +113,16 @@ help:
 # ── Build ────────────────────────────────────────────────────────────────
 
 build: build-hyperfleet-db build-operator build-api
+
+build-examples:
+	@mkdir -p clientset/examples/bin
+	@for dir in clientset/examples/*/; do \
+		name=$$(basename "$$dir"); \
+		[ "$$name" = "util" ] && continue; \
+		[ "$$name" = "bin" ] && continue; \
+		echo "building $$name..."; \
+		cd clientset && go build -o "examples/bin/$$name" "./examples/$$name" && cd ..; \
+	done
 
 build-hyperfleet-db:
 	cd hyperfleet-db && go build ./...
@@ -242,9 +257,18 @@ generate-clientset: $(CLIENT_GEN) $(WIRE_GEN)
 		--output-pkg "$(SDK_OUTPUT_PKG)" \
 		--go-header-file "$(SDK_HEADER_FILE)"
 	$(WIRE_GEN) \
+		--mode mappings \
 		--input-dir "$(WIRE_INPUT_DIR)" \
 		--output-dir "$(WIRE_OUTPUT_DIR)" \
 		--output-pkg "$(WIRE_OUTPUT_PKG)" \
+		--go-header-file "$(SDK_HEADER_FILE)"
+	$(WIRE_GEN) \
+		--mode wrappers \
+		--input-dir "$(WIRE_INPUT_DIR)" \
+		--output-dir "$(WRAPPERS_OUTPUT_DIR)" \
+		--output-pkg "$(WRAPPERS_OUTPUT_PKG)" \
+		--typed-pkg-import "$(TYPED_PKG_IMPORT)" \
+		--api-pkg-import "$(API_PKG_IMPORT)" \
 		--go-header-file "$(SDK_HEADER_FILE)"
 
 ENVTEST_BIN_DIR ?= $(shell pwd)/.envtest

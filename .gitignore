@@ -57,3 +57,6 @@ hyperfleet-operator/bin/
 # Compiled operator binaries (built outside bin/)
 hyperfleet-operator/manager
 hyperfleet-operator/compactor
+
+# Compiled example binaries
+clientset/examples/bin/
