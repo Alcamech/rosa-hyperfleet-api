@@ -73,8 +73,11 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 		var limiter ratelimit.RateLimiter
 		if cfg.RateLimit.InMemory {
 			limiter = ratelimit.NewLocalRateLimiter()
-			logger.Info("rate limiting using in-memory backend")
+			logger.Info("rate limiting enabled", "backend", "in-memory")
 		} else {
+			if cfg.RateLimit.RedisAddr == "" {
+				return nil, fmt.Errorf("REDIS_ENDPOINT is required when rate limiting is enabled and not in-memory mode")
+			}
 			rdb := redis.NewClient(&redis.Options{
 				Addr: cfg.RateLimit.RedisAddr,
 				TLSConfig: &tls.Config{
@@ -82,7 +85,7 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 				},
 			})
 			limiter = ratelimit.NewRedisLimiter(rdb)
-			logger.Info("rate limiting using Redis/Valkey backend", "addr", cfg.RateLimit.RedisAddr)
+			logger.Info("rate limiting enabled", "backend", "redis")
 		}
 
 		rl := ratelimit.New(limiter, rlCfg, logger)

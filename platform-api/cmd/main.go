@@ -172,17 +172,26 @@ func runServe(cmd *cobra.Command, args []string) error {
 		cfg.RateLimit.InMemory = os.Getenv("RATE_LIMIT_IN_MEMORY") == "true"
 		cfg.RateLimit.ConfigFile = os.Getenv("RATE_LIMIT_CONFIG_FILE")
 		if v := os.Getenv("RATE_LIMIT_DEFAULT_RATE"); v != "" {
-			if rate, err := strconv.Atoi(v); err == nil {
+			rate, err := strconv.Atoi(v)
+			if err != nil {
+				logger.Warn("ignoring malformed RATE_LIMIT_DEFAULT_RATE", "value", v, "error", err)
+			} else {
 				cfg.RateLimit.DefaultRate = rate
 			}
 		}
 		if v := os.Getenv("RATE_LIMIT_DEFAULT_BURST"); v != "" {
-			if burst, err := strconv.Atoi(v); err == nil {
+			burst, err := strconv.Atoi(v)
+			if err != nil {
+				logger.Warn("ignoring malformed RATE_LIMIT_DEFAULT_BURST", "value", v, "error", err)
+			} else {
 				cfg.RateLimit.DefaultBurst = burst
 			}
 		}
 		if v := os.Getenv("RATE_LIMIT_DEFAULT_WINDOW"); v != "" {
-			if window, err := strconv.Atoi(v); err == nil {
+			window, err := strconv.Atoi(v)
+			if err != nil {
+				logger.Warn("ignoring malformed RATE_LIMIT_DEFAULT_WINDOW", "value", v, "error", err)
+			} else {
 				cfg.RateLimit.DefaultWindow = window
 			}
 		}
@@ -194,7 +203,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 			logger.Info("rate limiting in TEST MODE (rate=3, burst=6, window=1s, in-memory)")
 		} else {
 			logger.Info("rate limiting enabled",
-				"redis_addr", cfg.RateLimit.RedisAddr,
 				"in_memory", cfg.RateLimit.InMemory,
 				"config_file", cfg.RateLimit.ConfigFile,
 			)
