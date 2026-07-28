@@ -215,6 +215,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	existingIssuerURL := cr.Spec.HostedCluster.IssuerURL
+	existingExpiration := cr.Spec.ExpirationTimestamp
 
 	if err := hyperfleetdb.ApplyPlatformUpdateToClusterCR(cr, &req); err != nil {
 		h.logger.Error("failed to merge cluster spec", "error", err)
@@ -223,6 +224,9 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cr.Spec.HostedCluster.IssuerURL = existingIssuerURL
+	if cr.Spec.ExpirationTimestamp == nil {
+		cr.Spec.ExpirationTimestamp = existingExpiration
+	}
 
 	if err := h.db.UpdateCluster(ctx, cr); err != nil {
 		h.logger.Error("failed to update cluster", "error", err, "account_id", accountID, "cluster_id", clusterID)

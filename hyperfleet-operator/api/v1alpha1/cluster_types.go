@@ -44,9 +44,7 @@ type ClusterSpec struct {
 	CreatorARN string `json:"creatorARN,omitempty"`
 
 	// ExpirationTimestamp is the time after which the cluster will be
-	// automatically deleted by the operator. If nil, the cluster has no
-	// expiration. The operator may stamp a default value at creation time
-	// when the --default-expiration flag is set.
+	// automatically deleted. If nil, the cluster has no expiration.
 	// +optional
 	ExpirationTimestamp *metav1.Time `json:"expirationTimestamp,omitempty"`
 

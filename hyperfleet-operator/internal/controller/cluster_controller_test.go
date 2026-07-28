@@ -417,12 +417,13 @@ var _ = Describe("Cluster Controller", func() {
 			}
 
 			// First reconcile adds finalizer.
-			_, _ = reconciler.Reconcile(ctx, reconcile.Request{
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Namespace: testNS, Name: clusterName},
 			})
+			Expect(err).NotTo(HaveOccurred())
 
 			// Second reconcile detects expiration and deletes.
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Namespace: testNS, Name: clusterName},
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -461,9 +462,10 @@ var _ = Describe("Cluster Controller", func() {
 			}
 
 			// First reconcile: adds finalizer.
-			_, _ = reconciler.Reconcile(ctx, reconcile.Request{
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Namespace: testNS, Name: clusterName},
 			})
+			Expect(err).NotTo(HaveOccurred())
 			// Second reconcile: creates desires + returns requeue.
 			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: types.NamespacedName{Namespace: testNS, Name: clusterName},
