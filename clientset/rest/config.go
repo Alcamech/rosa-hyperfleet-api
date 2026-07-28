@@ -52,7 +52,7 @@ type Config struct {
 }
 
 // ResolveRegion returns Region if set, otherwise derives it from Host.
-// Returns an error if Host is not a recognisable execute-api endpoint and Region is empty.
+// Returns an error if Host is not a recognizable execute-api endpoint and Region is empty.
 func (c *Config) ResolveRegion() (string, error) {
 	if c.Region != "" {
 		return c.Region, nil

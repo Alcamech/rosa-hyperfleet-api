@@ -35,7 +35,7 @@ func main() {
 	ctx := context.Background()
 
 	host := util.MustEnv("HYPERFLEET_HOST")
-	id   := util.MustEnv("HYPERFLEET_CLUSTER_ID")
+	id := util.MustEnv("HYPERFLEET_CLUSTER_ID")
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
 	if err != nil {

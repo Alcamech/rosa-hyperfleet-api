@@ -24,7 +24,7 @@ limitations under the License.
 //	--mode=wrappers: emits wire_wrappers_generated.go containing wrapper types
 //	  for resources annotated with +wire:watch=disabled and/or +wire:wait.
 //	  The Watch method returns ErrWatchNotSupported; WaitUntil provides
-//	  polling-based synchronisation via a caller-supplied condition function.
+//	  polling-based synchronization via a caller-supplied condition function.
 package main
 
 import (
@@ -99,7 +99,7 @@ import (
 
 // ErrWatchNotSupported is returned by Watch on all resources. The Hyperfleet
 // platform API does not support the Kubernetes watch stream protocol; use
-// WaitUntil for polling-based synchronisation instead.
+// WaitUntil for polling-based synchronization instead.
 var ErrWatchNotSupported = errors.New("watch is not supported by the Hyperfleet platform API")
 {{range .Types}}
 // {{.Name}}Interface extends the generated interface with platform-specific methods.

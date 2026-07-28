@@ -59,7 +59,7 @@ func main() {
 	_, err = cs.HyperfleetV1alpha1().Clusters(*identity.Account).Watch(ctx, metav1.ListOptions{})
 	if errors.Is(err, wrappers.ErrWatchNotSupported) {
 		fmt.Println("Watch correctly returned ErrWatchNotSupported.")
-		fmt.Println("Use WaitUntil for polling-based synchronisation instead.")
+		fmt.Println("Use WaitUntil for polling-based synchronization instead.")
 		return
 	}
 	if err != nil {

@@ -38,22 +38,22 @@ import (
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	hyperfleet "github.com/openshift-online/rosa-hyperfleet-api/clientset"
 	"github.com/openshift-online/rosa-hyperfleet-api/clientset/examples/util"
 	hfrest "github.com/openshift-online/rosa-hyperfleet-api/clientset/rest"
 	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
+	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func main() {
 	ctx := context.Background()
 
-	host     := util.MustEnv("HYPERFLEET_HOST")
-	name     := util.MustEnv("HYPERFLEET_CLUSTER_NAME")
-	vpcID    := util.MustEnv("HYPERFLEET_VPC_ID")
+	host := util.MustEnv("HYPERFLEET_HOST")
+	name := util.MustEnv("HYPERFLEET_CLUSTER_NAME")
+	vpcID := util.MustEnv("HYPERFLEET_VPC_ID")
 	subnetID := util.MustEnv("HYPERFLEET_SUBNET_ID")
-	version  := util.MustEnv("HYPERFLEET_VERSION")
+	version := util.MustEnv("HYPERFLEET_VERSION")
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -97,7 +97,7 @@ func main() {
 				Platform: hypershiftv1beta1.PlatformSpec{
 					Type: hypershiftv1beta1.AWSPlatform,
 					AWS: &hypershiftv1beta1.AWSPlatformSpec{
-						Region: region,
+						Region:   region,
 						RolesRef: iamRoles(name, accountID),
 						CloudProviderConfig: &hypershiftv1beta1.AWSCloudProviderConfig{
 							VPC:    vpcID,

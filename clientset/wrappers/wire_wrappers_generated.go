@@ -27,8 +27,8 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/rest"
 
-	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
 	internalversion "github.com/openshift-online/rosa-hyperfleet-api/clientset/clientset/clientset/typed/v1alpha1/internalversion"
+	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
 )
 
 // ErrWatchNotSupported is returned by Watch on all resources. The Hyperfleet
@@ -81,7 +81,6 @@ func (c *clusterClient) WaitUntil(ctx context.Context, id string, condition func
 		}
 	}
 }
-
 
 // NodePoolInterface extends the generated interface with platform-specific methods.
 type NodePoolInterface interface {
