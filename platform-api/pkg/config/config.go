@@ -21,7 +21,8 @@ type DBConfig struct {
 }
 
 type RegionalConfig struct {
-	OIDCIssuerBaseURL string
+	OIDCIssuerBaseURL        string
+	DefaultClusterExpiration time.Duration
 }
 
 type ZoaConfig struct {

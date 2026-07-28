@@ -40,7 +40,7 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 	healthHandler := apphandlers.NewHealthHandler()
 	infoHandler := apphandlers.NewInfoHandler()
 	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(dbClient, logger)
-	clusterHandler := apphandlers.NewClusterHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, logger)
+	clusterHandler := apphandlers.NewClusterHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, cfg.Regional.DefaultClusterExpiration, logger)
 	nodePoolHandler := apphandlers.NewNodePoolHandler(dbClient, logger)
 
 	// Create legacy authorization middleware (for non-authz routes)

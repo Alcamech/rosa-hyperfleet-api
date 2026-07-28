@@ -247,6 +247,33 @@ var _ = Describe("Cluster lifecycle", func() {
 		}).ShouldNot(Succeed())
 	})
 
+	It("should automatically delete an expired cluster through the full lifecycle", func() {
+		By("creating an expired Cluster CR")
+		cluster := newExpiredTestCluster("e2e-expired-01")
+		cluster.Name = clusterName
+		Expect(k8sClient.Create(ctx, cluster)).To(Succeed())
+
+		By("verifying the cluster is fully deleted (expiration triggers deletion, kube-applier confirms)")
+		Eventually(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{Namespace: testNS, Name: clusterName}, &hyperfleetv1alpha1.Cluster{})
+		}).ShouldNot(Succeed())
+
+		By("verifying Placement CR is also cleaned up")
+		Eventually(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: testNS,
+				Name:      clusterName + "-placement",
+			}, &hyperfleetv1alpha1.Placement{})
+		}).ShouldNot(Succeed())
+
+		By("verifying ApplyDesire specs are cleaned up from DynamoDB")
+		specsApply := mc + "-specs-applydesires"
+		Eventually(func(g Gomega) {
+			items := scanTable(specsApply)
+			g.Expect(items).To(BeEmpty(), "all ApplyDesire specs should be cleaned up after expiration-driven deletion")
+		}).Should(Succeed())
+	})
+
 	It("should write NodePool ApplyDesire when NodePool CR is created", func() {
 		By("creating a Cluster CR with PlacementRef")
 		cluster := newTestCluster(clusterName)

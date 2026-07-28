@@ -6,9 +6,12 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/types"
@@ -16,17 +19,19 @@ import (
 
 // ClusterHandler handles cluster-related HTTP requests
 type ClusterHandler struct {
-	db                *hyperfleetdb.Client
-	oidcIssuerBaseURL string
-	logger            *slog.Logger
+	db                       *hyperfleetdb.Client
+	oidcIssuerBaseURL        string
+	defaultClusterExpiration time.Duration
+	logger                   *slog.Logger
 }
 
 // NewClusterHandler creates a new cluster handler
-func NewClusterHandler(db *hyperfleetdb.Client, oidcIssuerBaseURL string, logger *slog.Logger) *ClusterHandler {
+func NewClusterHandler(db *hyperfleetdb.Client, oidcIssuerBaseURL string, defaultClusterExpiration time.Duration, logger *slog.Logger) *ClusterHandler {
 	return &ClusterHandler{
-		db:                db,
-		oidcIssuerBaseURL: oidcIssuerBaseURL,
-		logger:            logger,
+		db:                       db,
+		oidcIssuerBaseURL:        oidcIssuerBaseURL,
+		defaultClusterExpiration: defaultClusterExpiration,
+		logger:                   logger,
 	}
 }
 
@@ -132,6 +137,11 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.defaultClusterExpiration > 0 && cr.Spec.ExpirationTimestamp == nil {
+		expiry := metav1.NewTime(time.Now().Add(h.defaultClusterExpiration))
+		cr.Spec.ExpirationTimestamp = &expiry
+	}
+
 	if h.oidcIssuerBaseURL != "" {
 		cr.Spec.HostedCluster.IssuerURL = h.oidcIssuerBaseURL + "/" + clusterID
 	}
@@ -205,6 +215,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	existingIssuerURL := cr.Spec.HostedCluster.IssuerURL
+	existingExpiration := cr.Spec.ExpirationTimestamp
 
 	if err := hyperfleetdb.ApplyPlatformUpdateToClusterCR(cr, &req); err != nil {
 		h.logger.Error("failed to merge cluster spec", "error", err)
@@ -213,6 +224,9 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cr.Spec.HostedCluster.IssuerURL = existingIssuerURL
+	if cr.Spec.ExpirationTimestamp == nil {
+		cr.Spec.ExpirationTimestamp = existingExpiration
+	}
 
 	if err := h.db.UpdateCluster(ctx, cr); err != nil {
 		h.logger.Error("failed to update cluster", "error", err, "account_id", accountID, "cluster_id", clusterID)

@@ -17,6 +17,13 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+func newExpiredTestCluster(name string) *hyperfleetv1alpha1.Cluster {
+	cluster := newTestCluster(name)
+	expiry := metav1.NewTime(time.Now().Add(-1 * time.Minute))
+	cluster.Spec.ExpirationTimestamp = &expiry
+	return cluster
+}
+
 var _ = BeforeEach(func() {
 	purgeResources()
 	purgeDynamoTables()

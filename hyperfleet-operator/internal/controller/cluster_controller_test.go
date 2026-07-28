@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -400,6 +401,78 @@ var _ = Describe("Cluster Controller", func() {
 			var updated hyperfleetv1alpha1.Cluster
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: testNS, Name: clusterName}, &updated)).To(Succeed())
 			Expect(updated.Status.Phase).NotTo(Equal(hyperfleetv1alpha1.ClusterPhaseReady))
+		})
+
+		It("should delete an expired cluster", func() {
+			resource := newTestCluster(clusterName)
+			expiry := metav1.NewTime(time.Now().Add(-1 * time.Minute))
+			resource.Spec.ExpirationTimestamp = &expiry
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+
+			reconciler := &ClusterReconciler{
+				Client:         k8sClient,
+				Scheme:         k8sClient.Scheme(),
+				Dynamo:         &fakeDynamo{},
+				RegionalConfig: render.RegionalConfig{BaseDomain: "example.com", AWSRegion: "us-east-1"},
+			}
+
+			// First reconcile adds finalizer.
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Namespace: testNS, Name: clusterName},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Second reconcile detects expiration and deletes.
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Namespace: testNS, Name: clusterName},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Cluster should have a DeletionTimestamp set.
+			var updated hyperfleetv1alpha1.Cluster
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: testNS, Name: clusterName}, &updated)).To(Succeed())
+			Expect(updated.DeletionTimestamp.IsZero()).To(BeFalse())
+		})
+
+		It("should requeue at expiration time when it is sooner than statusRefreshDelay", func() {
+			resource := newTestCluster(clusterName)
+			expiry := metav1.NewTime(time.Now().Add(30 * time.Second))
+			resource.Spec.ExpirationTimestamp = &expiry
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+
+			placement := &hyperfleetv1alpha1.Placement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      clusterName + "-placement",
+					Namespace: testNS,
+				},
+				Spec: hyperfleetv1alpha1.PlacementSpec{
+					ClusterName:       clusterName,
+					ManagementCluster: "mc01",
+				},
+			}
+			Expect(k8sClient.Create(ctx, placement)).To(Succeed())
+			placement.Status.Phase = hyperfleetv1alpha1.PlacementPhaseBound
+			Expect(k8sClient.Status().Update(ctx, placement)).To(Succeed())
+
+			reconciler := &ClusterReconciler{
+				Client:         k8sClient,
+				Scheme:         k8sClient.Scheme(),
+				Dynamo:         &fakeDynamo{},
+				RegionalConfig: render.RegionalConfig{BaseDomain: "example.com", AWSRegion: "us-east-1"},
+			}
+
+			// First reconcile: adds finalizer.
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Namespace: testNS, Name: clusterName},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			// Second reconcile: creates desires + returns requeue.
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Namespace: testNS, Name: clusterName},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.RequeueAfter).To(BeNumerically(">", 0))
+			Expect(result.RequeueAfter).To(BeNumerically("<", statusRefreshDelay))
 		})
 
 		It("should handle not-found gracefully", func() {

@@ -43,6 +43,11 @@ type ClusterSpec struct {
 	// +kubebuilder:validation:Pattern=`^arn:aws:`
 	CreatorARN string `json:"creatorARN,omitempty"`
 
+	// ExpirationTimestamp is the time after which the cluster will be
+	// automatically deleted. If nil, the cluster has no expiration.
+	// +optional
+	ExpirationTimestamp *metav1.Time `json:"expirationTimestamp,omitempty"`
+
 	// HostedCluster is the full HyperShift HostedClusterSpec. The customer provides
 	// the fields they care about; the operator overrides platform-managed fields
 	// (InfraID, DNS, PullSecret, Services, etc.) at render time.
@@ -95,6 +100,7 @@ type PlacementReference struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="MC",type=string,JSONPath=".status.placementRef.managementCluster"
 // +kubebuilder:printcolumn:name="Endpoint",type=string,JSONPath=".status.controlPlaneEndpoint.host",priority=1
+// +kubebuilder:printcolumn:name="Expires",type=date,JSONPath=".spec.expirationTimestamp",priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
 // Cluster is the Schema for the clusters API.
