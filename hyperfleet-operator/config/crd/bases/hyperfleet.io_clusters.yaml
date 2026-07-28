@@ -27,6 +27,10 @@ spec:
       name: Endpoint
       priority: 1
       type: string
+    - jsonPath: .spec.expirationTimestamp
+      name: Expires
+      priority: 1
+      type: date
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -67,6 +71,14 @@ spec:
                   CreatorARN is the IAM ARN of the user who created this cluster.
                   Used to bootstrap the initial cluster-admin RBAC mapping.
                 pattern: '^arn:aws:'
+                type: string
+              expirationTimestamp:
+                description: |-
+                  ExpirationTimestamp is the time after which the cluster will be
+                  automatically deleted by the operator. If nil, the cluster has no
+                  expiration. The operator may stamp a default value at creation time
+                  when the --default-expiration flag is set.
+                format: date-time
                 type: string
               hostedCluster:
                 description: |-

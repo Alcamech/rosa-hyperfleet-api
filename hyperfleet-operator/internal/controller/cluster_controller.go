@@ -94,6 +94,19 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{Requeue: true}, nil
 	}
 
+	// Delete the cluster if it has expired.
+	if cluster.Spec.ExpirationTimestamp != nil && !cluster.Spec.ExpirationTimestamp.IsZero() &&
+		time.Now().After(cluster.Spec.ExpirationTimestamp.Time) {
+		log.Info("Cluster expired, triggering deletion", "expirationTimestamp", cluster.Spec.ExpirationTimestamp.Time)
+		if err := r.Delete(ctx, &cluster); err != nil {
+			if apierrors.IsNotFound(err) {
+				return ctrl.Result{}, nil
+			}
+			return ctrl.Result{}, fmt.Errorf("delete expired cluster: %w", err)
+		}
+		return ctrl.Result{}, nil
+	}
+
 	// Look up Placement — if none or not Bound, wait.
 	placementName := fmt.Sprintf("%s-placement", cluster.Name)
 	var placement hyperfleetv1alpha1.Placement
@@ -217,7 +230,13 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// to avoid clobbering Ready with a stale in-memory phase check.
 	r.updateStatusFromDynamo(ctx, &cluster, statusPrefix, readDocID, applyEntries)
 
-	return ctrl.Result{RequeueAfter: statusRefreshDelay}, nil
+	requeueAfter := statusRefreshDelay
+	if cluster.Spec.ExpirationTimestamp != nil && !cluster.Spec.ExpirationTimestamp.IsZero() {
+		if remaining := time.Until(cluster.Spec.ExpirationTimestamp.Time); remaining > 0 && remaining < requeueAfter {
+			requeueAfter = remaining
+		}
+	}
+	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
 func (r *ClusterReconciler) reconcileDelete(ctx context.Context, cluster *hyperfleetv1alpha1.Cluster) (ctrl.Result, error) {
