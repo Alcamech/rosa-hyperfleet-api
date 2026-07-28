@@ -4,7 +4,7 @@
 	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz \
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
 	fmt vet verify deps \
-	manifests generate setup-envtest \
+	manifests generate generate-clientset setup-envtest \
 	image-api image-operator image-push-api image-push-operator
 
 # ── Configuration ────────────────────────────────────────────────────────
@@ -32,8 +32,22 @@ TOOLS_DIR        := ./hack/tools
 TOOLS_BIN_DIR    := $(TOOLS_DIR)/bin
 GOLANGCI_LINT    := $(abspath $(TOOLS_BIN_DIR)/golangci-lint)
 CONTROLLER_GEN   := $(abspath $(TOOLS_BIN_DIR)/controller-gen)
+CLIENT_GEN       := $(abspath $(TOOLS_BIN_DIR)/client-gen)
+WIRE_GEN         := $(abspath $(TOOLS_BIN_DIR)/wire-gen)
 SETUP_ENVTEST    := $(abspath $(TOOLS_BIN_DIR)/setup-envtest)
 GINKGO           := $(abspath $(TOOLS_BIN_DIR)/ginkgo)
+
+# ── SDK generation ───────────────────────────────────────────────────────
+SDK_MODULE        ?= github.com/openshift-online/rosa-hyperfleet-api
+SDK_API_PKG       ?= $(SDK_MODULE)/hyperfleet-operator/api
+SDK_INPUT         ?= v1alpha1
+SDK_CLIENTSET     ?= clientset
+SDK_OUTPUT_DIR    ?= $(abspath clientset/clientset)
+SDK_OUTPUT_PKG    ?= $(SDK_MODULE)/clientset/clientset
+WIRE_INPUT_DIR    ?= $(abspath hyperfleet-operator/api/v1alpha1)
+WIRE_OUTPUT_DIR   ?= $(abspath clientset/transport)
+WIRE_OUTPUT_PKG   ?= transport
+SDK_HEADER_FILE   ?= $(abspath hack/clientset/license-boilerplate.go.txt)
 
 $(GOLANGCI_LINT): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/golangci-lint github.com/golangci/golangci-lint/v2/cmd/golangci-lint
@@ -43,6 +57,12 @@ $(CONTROLLER_GEN): $(TOOLS_DIR)/go.mod
 
 $(SETUP_ENVTEST): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/setup-envtest sigs.k8s.io/controller-runtime/tools/setup-envtest
+
+$(CLIENT_GEN): $(TOOLS_DIR)/go.mod
+	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/client-gen k8s.io/code-generator/cmd/client-gen
+
+$(WIRE_GEN): hack/clientset/cmd/wire-gen/main.go
+	cd hack/clientset/cmd/wire-gen && go build -o $(WIRE_GEN) .
 
 $(GINKGO): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/ginkgo github.com/onsi/ginkgo/v2/ginkgo
@@ -77,6 +97,7 @@ help:
 	@echo "Code Generation:"
 	@echo "  manifests            Generate CRD manifests"
 	@echo "  generate             Generate deepcopy methods"
+	@echo "  generate-clientset         Generate typed client SDK from CRD types"
 	@echo "  setup-envtest        Install envtest binaries (etcd, kube-apiserver)"
 	@echo "  deps                 Download and tidy all modules"
 	@echo ""
@@ -211,6 +232,20 @@ manifests: $(CONTROLLER_GEN)
 
 generate: $(CONTROLLER_GEN)
 	cd hyperfleet-operator && $(CONTROLLER_GEN) object paths="./api/..."
+
+generate-clientset: $(CLIENT_GEN) $(WIRE_GEN)
+	cd hyperfleet-operator/api && $(CLIENT_GEN) \
+		--input-base "$(SDK_API_PKG)" \
+		--input "$(SDK_INPUT)" \
+		--clientset-name "$(SDK_CLIENTSET)" \
+		--output-dir "$(SDK_OUTPUT_DIR)" \
+		--output-pkg "$(SDK_OUTPUT_PKG)" \
+		--go-header-file "$(SDK_HEADER_FILE)"
+	$(WIRE_GEN) \
+		--input-dir "$(WIRE_INPUT_DIR)" \
+		--output-dir "$(WIRE_OUTPUT_DIR)" \
+		--output-pkg "$(WIRE_OUTPUT_PKG)" \
+		--go-header-file "$(SDK_HEADER_FILE)"
 
 ENVTEST_BIN_DIR ?= $(shell pwd)/.envtest
 

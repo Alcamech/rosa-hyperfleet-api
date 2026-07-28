@@ -5,7 +5,7 @@
 ## Summary
 
 This document explores how the `rosa` CLI can support **both** the v1 SDK
-(`ocm-sdk-go`, against the OCM API) and the v2 SDK (`hyperfleet-sdk/`, against
+(`ocm-sdk-go`, against the OCM API) and the v2 SDK (`clientset/`, against
 the HyperFleet Platform API) side by side, with v1 remaining the default and v2
 selected per-invocation via a flag. It is a companion to
 [v2-sdk-initiative.md](v2-sdk-initiative.md), which covers the SDK itself; this

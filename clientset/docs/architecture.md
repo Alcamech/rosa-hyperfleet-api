@@ -1,0 +1,223 @@
+# Hyperfleet SDK — Architecture
+
+## Overview
+
+The SDK provides a typed Go client for the Hyperfleet platform API, using the same interface style as `client-go`:
+
+```go
+cs.HyperfleetV1alpha1().Clusters("123456789012").Get(ctx, "my-cluster", metav1.GetOptions{})
+```
+
+It is built in two parts:
+
+- **Generated layer** — typed clientset produced by `k8s.io/code-generator`'s `client-gen` from the operator CRD types
+- **Custom wiring** — hand-written code that adapts the generated client to the platform API's auth model, URL structure, and wire format
+
+---
+
+## Code Generation
+
+### Prerequisites: markers in the CRD types
+
+`client-gen` generates a typed client for every type annotated with `// +genclient` in the operator API package (`hyperfleet-operator/api/v1alpha1`). Two types have this marker:
+
+```go
+// +genclient
+// +kubebuilder:object:root=true
+type Cluster struct { ... }
+
+// +genclient
+// +kubebuilder:object:root=true
+type NodePool struct { ... }
+```
+
+The `// +groupName=hyperfleet.io` doc comment on the package tells `client-gen` the API group name.
+
+### Running generation
+
+```bash
+make generate-clientset
+```
+
+This runs two generators in sequence — `client-gen` for the typed clients and `wire-gen`
+for the field mappings:
+
+```makefile
+SDK_MODULE       ?= github.com/openshift-online/rosa-hyperfleet-api
+SDK_API_PKG      ?= $(SDK_MODULE)/hyperfleet-operator/api
+SDK_INPUT        ?= v1alpha1
+SDK_CLIENTSET    ?= clientset
+SDK_OUTPUT_DIR   ?= $(abspath clientset/clientset)
+SDK_OUTPUT_PKG   ?= $(SDK_MODULE)/clientset/clientset
+WIRE_INPUT_DIR   ?= $(abspath hyperfleet-operator/api/v1alpha1)
+WIRE_OUTPUT_DIR  ?= $(abspath clientset/transport)
+WIRE_OUTPUT_PKG  ?= transport
+SDK_HEADER_FILE  ?= $(abspath hack/clientset/license-boilerplate.go.txt)
+
+generate-clientset: $(CLIENT_GEN) $(WIRE_GEN)
+    cd hyperfleet-operator/api && $(CLIENT_GEN) \
+        --input-base "$(SDK_API_PKG)" \
+        --input "$(SDK_INPUT)" \
+        --clientset-name "$(SDK_CLIENTSET)" \
+        --output-dir "$(SDK_OUTPUT_DIR)" \
+        --output-pkg "$(SDK_OUTPUT_PKG)" \
+        --go-header-file "$(SDK_HEADER_FILE)"
+    $(WIRE_GEN) \
+        --input-dir "$(WIRE_INPUT_DIR)" \
+        --output-dir "$(WIRE_OUTPUT_DIR)" \
+        --output-pkg "$(WIRE_OUTPUT_PKG)" \
+        --go-header-file "$(SDK_HEADER_FILE)"
+```
+
+`wire-gen` is a stdlib-only command built from `hack/clientset/cmd/wire-gen/` with its
+own `go.mod`. It is compiled automatically as a dependency of the target.
+
+### What gets generated
+
+```
+clientset/clientset/
+  clientset.go                                    # top-level Clientset, V1alpha1() method
+  scheme/register.go                              # scheme registration
+  typed/v1alpha1/internalversion/
+    v1alpha1_client.go                            # V1alpha1Client, Clusters(ns)/NodePools(ns)
+    cluster.go                                    # ClusterInterface: Get/List/Watch/Create/Update/Delete/Patch
+    nodepool.go                                   # NodePoolInterface: same
+    fake/                                         # fake implementations for testing
+```
+
+> All files under `clientset/` are generated. Do not edit them manually.
+
+### install package (hand-written, required by generated code)
+
+The generated `scheme/register.go` imports `hyperfleet-operator/api/v1alpha1/install`, which does not exist in the operator module by default. It must be created manually:
+
+```go
+// hyperfleet-operator/api/v1alpha1/install/install.go
+package install
+
+import (
+    v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
+    "k8s.io/apimachinery/pkg/runtime"
+)
+
+func Install(scheme *runtime.Scheme) {
+    if err := v1alpha1.AddToScheme(scheme); err != nil {
+        panic(err)
+    }
+}
+```
+
+---
+
+## Custom Wiring
+
+The platform API differs from a standard Kubernetes API in three ways that require hand-written code:
+
+| Difference | Solution |
+|---|---|
+| Requests are signed with AWS SigV4 | `transport/sigv4.go` — custom RoundTripper |
+| Resources are account-scoped, not namespace-scoped | SigV4 transport extracts the Kubernetes namespace from the URL, maps it to `X-Amz-Account-Id`, and strips the `/namespaces/{ns}/` segment |
+| Wire format is flat JSON, not Kubernetes nested metadata | `transport/wire.go` — response adapter |
+
+### `rest/config.go` — SDK configuration
+
+Holds the platform API connection parameters. Region is optional: when not set, it is derived from the API Gateway hostname.
+
+```go
+type Config struct {
+    Host      string     // required: https://{id}.execute-api.{region}.amazonaws.com/...
+    Region    string     // optional: derived from Host if empty
+    AccountID string     // required: sent as X-Amz-Account-Id
+    CallerARN string     // optional: sent as X-Amz-Caller-Arn
+    AWSConfig aws.Config // provides credential chain
+}
+```
+
+### `transport/sigv4.go` — signing + namespace rewrite
+
+Every outbound request goes through `SigV4RoundTripper.RoundTrip`:
+
+1. The generated client appends `/namespaces/{accountID}/` to every URL because the CRDs are declared as `scope=Namespaced`. The transport strips this segment and promotes the namespace value to the `X-Amz-Account-Id` signed header.
+2. The request body is buffered, hashed (SHA-256), and restored so SigV4 can include the payload hash in the signature.
+3. The request is signed with `aws/signer/v4` against the `execute-api` service.
+
+### `transport/wire.go` — response adapter
+
+Platform API returns flat JSON objects:
+
+```json
+{"id": "abc-123", "name": "my-cluster", "resource_version": "1", "spec": {}, "status": {}}
+```
+
+The Kubernetes decoder populates `v1alpha1.Cluster` from `metadata.*` fields. The `Adapter` RoundTripper rewrites each response before the decoder sees it:
+
+| Wire field | → | Kubernetes field |
+|---|---|---|
+| `name` | → | `metadata.name` |
+| `id` | → | `metadata.uid` |
+| `resource_version` | → | `metadata.resourceVersion` |
+| `generation` | → | `metadata.generation` |
+| `spec`, `status`, … | → | unchanged |
+
+Both single-object and list (`{"items": [...]}`) responses are handled.
+
+### `hyperfleet.go` — entry point and transport chain
+
+`NewForConfig` wires the two transports together and constructs the REST client:
+
+```
+HTTP call flow:
+
+  Generated client code
+        │
+        ▼
+  Adapter.RoundTrip          ← wire format rewrite (response path only)
+        │
+        ▼
+  SigV4RoundTripper.RoundTrip ← namespace→account rewrite + SigV4 signing
+        │
+        ▼
+  http.DefaultTransport       ← actual network call
+```
+
+**Bypassing `setConfigDefaults`**
+
+The generated `NewForConfigAndClient` calls `setConfigDefaults()`, which overwrites `APIPath` to `/apis` and resets `GroupVersion` to Kubernetes defaults. The platform API uses `/api/v0`, so the generated constructor cannot be used directly.
+
+Instead, `hyperfleet.go` constructs the REST client manually:
+
+```go
+// APIPath="/api" + GroupVersion.Version="v0" → versionedAPIPath=/api/v0
+apiGV := schema.GroupVersion{Version: "v0"}
+metav1.AddToGroupVersion(scheme.Scheme, apiGV)
+
+restCfg := &k8srest.Config{
+    Host:    cfg.Host,
+    APIPath: "/api",
+    ContentConfig: k8srest.ContentConfig{
+        GroupVersion:         &apiGV,
+        NegotiatedSerializer: scheme.Codecs.WithoutConversion(),
+    },
+    Transport: sigv4,
+}
+
+httpClient := &http.Client{Transport: transport.NewAdapter(sigv4)}
+restClient, _ := k8srest.RESTClientForConfigAndClient(restCfg, httpClient)
+return &Clientset{generated: generatedclientset.New(restClient)}, nil
+```
+
+Using `generatedclientset.New(restClient)` (not `NewForConfigAndClient`) injects the pre-built REST client directly, skipping `setConfigDefaults`.
+
+**Why `GroupVersion{Version: "v0"}` and not `GroupVersion{}`**
+
+An empty version string causes `metav1.AddToGroupVersion` to panic when registering well-known types. Setting `Version: "v0"` with an empty `Group` satisfies the scheme while producing the correct `/api/v0` URL path when combined with `APIPath: "/api"`.
+
+**Why `HyperfleetV1alpha1()` instead of `V1alpha1()`**
+
+`client-gen` derives the method name from the directory structure. Because the types live directly under `v1alpha1/` with no parent group directory, it generates `V1alpha1()` (not `HyperfleetV1alpha1()`). The `hyperfleet.go` wrapper renames it:
+
+```go
+func (c *Clientset) HyperfleetV1alpha1() hyperfleetv1alpha1.V1alpha1Interface {
+    return c.generated.V1alpha1()
+}
+```

@@ -61,6 +61,11 @@ type NodePoolStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
+// +genclient
+// +wire:field=name,meta=name
+// +wire:field=id,meta=uid
+// +wire:field=resource_version,meta=resourceVersion
+// +wire:field=generation,meta=generation
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,shortName=hfnp

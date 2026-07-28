@@ -4,7 +4,7 @@
 
 ## Summary
 
-Build a **v2 Go SDK** (`hyperfleet-sdk/`, a new module in this monorepo) that exposes the same HCP cluster lifecycle operations currently served by `ocm-sdk-go` (v1), but backed by the new HyperFleet Platform API instead of the OCM API.
+Build a **v2 Go SDK** (`clientset/`, a new module in this monorepo) that exposes the same HCP cluster lifecycle operations currently served by `ocm-sdk-go` (v1), but backed by the new HyperFleet Platform API instead of the OCM API.
 
 The v2 SDK will be validated by running existing FVT/e2e tests against both the v1 and v2 SDK, proving that consumers (rosa CLI, terraform provider, CAPA) can switch backends without functional regression.
 
@@ -289,13 +289,13 @@ The `test/e2e-api/` tests exercise the Platform API directly:
 
 ### Acceptance Criteria for V2 SDK
 
-Each test suite below must pass against **both** the v1 SDK (ocm-sdk-go, baseline) and the v2 SDK (`hyperfleet-sdk/`). The v1 run establishes the expected baseline; the v2 run proves parity. The initiative is not complete until both columns are green and behavioral parity is validated.
+Each test suite below must pass against **both** the v1 SDK (ocm-sdk-go, baseline) and the v2 SDK (`clientset/`). The v1 run establishes the expected baseline; the v2 run proves parity. The initiative is not complete until both columns are green and behavioral parity is validated.
 
 | # | Test suite | v1 SDK (baseline) | v2 SDK |
 |---|-----------|-------------------|--------|
-| 1 | **Rosa CLI HCP tests** (`hcp_cluster_test.go`, `hcp_machine_pool_test.go`): create HCP cluster, CRUD node pools, delete cluster | Must pass against ocm-sdk-go to establish baseline behavior | Must pass against `hyperfleet-sdk/` with identical observable outcomes |
-| 2 | **HyperFleet CLI lifecycle** (`test/e2e-cli/cluster_test.go` labels: `setup`, `create`, `monitor`, `cleanup`): full VPC → IAM → cluster → node pool → teardown cycle through rosactl | Must pass against ocm-sdk-go to establish baseline behavior | Must pass against `hyperfleet-sdk/` with identical observable outcomes |
-| 3 | **Terraform basic lifecycle**: `terraform apply` + `terraform destroy` of an HCP cluster with node pools | Must pass with provider backed by ocm-sdk-go to establish baseline behavior | Must pass with provider backed by `hyperfleet-sdk/` with identical observable outcomes |
+| 1 | **Rosa CLI HCP tests** (`hcp_cluster_test.go`, `hcp_machine_pool_test.go`): create HCP cluster, CRUD node pools, delete cluster | Must pass against ocm-sdk-go to establish baseline behavior | Must pass against `clientset/` with identical observable outcomes |
+| 2 | **HyperFleet CLI lifecycle** (`test/e2e-cli/cluster_test.go` labels: `setup`, `create`, `monitor`, `cleanup`): full VPC → IAM → cluster → node pool → teardown cycle through rosactl | Must pass against ocm-sdk-go to establish baseline behavior | Must pass against `clientset/` with identical observable outcomes |
+| 3 | **Terraform basic lifecycle**: `terraform apply` + `terraform destroy` of an HCP cluster with node pools | Must pass with provider backed by ocm-sdk-go to establish baseline behavior | Must pass with provider backed by `clientset/` with identical observable outcomes |
 
 **Behavioral-parity validation**: For each test suite, the v1 and v2 runs must produce the same observable outcomes — identical resource states, API response codes, and CLI/Terraform output (excluding endpoint URLs and auth-mechanism differences). Any behavioral divergence must be documented and justified before the initiative is declared complete.
 
@@ -305,7 +305,7 @@ Each test suite below must pass against **both** the v1 SDK (ocm-sdk-go, baselin
 
 #### Story 1: V2 SDK Skeleton and Authentication
 
-Set up the `hyperfleet-sdk/` module with:
+Set up the `clientset/` module with:
 - Connection builder with AWS SigV4 authentication (the HyperFleet API uses IAM auth, not OCM SSO tokens)
 - Regional Platform API endpoint (required; each region has its own endpoint, e.g. `https://hyperfleet.us-east-1.api.example.com`)
 - AWS signing region (required; must match the region of the Platform API endpoint, e.g. `us-east-1`)
@@ -401,7 +401,7 @@ dynamic client.)
 
 ## Open Questions
 
-1. ~~**Module location**~~: Resolved — the SDK lives in this monorepo as `hyperfleet-sdk/` with its own `go.mod`, following the same pattern as `platform-api/`, `hyperfleet-operator/`, and `hyperfleet-db/`.
+1. ~~**Module location**~~: Resolved — the SDK lives in this monorepo as `clientset/` with its own `go.mod`, following the same pattern as `platform-api/`, `hyperfleet-operator/`, and `hyperfleet-db/`.
 2. **CAPA timing**: Should CAPA integration be part of this initiative or deferred?
 3. **Type compatibility**: How much do the HyperFleet CRD types (Cluster, NodePool) diverge from the OCM API model types? The migration effort for consumers depends on this.
 4. **Service logs**: Logs appear to be per-cluster in HyperFleet. How will the SDK expose them — as a sub-resource of Cluster, or as a separate top-level surface?
