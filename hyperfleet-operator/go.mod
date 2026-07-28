@@ -17,7 +17,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/onsi/ginkgo/v2 v2.27.4
-	github.com/onsi/gomega v1.39.0
+	github.com/onsi/gomega v1.42.1
 	github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db v0.0.0
 	github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api v0.0.0
 	github.com/openshift/api v0.0.0-20260416105050-3c6b218b8a80
