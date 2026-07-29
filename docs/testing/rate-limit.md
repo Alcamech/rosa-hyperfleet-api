@@ -5,7 +5,7 @@
 | Layer | Backend | Files | Validates |
 |---|---|---|---|
 | **Unit — middleware** | miniredis | `pkg/ratelimit/middleware_test.go` | HTTP middleware behavior with Redis adapter |
-| **Unit — GCRA algorithm** | in-memory GCRA | `pkg/ratelimit/local_rate_limiter_test.go` | GCRA math used by CLI test mode |
+| **Unit — GCRA algorithm** | in-memory GCRA | `pkg/ratelimit/local_test.go` | GCRA math used by CLI test mode |
 | **E2E** | real Valkey (ElastiCache) | `test/e2e-api/ratelimit_e2e_test.go` | Full path: API Gateway -> middleware -> Valkey -> response |
 
 ## Unit Tests — Middleware (`middleware_test.go`)
@@ -38,7 +38,7 @@ Uses [miniredis](https://github.com/alicebob/miniredis) as an in-process Redis m
 go test -race -count=1 -v ./pkg/ratelimit/...
 ```
 
-## Unit Tests — GCRA Algorithm (`local_rate_limiter_test.go`)
+## Unit Tests — GCRA Algorithm (`local_test.go`)
 
 Tests the in-memory GCRA implementation directly via the `RateLimiter.Allow()` interface — no HTTP middleware wrapping. This is the same algorithm used by `RATE_LIMIT_TEST_MODE=true` for CLI and manual testing.
 
@@ -132,7 +132,7 @@ RATE_LIMIT_TEST_MODE=true make test-e2e-api E2E_LABEL_FILTER=ratelimit
 | `RATE_LIMIT_TEST_MODE` | `REDIS_ENDPOINT` | Backend | Use case |
 |---|---|---|---|
 | `true` | unset | In-memory GCRA | CLI / local development |
-| `true` | set | Real Valkey | E2E testing in deployed environments |
+| `true` | set | In-memory GCRA | Test mode always forces in-memory regardless of `REDIS_ENDPOINT` |
 | `false` | set | Real Valkey | Production |
 
 Test mode defaults: `rate=3`, `burst=6`, `window=1s`.

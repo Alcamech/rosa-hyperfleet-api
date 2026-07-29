@@ -331,8 +331,8 @@ func TestMiddleware_429ResponseFormat(t *testing.T) {
 	if !strings.Contains(reason, "429") {
 		t.Errorf("reason should contain status code 429, got %q", reason)
 	}
-	if !strings.Contains(reason, "GET") || !strings.Contains(reason, "/api/v0/clusters") {
-		t.Errorf("reason should contain method and path, got %q", reason)
+	if !strings.Contains(reason, "GET") || !strings.Contains(reason, "default") {
+		t.Errorf("reason should contain method and route pattern, got %q", reason)
 	}
 	if _, hasDetails := body["details"]; hasDetails {
 		t.Error("response should not contain details object")

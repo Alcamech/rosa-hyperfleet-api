@@ -94,7 +94,7 @@ func (l *Limiter) Middleware(next http.Handler) http.Handler {
 				"retry_after", retryAfter,
 			)
 			w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
-			l.writeRateLimitError(w, r.Method, r.URL.Path, limit, retryAfter)
+			l.writeRateLimitError(w, r.Method, limit.Path, limit, retryAfter)
 			return
 		}
 

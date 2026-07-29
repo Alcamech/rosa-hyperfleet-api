@@ -11,7 +11,7 @@ import (
 type Config struct {
 	Enabled        bool         `yaml:"enabled"`
 	ExemptAccounts []string     `yaml:"exemptAccounts"`
-	RedisTimeout   int          `yaml:"redisTimeout"` // backend timeout in milliseconds before fail-open (default 10)
+	RedisTimeout   int          `yaml:"redisTimeout"` // backend timeout in milliseconds before fail-open (default 20)
 	Default        RouteLimit   `yaml:"default"`
 	Routes         []RouteLimit `yaml:"routes"`
 	exemptSet      map[string]struct{}
@@ -58,7 +58,7 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Default.Window = 1
 	}
 	if cfg.RedisTimeout <= 0 {
-		cfg.RedisTimeout = 10
+		cfg.RedisTimeout = 20
 	}
 
 	for i, r := range cfg.Routes {
@@ -107,7 +107,7 @@ func NewDefaultConfig(rate, burst, window int) *Config {
 	}
 	return &Config{
 		Enabled:      true,
-		RedisTimeout: 10,
+		RedisTimeout: 20,
 		Default:      RouteLimit{Rate: rate, Burst: burst, Window: window},
 		exemptSet:    map[string]struct{}{},
 	}

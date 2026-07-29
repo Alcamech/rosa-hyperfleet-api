@@ -4,13 +4,13 @@ Per-account rate limiting for the ROSA Regional Platform API using the GCRA (Gen
 
 ## How It Works
 
-Every request is keyed by `rl:{account_id}:{method}:{path}`. The middleware extracts the AWS account ID from the `X-Amz-Account-Id` header, looks up the matching route limit (or falls back to the default), and calls the rate limiter. Requests without an account ID are not rate limited.
+Every request is keyed by `rate:rl:{account_id}:{method}:{path}` (the `rate:` prefix is added by the `redis_rate` library). The middleware extracts the AWS account ID from the `X-Amz-Account-Id` header, looks up the matching route limit (or falls back to the default), and calls the rate limiter. Requests without an account ID are not rate limited.
 
 The algorithm is GCRA — a leaky-bucket variant that smoothly distributes requests over time rather than allowing the full budget to be consumed in a burst at the start of a window.
 
 ### Fail-open
 
-If the backing store (Valkey/Redis) is unreachable or returns an error, the request is **allowed through** and a `failure_mode_allowed` metric is emitted. The fail-open timeout is controlled by `redisTimeout` (default 50ms).
+If the backing store (Valkey/Redis) is unreachable or returns an error, the request is **allowed through** and a `failure_mode_allowed` metric is emitted. The fail-open timeout is controlled by `redisTimeout` (default 20ms).
 
 ### Exempt accounts
 
@@ -23,7 +23,7 @@ Rate limits are configured via a YAML file mounted as a ConfigMap at `/etc/ratel
 ```yaml
 enabled: true
 
-redisTimeout: 10       # ms before fail-open on backend error
+redisTimeout: 20       # ms before fail-open on backend error
 
 exemptAccounts:
   - "111111111111"
@@ -54,7 +54,7 @@ routes:
 | `rate`         | 100            |
 | `burst`        | `rate * 2`     |
 | `window`       | 1 (second)     |
-| `redisTimeout` | 10 (ms)        |
+| `redisTimeout` | 20 (ms)        |
 
 Route-level `burst` defaults to `rate * 2` and `window` inherits from `default.window` if not set.
 
@@ -63,14 +63,15 @@ Route-level `burst` defaults to `rate * 2` and `window` inherits from `default.w
 | Variable                   | Description                                      |
 |----------------------------|--------------------------------------------------|
 | `RATE_LIMIT_ENABLED`       | Set to `true` to enable rate limiting             |
-| `RATE_LIMIT_TEST_MODE`     | Set to `true` for in-memory mode (no Redis)       |
+| `RATE_LIMIT_TEST_MODE`     | Set to `true` for test mode (rate=3, burst=6, window=1s, in-memory) |
 | `RATE_LIMIT_CONFIG_FILE`   | Path to limits YAML (default `/etc/ratelimit/limits.yaml`) |
-| `REDIS_ENDPOINT`           | Valkey/Redis address (default `localhost:6379`)    |
-| `RATE_LIMIT_DEFAULT_RATE`  | Override default rate (skips ConfigMap)            |
-| `RATE_LIMIT_DEFAULT_BURST` | Override default burst (skips ConfigMap)           |
-| `RATE_LIMIT_DEFAULT_WINDOW`| Override default window (skips ConfigMap)          |
+| `RATE_LIMIT_IN_MEMORY`     | Set to `true` to use in-memory GCRA instead of Redis |
+| `REDIS_ENDPOINT`           | Valkey/Redis address (required when not in-memory) |
+| `RATE_LIMIT_DEFAULT_RATE`  | Override default rate                             |
+| `RATE_LIMIT_DEFAULT_BURST` | Override default burst                            |
+| `RATE_LIMIT_DEFAULT_WINDOW`| Override default window                           |
 
-When any `RATE_LIMIT_DEFAULT_*` env var is set, the ConfigMap file is skipped entirely and `NewDefaultConfig()` is used instead.
+When `RATE_LIMIT_CONFIG_FILE` is set, the YAML file is loaded and `RATE_LIMIT_DEFAULT_*` env vars are ignored. When no config file is set, `NewDefaultConfig()` is used with `RATE_LIMIT_DEFAULT_*` overrides applied.
 
 ## Test Mode
 
@@ -80,7 +81,7 @@ Run rate limiting locally without Redis/Valkey:
 RATE_LIMIT_TEST_MODE=true go run ./cmd/rosa-regional-platform-api serve
 ```
 
-Test mode uses an in-memory GCRA implementation with `rate=3`, `burst=6`, `window=1s`. Only the rate is overridden; burst and window derive from production defaults (`burst = rate * 2`, `window = 1`).
+Test mode uses an in-memory GCRA implementation. It explicitly sets `rate=3`, `burst=6`, `window=1s` — all three values are hardcoded, not derived from production defaults.
 
 ## Response Headers
 
@@ -145,8 +146,8 @@ Every denied request logs at WARN level:
 pkg/ratelimit/
   config.go                 # Config struct, YAML loader, defaults
   middleware.go             # HTTP middleware, metrics, response writer
-  local_rate_limiter.go     # RateLimiter interface, Redis adapter, in-memory GCRA
-  path.go                   # Wildcard path matching
+  local.go                  # RateLimiter interface, Redis adapter, in-memory GCRA
+  match.go                  # Wildcard path matching
 ```
 
 The `RateLimiter` interface abstracts the backend:

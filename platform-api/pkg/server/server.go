@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -32,6 +33,7 @@ type Server struct {
 	metricsServer *http.Server
 	healthHandler *apphandlers.HealthHandler
 	zoaReconciler *zoa.Reconciler
+	redisCloser   io.Closer
 }
 
 // New creates a new Server instance. The dbClient is used by cluster,
@@ -54,6 +56,7 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 	apiRouter.Use(middleware.Identity)
 
 	// Rate limiting middleware
+	var redisCloser io.Closer
 	if cfg.RateLimit.Enabled {
 		var rlCfg *ratelimit.Config
 		if cfg.RateLimit.ConfigFile != "" {
@@ -85,6 +88,7 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 				},
 			})
 			limiter = ratelimit.NewRedisLimiter(rdb)
+			redisCloser = rdb
 			logger.Info("rate limiting enabled", "backend", "redis")
 		}
 
@@ -297,6 +301,7 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 		cfg:           cfg,
 		logger:        logger,
 		zoaReconciler: zoaReconciler,
+		redisCloser:   redisCloser,
 		apiServer: &http.Server{
 			Addr:         fmt.Sprintf("%s:%d", cfg.Server.APIBindAddress, cfg.Server.APIPort),
 			Handler:      apiHandler,
@@ -383,6 +388,12 @@ func (s *Server) shutdown() error {
 
 	if err := s.healthServer.Shutdown(shutdownCtx); err != nil {
 		s.logger.Error("failed to shutdown health server", "error", err)
+	}
+
+	if s.redisCloser != nil {
+		if err := s.redisCloser.Close(); err != nil {
+			s.logger.Error("failed to close Redis client", "error", err)
+		}
 	}
 
 	s.logger.Info("all servers stopped")

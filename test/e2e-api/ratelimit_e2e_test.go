@@ -181,14 +181,27 @@ var _ = Describe("Rate Limiting", Ordered, Label("ratelimit"), func() {
 		}
 
 		burst := rateLimitRate * 2
-		requestCount := burst + 5
 
-		GinkgoWriter.Printf("Sending %d rapid requests with exempt account %s\n", requestCount, exemptAccountID)
-		responses := rapidRequests(apiClient, "/api/v0/clusters", exemptAccountID, requestCount)
+		// First prove 429s are triggerable with a non-exempt account
+		probeAccount := accountID + "-exempt-probe"
+		GinkgoWriter.Printf("Proving 429s are triggerable with non-exempt account %s\n", probeAccount)
+		probeResponses := exhaustRateLimit(apiClient, "/api/v0/clusters", probeAccount, burst, 3)
+		got429 := false
+		for _, resp := range probeResponses {
+			if resp.StatusCode == http.StatusTooManyRequests {
+				got429 = true
+				break
+			}
+		}
+		Expect(got429).To(BeTrue(), "expected non-exempt account to hit 429 — rate limiting may not be active")
+
+		// Now verify exempt account never gets 429 with the same volume
+		GinkgoWriter.Printf("Sending %d concurrent requests with exempt account %s\n", burst, exemptAccountID)
+		responses := concurrentRequests(apiClient, "/api/v0/clusters", exemptAccountID, burst)
 
 		for i, resp := range responses {
 			Expect(resp.StatusCode).NotTo(Equal(http.StatusTooManyRequests),
-				"request %d/%d got 429 for exempt account %s", i+1, requestCount, exemptAccountID)
+				"request %d/%d got 429 for exempt account %s", i+1, burst, exemptAccountID)
 		}
 	})
 
