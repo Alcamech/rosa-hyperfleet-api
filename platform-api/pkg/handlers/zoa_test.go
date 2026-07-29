@@ -258,7 +258,7 @@ func TestZoaHandler_Get_Found(t *testing.T) {
 	var resp zoa.ExecutionResponse
 	err := json.NewDecoder(rr.Body).Decode(&resp)
 	require.NoError(t, err)
-	assert.Equal(t, "exec-123", resp.Execution.ExecutionID)
+	assert.Equal(t, "exec-123", resp.ExecutionID)
 	assert.NotNil(t, resp.Output)
 }
 

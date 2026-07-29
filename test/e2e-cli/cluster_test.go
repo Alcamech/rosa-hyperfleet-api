@@ -67,8 +67,8 @@ func recordTiming(phase string) func() {
 		if err != nil {
 			return
 		}
-		defer f.Close()
-		fmt.Fprintln(f, record)
+		defer func() { _ = f.Close() }()
+		_, _ = fmt.Fprintln(f, record)
 	}
 }
 

@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -16,8 +18,10 @@ import (
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/config"
 	apphandlers "github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/handlers"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/ratelimit"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/zoa"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 )
 
 // Server represents the API server
@@ -29,6 +33,7 @@ type Server struct {
 	metricsServer *http.Server
 	healthHandler *apphandlers.HealthHandler
 	zoaReconciler *zoa.Reconciler
+	redisCloser   io.Closer
 }
 
 // New creates a new Server instance. The dbClient is used by cluster,
@@ -49,6 +54,47 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 	// Create API router
 	apiRouter := mux.NewRouter()
 	apiRouter.Use(middleware.Identity)
+
+	// Rate limiting middleware
+	var redisCloser io.Closer
+	if cfg.RateLimit.Enabled {
+		var rlCfg *ratelimit.Config
+		if cfg.RateLimit.ConfigFile != "" {
+			var err error
+			rlCfg, err = ratelimit.LoadConfig(cfg.RateLimit.ConfigFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load rate limit config: %w", err)
+			}
+		} else {
+			rlCfg = ratelimit.NewDefaultConfig(
+				cfg.RateLimit.DefaultRate,
+				cfg.RateLimit.DefaultBurst,
+				cfg.RateLimit.DefaultWindow,
+			)
+		}
+
+		var limiter ratelimit.RateLimiter
+		if cfg.RateLimit.InMemory {
+			limiter = ratelimit.NewLocalRateLimiter()
+			logger.Info("rate limiting enabled", "backend", "in-memory")
+		} else {
+			if cfg.RateLimit.RedisAddr == "" {
+				return nil, fmt.Errorf("REDIS_ENDPOINT is required when rate limiting is enabled and not in-memory mode")
+			}
+			rdb := redis.NewClient(&redis.Options{
+				Addr: cfg.RateLimit.RedisAddr,
+				TLSConfig: &tls.Config{
+					MinVersion: tls.VersionTLS12,
+				},
+			})
+			limiter = ratelimit.NewRedisLimiter(rdb)
+			redisCloser = rdb
+			logger.Info("rate limiting enabled", "backend", "redis")
+		}
+
+		rl := ratelimit.New(limiter, rlCfg, logger)
+		apiRouter.Use(rl.Middleware)
+	}
 
 	// Initialize authz components if enabled
 	var privilegedMiddleware *middleware.Privileged
@@ -255,6 +301,7 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 		cfg:           cfg,
 		logger:        logger,
 		zoaReconciler: zoaReconciler,
+		redisCloser:   redisCloser,
 		apiServer: &http.Server{
 			Addr:         fmt.Sprintf("%s:%d", cfg.Server.APIBindAddress, cfg.Server.APIPort),
 			Handler:      apiHandler,
@@ -341,6 +388,12 @@ func (s *Server) shutdown() error {
 
 	if err := s.healthServer.Shutdown(shutdownCtx); err != nil {
 		s.logger.Error("failed to shutdown health server", "error", err)
+	}
+
+	if s.redisCloser != nil {
+		if err := s.redisCloser.Close(); err != nil {
+			s.logger.Error("failed to close Redis client", "error", err)
+		}
 	}
 
 	s.logger.Info("all servers stopped")
