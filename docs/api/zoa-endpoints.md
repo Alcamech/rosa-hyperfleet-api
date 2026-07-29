@@ -60,9 +60,9 @@ Execute a Trusted Action on a target cluster.
   "target_cluster": "mc-useast1-1",
   "jira": "ROSAENG-1234",
   "params": {
-    "namespace": "maestro",
-    "name": "maestro-abc-123",
-    "label_selector": "app=maestro",
+    "namespace": "hyperfleet",
+    "name": "hyperfleet-operator-abc-123",
+    "label_selector": "app=hyperfleet-operator",
     "verbose": "false"
   },
   "force": false,
@@ -274,7 +274,7 @@ S3 content (output/logs) is only fetched for terminal executions (`succeeded`, `
   "status": "succeeded",
   "output_status": "uploaded",
   "revision": "a1b2c3d",
-  "params": {"namespace": "maestro", "name": "maestro-abc-123"},
+  "params": {"namespace": "hyperfleet", "name": "hyperfleet-operator-abc-123"},
   "created_at": "2026-06-10T12:00:00Z",
   "updated_at": "2026-06-10T12:00:29Z",
   "completed_at": "2026-06-10T12:00:29Z",
@@ -283,7 +283,7 @@ S3 content (output/logs) is only fetched for terminal executions (`succeeded`, `
   "duration_seconds": 29,
 
   "output": [
-    {"name": "maestro-abc-123", "namespace": "maestro", "status": "Running", "restarts": 0, "age": "3d"}
+    {"name": "hyperfleet-operator-abc-123", "namespace": "hyperfleet", "status": "Running", "restarts": 0, "age": "3d"}
   ],
 
   "logs": "[11:00:01] runner starting\n[zoa] execution_id=fa65418c-... action=get_pods target=mc-useast1-1\n...\n--- upload ---\n[11:00:06] upload starting\n[11:00:09] runner waited (3s)\n[11:00:10] configmap read (1s)\n[11:00:10] decoded (0s), uploading to s3\n"
@@ -368,7 +368,7 @@ Filters are applied at DynamoDB level:
       "approval_state": "not_required",
       "status": "succeeded",
       "output_status": "uploaded",
-      "params": {"namespace": "maestro"},
+      "params": {"namespace": "hyperfleet"},
       "created_at": "2026-06-10T12:00:00Z",
       "updated_at": "2026-06-10T12:00:29Z",
       "completed_at": "2026-06-10T12:00:29Z",
@@ -599,7 +599,7 @@ Describe a specific Trusted Action — includes full parameter definitions.
       "name": "label_selector",
       "required": false,
       "default": "",
-      "description": "Label selector to filter pods (e.g. app=maestro)"
+      "description": "Label selector to filter pods (e.g. app=hyperfleet-operator)"
     },
     {
       "name": "verbose",
@@ -849,7 +849,7 @@ Projection: ALL
 
 ```bash
 # CLI wraps: POST + poll GET /runs/{id} (metadata) + final GET /runs/{id}?include=output
-$ zoa run get_pods -t mc-useast1-1 -n maestro --jira ROSAENG-1234
+$ zoa run get_pods -t mc-useast1-1 -n hyperfleet --jira ROSAENG-1234
 ```
 
 ### Execute (raw curl)
@@ -860,7 +860,7 @@ curl -X POST "$ZOA_API/api/v0/trusted-actions/get_pods/run" \
   --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
   -H "x-amz-security-token: $AWS_SESSION_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"target_cluster": "mc-useast1-1", "jira": "ROSAENG-1234", "params": {"namespace": "maestro"}}'
+  -d '{"target_cluster": "mc-useast1-1", "jira": "ROSAENG-1234", "params": {"namespace": "hyperfleet"}}'
 ```
 
 ### Dry-run preview before a write action
@@ -871,7 +871,7 @@ curl -X POST "$ZOA_API/api/v0/trusted-actions/rollout_restart/run" \
   --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
   -H "x-amz-security-token: $AWS_SESSION_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"target_cluster": "mc-useast1-1", "jira": "ROSAENG-1234", "dry_run": true, "params": {"namespace": "maestro", "name": "maestro"}}'
+  -d '{"target_cluster": "mc-useast1-1", "jira": "ROSAENG-1234", "dry_run": true, "params": {"namespace": "hyperfleet", "name": "hyperfleet-operator"}}'
 ```
 
 ### Poll execution status
