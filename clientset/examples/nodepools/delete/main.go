@@ -14,13 +14,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// delete removes a NodePool and waits until it is fully gone.
+//
+// Required environment variables:
+//
+//	HYPERFLEET_HOST        — platform API base URL
+//	HYPERFLEET_CLUSTER_ID  — cluster UUID
+//	HYPERFLEET_NODEPOOL_ID — node pool UUID
 package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
@@ -28,13 +35,15 @@ import (
 	"github.com/openshift-online/rosa-hyperfleet-api/clientset/examples/util"
 	hfrest "github.com/openshift-online/rosa-hyperfleet-api/clientset/rest"
 	"github.com/openshift-online/rosa-hyperfleet-api/clientset/wrappers"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
 )
 
 func main() {
 	ctx := context.Background()
 
 	host := util.MustEnv("HYPERFLEET_HOST")
+	clusterID := util.MustEnv("HYPERFLEET_CLUSTER_ID")
+	nodepoolID := util.MustEnv("HYPERFLEET_NODEPOOL_ID")
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -56,14 +65,27 @@ func main() {
 		log.Fatalf("building clientset: %v", err)
 	}
 
-	_, err = cs.HyperfleetV1alpha1().Clusters(*identity.Account).Watch(ctx, metav1.ListOptions{})
-	if errors.Is(err, wrappers.ErrWatchNotSupported) {
-		fmt.Println("Watch correctly returned ErrWatchNotSupported.")
-		fmt.Println("Use WaitUntil for polling-based synchronization instead.")
-		return
+	nodepools := cs.HyperfleetV1alpha1().NodePools(clusterID)
+
+	if err := nodepools.Delete(ctx, nodepoolID, wrappers.DeleteOptions{}); err != nil {
+		log.Fatalf("deleting node pool: %v", err)
 	}
+
+	fmt.Printf("NodePool %s deletion initiated, waiting for removal...\n", nodepoolID)
+
+	err = nodepools.WaitUntil(ctx, nodepoolID,
+		func(np *v1alpha1.NodePool) bool {
+			if np == nil {
+				return true
+			}
+			log.Printf("node pool %s: phase=%s, waiting...", nodepoolID, np.Status.Phase)
+			return false
+		},
+		10*time.Second, 30*time.Minute,
+	)
 	if err != nil {
-		log.Fatalf("unexpected error from Watch: %v", err)
+		log.Fatalf("waiting for node pool deletion: %v", err)
 	}
-	log.Fatal("expected Watch to return ErrWatchNotSupported, but it succeeded")
+
+	fmt.Printf("NodePool %s deleted.\n", nodepoolID)
 }

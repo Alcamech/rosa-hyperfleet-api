@@ -19,47 +19,78 @@ package wrappers
 
 import (
 	"context"
-	"errors"
+	"strconv"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 
-	internalversion "github.com/openshift-online/rosa-hyperfleet-api/clientset/clientset/clientset/typed/v1alpha1/internalversion"
 	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
+	internalversion "github.com/openshift-online/rosa-hyperfleet-api/clientset/clientset/clientset/typed/v1alpha1/internalversion"
 )
 
-// ErrWatchNotSupported is returned by Watch on all resources. The Hyperfleet
-// platform API does not support the Kubernetes watch stream protocol; use
-// WaitUntil for polling-based synchronisation instead.
-var ErrWatchNotSupported = errors.New("watch is not supported by the Hyperfleet platform API")
-
-// ClusterInterface extends the generated interface with platform-specific methods.
+// ClusterInterface is the platform-scoped client for Cluster resources.
+// Only operations and options supported by the Hyperfleet platform API are exposed.
+// Watch is intentionally absent — the platform API does not support the Kubernetes
+// watch stream protocol; use WaitUntil for polling-based synchronization instead.
 type ClusterInterface interface {
-	internalversion.ClusterInterface
+	Create(ctx context.Context, obj *v1alpha1.Cluster, opts CreateOptions) (*v1alpha1.Cluster, error)
+	Update(ctx context.Context, obj *v1alpha1.Cluster, opts UpdateOptions) (*v1alpha1.Cluster, error)
+	Delete(ctx context.Context, name string, opts DeleteOptions) error
+	Get(ctx context.Context, name string, opts GetOptions) (*v1alpha1.Cluster, error)
+	List(ctx context.Context, opts ListOptions) (*v1alpha1.ClusterList, error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts PatchOptions) (*v1alpha1.Cluster, error)
 	// WaitUntil polls until condition(obj) returns true, the resource is absent
 	// (condition is called with nil), or the timeout elapses.
 	WaitUntil(ctx context.Context, id string, condition func(*v1alpha1.Cluster) bool, interval, timeout time.Duration) error
 }
 
 type clusterClient struct {
-	internalversion.ClusterInterface
+	inner internalversion.ClusterInterface
 }
 
-func (c *clusterClient) Watch(_ context.Context, _ metav1.ListOptions) (watch.Interface, error) {
-	return nil, ErrWatchNotSupported
+func (c *clusterClient) Create(ctx context.Context, obj *v1alpha1.Cluster, opts CreateOptions) (*v1alpha1.Cluster, error) {
+	return c.inner.Create(ctx, obj, metav1.CreateOptions{})
+}
+
+func (c *clusterClient) Get(ctx context.Context, name string, opts GetOptions) (*v1alpha1.Cluster, error) {
+	return c.inner.Get(ctx, name, metav1.GetOptions{})
+}
+
+func (c *clusterClient) List(ctx context.Context, opts ListOptions) (*v1alpha1.ClusterList, error) {
+	mo := metav1.ListOptions{Limit: opts.Limit}
+	if opts.Offset > 0 {
+		mo.Continue = strconv.FormatInt(opts.Offset, 10)
+	}
+	return c.inner.List(ctx, mo)
+}
+
+func (c *clusterClient) Update(ctx context.Context, obj *v1alpha1.Cluster, opts UpdateOptions) (*v1alpha1.Cluster, error) {
+	return c.inner.Update(ctx, obj, metav1.UpdateOptions{})
+}
+
+func (c *clusterClient) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts PatchOptions) (*v1alpha1.Cluster, error) {
+	return c.inner.Patch(ctx, name, pt, data, metav1.PatchOptions{})
+}
+
+func (c *clusterClient) Delete(ctx context.Context, name string, opts DeleteOptions) error {
+	return c.inner.Delete(ctx, name, metav1.DeleteOptions{})
 }
 
 func (c *clusterClient) WaitUntil(ctx context.Context, id string, condition func(*v1alpha1.Cluster) bool, interval, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	poll := func() (bool, error) {
-		obj, err := c.Get(ctx, id, metav1.GetOptions{})
+		obj, err := c.inner.Get(ctx, id, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				return condition(nil), nil
+			}
+			// Transient server-side errors are retried; only client errors are fatal.
+			if k8serrors.IsServiceUnavailable(err) || k8serrors.IsServerTimeout(err) || k8serrors.IsInternalError(err) {
+				return false, nil
 			}
 			return false, err
 		}
@@ -82,30 +113,67 @@ func (c *clusterClient) WaitUntil(ctx context.Context, id string, condition func
 	}
 }
 
-// NodePoolInterface extends the generated interface with platform-specific methods.
+
+// NodePoolInterface is the platform-scoped client for NodePool resources.
+// Only operations and options supported by the Hyperfleet platform API are exposed.
+// Watch is intentionally absent — the platform API does not support the Kubernetes
+// watch stream protocol; use WaitUntil for polling-based synchronization instead.
 type NodePoolInterface interface {
-	internalversion.NodePoolInterface
+	Create(ctx context.Context, obj *v1alpha1.NodePool, opts CreateOptions) (*v1alpha1.NodePool, error)
+	Update(ctx context.Context, obj *v1alpha1.NodePool, opts UpdateOptions) (*v1alpha1.NodePool, error)
+	Delete(ctx context.Context, name string, opts DeleteOptions) error
+	Get(ctx context.Context, name string, opts GetOptions) (*v1alpha1.NodePool, error)
+	List(ctx context.Context, opts ListOptions) (*v1alpha1.NodePoolList, error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts PatchOptions) (*v1alpha1.NodePool, error)
 	// WaitUntil polls until condition(obj) returns true, the resource is absent
 	// (condition is called with nil), or the timeout elapses.
 	WaitUntil(ctx context.Context, id string, condition func(*v1alpha1.NodePool) bool, interval, timeout time.Duration) error
 }
 
 type nodePoolClient struct {
-	internalversion.NodePoolInterface
+	inner internalversion.NodePoolInterface
 }
 
-func (c *nodePoolClient) Watch(_ context.Context, _ metav1.ListOptions) (watch.Interface, error) {
-	return nil, ErrWatchNotSupported
+func (c *nodePoolClient) Create(ctx context.Context, obj *v1alpha1.NodePool, opts CreateOptions) (*v1alpha1.NodePool, error) {
+	return c.inner.Create(ctx, obj, metav1.CreateOptions{})
+}
+
+func (c *nodePoolClient) Get(ctx context.Context, name string, opts GetOptions) (*v1alpha1.NodePool, error) {
+	return c.inner.Get(ctx, name, metav1.GetOptions{})
+}
+
+func (c *nodePoolClient) List(ctx context.Context, opts ListOptions) (*v1alpha1.NodePoolList, error) {
+	mo := metav1.ListOptions{Limit: opts.Limit}
+	if opts.Offset > 0 {
+		mo.Continue = strconv.FormatInt(opts.Offset, 10)
+	}
+	return c.inner.List(ctx, mo)
+}
+
+func (c *nodePoolClient) Update(ctx context.Context, obj *v1alpha1.NodePool, opts UpdateOptions) (*v1alpha1.NodePool, error) {
+	return c.inner.Update(ctx, obj, metav1.UpdateOptions{})
+}
+
+func (c *nodePoolClient) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts PatchOptions) (*v1alpha1.NodePool, error) {
+	return c.inner.Patch(ctx, name, pt, data, metav1.PatchOptions{})
+}
+
+func (c *nodePoolClient) Delete(ctx context.Context, name string, opts DeleteOptions) error {
+	return c.inner.Delete(ctx, name, metav1.DeleteOptions{})
 }
 
 func (c *nodePoolClient) WaitUntil(ctx context.Context, id string, condition func(*v1alpha1.NodePool) bool, interval, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	poll := func() (bool, error) {
-		obj, err := c.Get(ctx, id, metav1.GetOptions{})
+		obj, err := c.inner.Get(ctx, id, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				return condition(nil), nil
+			}
+			// Transient server-side errors are retried; only client errors are fatal.
+			if k8serrors.IsServiceUnavailable(err) || k8serrors.IsServerTimeout(err) || k8serrors.IsInternalError(err) {
+				return false, nil
 			}
 			return false, err
 		}
@@ -128,7 +196,7 @@ func (c *nodePoolClient) WaitUntil(ctx context.Context, id string, condition fun
 	}
 }
 
-// V1alpha1Interface is the extended typed client for the hyperfleet.io/v1alpha1 group.
+// V1alpha1Interface is the platform-scoped typed client for the hyperfleet.io/v1alpha1 group.
 type V1alpha1Interface interface {
 	RESTClient() rest.Interface
 	Clusters(namespace string) ClusterInterface
@@ -139,7 +207,7 @@ type wrappedV1alpha1 struct {
 	inner internalversion.V1alpha1Interface
 }
 
-// NewV1alpha1Client wraps the generated typed client, overriding Watch and adding WaitUntil.
+// NewV1alpha1Client wraps the generated typed client with platform-specific interfaces.
 func NewV1alpha1Client(inner internalversion.V1alpha1Interface) V1alpha1Interface {
 	return &wrappedV1alpha1{inner: inner}
 }
@@ -149,13 +217,9 @@ func (w *wrappedV1alpha1) RESTClient() rest.Interface {
 }
 
 func (w *wrappedV1alpha1) Clusters(namespace string) ClusterInterface {
-	return &clusterClient{
-		ClusterInterface: w.inner.Clusters(namespace),
-	}
+	return &clusterClient{inner: w.inner.Clusters(namespace)}
 }
 
 func (w *wrappedV1alpha1) NodePools(namespace string) NodePoolInterface {
-	return &nodePoolClient{
-		NodePoolInterface: w.inner.NodePools(namespace),
-	}
+	return &nodePoolClient{inner: w.inner.NodePools(namespace)}
 }

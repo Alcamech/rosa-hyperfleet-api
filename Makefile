@@ -117,11 +117,15 @@ build: build-hyperfleet-db build-operator build-api
 build-examples:
 	@mkdir -p clientset/examples/bin
 	@for dir in clientset/examples/*/; do \
-		name=$$(basename "$$dir"); \
-		[ "$$name" = "util" ] && continue; \
-		[ "$$name" = "bin" ] && continue; \
-		echo "building $$name..."; \
-		cd clientset && go build -o "examples/bin/$$name" "./examples/$$name" && cd ..; \
+		group=$$(basename "$$dir"); \
+		[ "$$group" = "util" ] && continue; \
+		[ "$$group" = "bin" ] && continue; \
+		for subdir in "$$dir"*/; do \
+			[ -f "$$subdir/main.go" ] || continue; \
+			name="$$group-$$(basename "$$subdir")"; \
+			echo "building $$name..."; \
+			cd clientset && go build -o "examples/bin/$$name" "./examples/$$group/$$(basename "$$subdir")" && cd ..; \
+		done; \
 	done
 
 build-hyperfleet-db:

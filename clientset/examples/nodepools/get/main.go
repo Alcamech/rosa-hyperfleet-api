@@ -14,6 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// get fetches a single NodePool by ID and prints it as YAML.
+//
+// Required environment variables:
+//
+//	HYPERFLEET_HOST        — platform API base URL
+//	HYPERFLEET_CLUSTER_ID  — cluster UUID
+//	HYPERFLEET_NODEPOOL_ID — node pool UUID
 package main
 
 import (
@@ -26,13 +33,16 @@ import (
 	hyperfleet "github.com/openshift-online/rosa-hyperfleet-api/clientset"
 	"github.com/openshift-online/rosa-hyperfleet-api/clientset/examples/util"
 	hfrest "github.com/openshift-online/rosa-hyperfleet-api/clientset/rest"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/openshift-online/rosa-hyperfleet-api/clientset/wrappers"
+	"sigs.k8s.io/yaml"
 )
 
 func main() {
 	ctx := context.Background()
 
 	host := util.MustEnv("HYPERFLEET_HOST")
+	clusterID := util.MustEnv("HYPERFLEET_CLUSTER_ID")
+	nodepoolID := util.MustEnv("HYPERFLEET_NODEPOOL_ID")
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -54,18 +64,14 @@ func main() {
 		log.Fatalf("building clientset: %v", err)
 	}
 
-	clusters, err := cs.HyperfleetV1alpha1().Clusters(*identity.Account).List(ctx, metav1.ListOptions{})
+	np, err := cs.HyperfleetV1alpha1().NodePools(clusterID).Get(ctx, nodepoolID, wrappers.GetOptions{})
 	if err != nil {
-		log.Fatalf("listing clusters: %v", err)
+		log.Fatalf("getting node pool: %v", err)
 	}
 
-	fmt.Printf("Found %d cluster(s):\n", len(clusters.Items))
-	for _, c := range clusters.Items {
-		fmt.Printf("  %-30s  uid=%-40s  phase=%-20s  version=%s\n",
-			c.Name,
-			c.UID,
-			c.Status.Phase,
-			c.Status.Version,
-		)
+	out, err := yaml.Marshal(np)
+	if err != nil {
+		log.Fatalf("marshaling node pool: %v", err)
 	}
+	fmt.Print(string(out))
 }

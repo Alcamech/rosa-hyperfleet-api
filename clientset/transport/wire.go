@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 // FieldMapping declares a correspondence between a platform-api wire-format
@@ -46,6 +48,7 @@ func NewAdapter(inner http.RoundTripper) *Adapter {
 
 func (a *Adapter) RoundTrip(req *http.Request) (*http.Response, error) {
 	req = a.adaptRequest(req)
+	req = a.adaptListQuery(req)
 	resp, err := a.inner.RoundTrip(req)
 	if err != nil {
 		return nil, err
@@ -62,6 +65,11 @@ func (a *Adapter) RoundTrip(req *http.Request) (*http.Response, error) {
 //
 // Platform-api expects these fields flat at the top level.
 // Requests without a body or without a "metadata" key are returned unchanged.
+//
+// For PUT and PATCH requests the last URL path segment is rewritten to the
+// resource's wire "id" (UID). The generated client builds the path from
+// cluster.Name (the human-readable name), but the platform API routes
+// mutations by UID.
 func (a *Adapter) adaptRequest(req *http.Request) *http.Request {
 	if req.Body == nil {
 		return req
@@ -99,6 +107,21 @@ func (a *Adapter) adaptRequest(req *http.Request) *http.Request {
 	}
 	delete(raw, "metadata")
 
+	// For namespaced POST requests the Kubernetes client encodes the parent
+	// resource ID (e.g. clusterID) as the URL namespace segment. The platform
+	// API expects it as a "cluster_id" body field instead, so inject it here
+	// before the SigV4 transport strips the namespace from the URL.
+	if req.Method == http.MethodPost {
+		if m := namespaceRE.FindStringSubmatchIndex(req.URL.Path); m != nil {
+			ns := req.URL.Path[m[2]:m[3]]
+			if ns != "" {
+				if _, exists := raw["cluster_id"]; !exists {
+					raw["cluster_id"], _ = json.Marshal(ns)
+				}
+			}
+		}
+	}
+
 	adapted, err := json.Marshal(raw)
 	if err != nil {
 		req.Body = io.NopCloser(bytes.NewReader(body))
@@ -108,6 +131,20 @@ func (a *Adapter) adaptRequest(req *http.Request) *http.Request {
 	req = req.Clone(req.Context())
 	req.Body = io.NopCloser(bytes.NewReader(adapted))
 	req.ContentLength = int64(len(adapted))
+
+	if req.Method == http.MethodPut || req.Method == http.MethodPatch {
+		if idJSON, ok := raw["id"]; ok {
+			var id string
+			if err := json.Unmarshal(idJSON, &id); err == nil && id != "" {
+				if idx := strings.LastIndex(req.URL.Path, "/"); idx >= 0 {
+					u := *req.URL
+					u.Path = req.URL.Path[:idx+1] + id
+					req.URL = &u
+				}
+			}
+		}
+	}
+
 	return req
 }
 
@@ -185,6 +222,40 @@ func (a *Adapter) adaptList(raw map[string]json.RawMessage, itemsJSON json.RawMe
 	raw["items"], _ = json.Marshal(adapted)
 	out, _ := json.Marshal(raw)
 	return out
+}
+
+// adaptListQuery translates the Kubernetes-style ?continue=N query parameter to
+// the platform API's ?offset=N parameter for GET (list) requests.
+//
+// The Kubernetes generated client serializes metav1.ListOptions.Continue as the
+// "continue" query parameter, which is normally a cursor token for page-safe
+// continuation. The Hyperfleet platform API uses offset-based pagination instead:
+// it has no cursor mechanism and accepts an integer "offset" parameter.
+//
+// The wrappers.ListOptions.Offset field is bridged by encoding the integer offset
+// as a numeric string in ListOptions.Continue before calling the inner client.
+// This method recognizes that encoding and rewrites the query parameter so the
+// platform API receives the value it expects.
+//
+// Non-numeric "continue" values (real continuation tokens, if ever introduced)
+// are passed through unchanged.
+func (a *Adapter) adaptListQuery(req *http.Request) *http.Request {
+	if req.Method != http.MethodGet {
+		return req
+	}
+	q := req.URL.Query()
+	cont := q.Get("continue")
+	if cont == "" {
+		return req
+	}
+	if _, err := strconv.ParseInt(cont, 10, 64); err != nil {
+		return req
+	}
+	req = req.Clone(req.Context())
+	q.Del("continue")
+	q.Set("offset", cont)
+	req.URL.RawQuery = q.Encode()
+	return req
 }
 
 // adaptItem lifts wire-format envelope fields into metadata using the configured

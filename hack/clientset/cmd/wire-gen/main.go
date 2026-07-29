@@ -85,26 +85,29 @@ package {{.Package}}
 
 import (
 	"context"
-	"errors"
+	"strconv"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 
 	v1alpha1 "{{.ApiPkgImport}}"
 	internalversion "{{.TypedPkgImport}}"
 )
-
-// ErrWatchNotSupported is returned by Watch on all resources. The Hyperfleet
-// platform API does not support the Kubernetes watch stream protocol; use
-// WaitUntil for polling-based synchronization instead.
-var ErrWatchNotSupported = errors.New("watch is not supported by the Hyperfleet platform API")
 {{range .Types}}
-// {{.Name}}Interface extends the generated interface with platform-specific methods.
+// {{.Name}}Interface is the platform-scoped client for {{.Name}} resources.
+// Only operations and options supported by the Hyperfleet platform API are exposed.
+// Watch is intentionally absent — the platform API does not support the Kubernetes
+// watch stream protocol; use WaitUntil for polling-based synchronization instead.
 type {{.Name}}Interface interface {
-	internalversion.{{.Name}}Interface
+	Create(ctx context.Context, obj *v1alpha1.{{.Name}}, opts CreateOptions) (*v1alpha1.{{.Name}}, error)
+	Update(ctx context.Context, obj *v1alpha1.{{.Name}}, opts UpdateOptions) (*v1alpha1.{{.Name}}, error)
+	Delete(ctx context.Context, name string, opts DeleteOptions) error
+	Get(ctx context.Context, name string, opts GetOptions) (*v1alpha1.{{.Name}}, error)
+	List(ctx context.Context, opts ListOptions) (*v1alpha1.{{.Name}}List, error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts PatchOptions) (*v1alpha1.{{.Name}}, error)
 {{- if .Wait}}
 	// WaitUntil polls until condition(obj) returns true, the resource is absent
 	// (condition is called with nil), or the timeout elapses.
@@ -113,22 +116,49 @@ type {{.Name}}Interface interface {
 }
 
 type {{.LowerName}}Client struct {
-	internalversion.{{.Name}}Interface
+	inner internalversion.{{.Name}}Interface
 }
-{{if .WatchDisabled}}
-func (c *{{.LowerName}}Client) Watch(_ context.Context, _ metav1.ListOptions) (watch.Interface, error) {
-	return nil, ErrWatchNotSupported
+
+func (c *{{.LowerName}}Client) Create(ctx context.Context, obj *v1alpha1.{{.Name}}, opts CreateOptions) (*v1alpha1.{{.Name}}, error) {
+	return c.inner.Create(ctx, obj, metav1.CreateOptions{})
 }
-{{end -}}
+
+func (c *{{.LowerName}}Client) Get(ctx context.Context, name string, opts GetOptions) (*v1alpha1.{{.Name}}, error) {
+	return c.inner.Get(ctx, name, metav1.GetOptions{})
+}
+
+func (c *{{.LowerName}}Client) List(ctx context.Context, opts ListOptions) (*v1alpha1.{{.Name}}List, error) {
+	mo := metav1.ListOptions{Limit: opts.Limit}
+	if opts.Offset > 0 {
+		mo.Continue = strconv.FormatInt(opts.Offset, 10)
+	}
+	return c.inner.List(ctx, mo)
+}
+
+func (c *{{.LowerName}}Client) Update(ctx context.Context, obj *v1alpha1.{{.Name}}, opts UpdateOptions) (*v1alpha1.{{.Name}}, error) {
+	return c.inner.Update(ctx, obj, metav1.UpdateOptions{})
+}
+
+func (c *{{.LowerName}}Client) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts PatchOptions) (*v1alpha1.{{.Name}}, error) {
+	return c.inner.Patch(ctx, name, pt, data, metav1.PatchOptions{})
+}
+
+func (c *{{.LowerName}}Client) Delete(ctx context.Context, name string, opts DeleteOptions) error {
+	return c.inner.Delete(ctx, name, metav1.DeleteOptions{})
+}
 {{if .Wait}}
 func (c *{{.LowerName}}Client) WaitUntil(ctx context.Context, id string, condition func(*v1alpha1.{{.Name}}) bool, interval, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	poll := func() (bool, error) {
-		obj, err := c.Get(ctx, id, metav1.GetOptions{})
+		obj, err := c.inner.Get(ctx, id, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				return condition(nil), nil
+			}
+			// Transient server-side errors are retried; only client errors are fatal.
+			if k8serrors.IsServiceUnavailable(err) || k8serrors.IsServerTimeout(err) || k8serrors.IsInternalError(err) {
+				return false, nil
 			}
 			return false, err
 		}
@@ -152,7 +182,7 @@ func (c *{{.LowerName}}Client) WaitUntil(ctx context.Context, id string, conditi
 }
 {{end}}
 {{end -}}
-// V1alpha1Interface is the extended typed client for the hyperfleet.io/v1alpha1 group.
+// V1alpha1Interface is the platform-scoped typed client for the hyperfleet.io/v1alpha1 group.
 type V1alpha1Interface interface {
 	RESTClient() rest.Interface
 {{- range .Types}}
@@ -164,7 +194,7 @@ type wrappedV1alpha1 struct {
 	inner internalversion.V1alpha1Interface
 }
 
-// NewV1alpha1Client wraps the generated typed client, overriding Watch and adding WaitUntil.
+// NewV1alpha1Client wraps the generated typed client with platform-specific interfaces.
 func NewV1alpha1Client(inner internalversion.V1alpha1Interface) V1alpha1Interface {
 	return &wrappedV1alpha1{inner: inner}
 }
@@ -174,9 +204,7 @@ func (w *wrappedV1alpha1) RESTClient() rest.Interface {
 }
 {{range .Types}}
 func (w *wrappedV1alpha1) {{.PluralName}}(namespace string) {{.Name}}Interface {
-	return &{{.LowerName}}Client{
-		{{.Name}}Interface: w.inner.{{.PluralName}}(namespace),
-	}
+	return &{{.LowerName}}Client{inner: w.inner.{{.PluralName}}(namespace)}
 }
 {{end}}`
 

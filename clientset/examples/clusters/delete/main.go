@@ -28,7 +28,7 @@ import (
 	"github.com/openshift-online/rosa-hyperfleet-api/clientset/examples/util"
 	hfrest "github.com/openshift-online/rosa-hyperfleet-api/clientset/rest"
 	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/openshift-online/rosa-hyperfleet-api/clientset/wrappers"
 )
 
 func main() {
@@ -59,7 +59,7 @@ func main() {
 
 	clusters := cs.HyperfleetV1alpha1().Clusters(*identity.Account)
 
-	if err := clusters.Delete(ctx, id, metav1.DeleteOptions{}); err != nil {
+	if err := clusters.Delete(ctx, id, wrappers.DeleteOptions{}); err != nil {
 		log.Fatalf("deleting cluster: %v", err)
 	}
 
