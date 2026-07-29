@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	github.com/Shopify/toxiproxy v2.1.4+incompatible
-	github.com/go-logr/logr v1.4.3
+	github.com/go-logr/logr v1.4.4
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/prometheus/client_golang v1.23.2
