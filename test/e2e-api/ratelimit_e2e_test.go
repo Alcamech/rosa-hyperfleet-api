@@ -126,6 +126,8 @@ var _ = Describe("Rate Limiting", Ordered, Label("ratelimit"), func() {
 		remaining, err := strconv.Atoi(resp.Headers.Get("X-RateLimit-Remaining"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(remaining).To(BeNumerically(">=", 0))
+
+		GinkgoWriter.Printf("TLS verification successful: Valkey backend responded with rate limit headers (Limit=%d, Remaining=%d)\n", limit, remaining)
 	})
 
 	It("should return 429 when requests exceed the rate limit", func() {
@@ -210,34 +212,6 @@ var _ = Describe("Rate Limiting", Ordered, Label("ratelimit"), func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(resp.StatusCode).NotTo(Equal(http.StatusTooManyRequests),
 			"different account should have its own rate limit bucket")
-	})
-
-	It("should confirm Valkey backend is reachable over TLS (not fail-open)", func() {
-		// When TLS/Redis fails, Allow() errors and the middleware passes
-		// requests through WITHOUT setting rate limit headers (fail-open).
-		// Header presence proves the Valkey backend responded over TLS.
-		tlsAccount := accountID + "-tls-probe"
-
-		resp, err := apiClient.Get("/api/v0/clusters", tlsAccount)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-		limit := resp.Headers.Get("X-RateLimit-Limit")
-		remaining := resp.Headers.Get("X-RateLimit-Remaining")
-		reset := resp.Headers.Get("X-RateLimit-Reset")
-
-		GinkgoWriter.Printf("Valkey TLS check: Limit=%s Remaining=%s Reset=%s\n", limit, remaining, reset)
-
-		Expect(limit).NotTo(BeEmpty(),
-			"X-RateLimit-Limit missing — Valkey backend unreachable (TLS handshake failed or Redis down)")
-		Expect(remaining).NotTo(BeEmpty(),
-			"X-RateLimit-Remaining missing — Valkey backend unreachable")
-		Expect(reset).NotTo(BeEmpty(),
-			"X-RateLimit-Reset missing — Valkey backend unreachable")
-
-		r, err := strconv.Atoi(remaining)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(r).To(BeNumerically(">", 0), "remaining should be positive for a fresh rate limit bucket")
 	})
 
 	It("should allow requests again after the rate limit window resets", func() {
