@@ -136,7 +136,15 @@ func (c *{{.LowerName}}Client) List(ctx context.Context, opts ListOptions) (*v1a
 }
 
 func (c *{{.LowerName}}Client) Update(ctx context.Context, obj *v1alpha1.{{.Name}}, opts UpdateOptions) (*v1alpha1.{{.Name}}, error) {
-	return c.inner.Update(ctx, obj, metav1.UpdateOptions{})
+	// The generated client builds the PUT URL using obj.Name (the human-readable
+	// name), but the platform API routes mutations by UID. Setting Name to the
+	// UID on a deep copy ensures the URL is correct without mutating the caller's
+	// object. The name field sent in the request body is ignored by the server —
+	// the update DTO only binds "spec", so the JSON decoder discards everything
+	// else, including any name/id fields.
+	routed := obj.DeepCopy()
+	routed.Name = string(obj.UID)
+	return c.inner.Update(ctx, routed, metav1.UpdateOptions{})
 }
 
 func (c *{{.LowerName}}Client) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts PatchOptions) (*v1alpha1.{{.Name}}, error) {

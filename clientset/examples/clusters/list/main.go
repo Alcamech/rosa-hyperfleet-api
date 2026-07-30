@@ -14,6 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// list pages through all Clusters for the calling AWS account.
+//
+// Required environment variables:
+//
+//	HYPERFLEET_HOST — platform API base URL
 package main
 
 import (

@@ -14,6 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// get fetches a single Cluster by UUID and prints it as YAML.
+//
+// Required environment variables:
+//
+//	HYPERFLEET_HOST       — platform API base URL
+//	HYPERFLEET_CLUSTER_ID — cluster UUID
 package main
 
 import (

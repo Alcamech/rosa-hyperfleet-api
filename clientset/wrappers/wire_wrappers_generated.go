@@ -68,7 +68,15 @@ func (c *clusterClient) List(ctx context.Context, opts ListOptions) (*v1alpha1.C
 }
 
 func (c *clusterClient) Update(ctx context.Context, obj *v1alpha1.Cluster, opts UpdateOptions) (*v1alpha1.Cluster, error) {
-	return c.inner.Update(ctx, obj, metav1.UpdateOptions{})
+	// The generated client builds the PUT URL using obj.Name (the human-readable
+	// name), but the platform API routes mutations by UID. Setting Name to the
+	// UID on a deep copy ensures the URL is correct without mutating the caller's
+	// object. The name field sent in the request body is ignored by the server —
+	// the update DTO only binds "spec", so the JSON decoder discards everything
+	// else, including any name/id fields.
+	routed := obj.DeepCopy()
+	routed.Name = string(obj.UID)
+	return c.inner.Update(ctx, routed, metav1.UpdateOptions{})
 }
 
 func (c *clusterClient) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts PatchOptions) (*v1alpha1.Cluster, error) {
@@ -151,7 +159,15 @@ func (c *nodePoolClient) List(ctx context.Context, opts ListOptions) (*v1alpha1.
 }
 
 func (c *nodePoolClient) Update(ctx context.Context, obj *v1alpha1.NodePool, opts UpdateOptions) (*v1alpha1.NodePool, error) {
-	return c.inner.Update(ctx, obj, metav1.UpdateOptions{})
+	// The generated client builds the PUT URL using obj.Name (the human-readable
+	// name), but the platform API routes mutations by UID. Setting Name to the
+	// UID on a deep copy ensures the URL is correct without mutating the caller's
+	// object. The name field sent in the request body is ignored by the server —
+	// the update DTO only binds "spec", so the JSON decoder discards everything
+	// else, including any name/id fields.
+	routed := obj.DeepCopy()
+	routed.Name = string(obj.UID)
+	return c.inner.Update(ctx, routed, metav1.UpdateOptions{})
 }
 
 func (c *nodePoolClient) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts PatchOptions) (*v1alpha1.NodePool, error) {

@@ -22,7 +22,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 )
 
 // FieldMapping declares a correspondence between a platform-api wire-format
@@ -66,10 +65,9 @@ func (a *Adapter) RoundTrip(req *http.Request) (*http.Response, error) {
 // Platform-api expects these fields flat at the top level.
 // Requests without a body or without a "metadata" key are returned unchanged.
 //
-// For PUT and PATCH requests the last URL path segment is rewritten to the
-// resource's wire "id" (UID). The generated client builds the path from
-// cluster.Name (the human-readable name), but the platform API routes
-// mutations by UID.
+// For namespaced POST requests the namespace segment encodes the parent resource
+// ID (e.g. clusterID); it is injected as "cluster_id" in the body before the
+// SigV4 transport strips the namespace from the URL.
 func (a *Adapter) adaptRequest(req *http.Request) *http.Request {
 	if req.Body == nil {
 		return req
@@ -131,19 +129,6 @@ func (a *Adapter) adaptRequest(req *http.Request) *http.Request {
 	req = req.Clone(req.Context())
 	req.Body = io.NopCloser(bytes.NewReader(adapted))
 	req.ContentLength = int64(len(adapted))
-
-	if req.Method == http.MethodPut || req.Method == http.MethodPatch {
-		if idJSON, ok := raw["id"]; ok {
-			var id string
-			if err := json.Unmarshal(idJSON, &id); err == nil && id != "" {
-				if idx := strings.LastIndex(req.URL.Path, "/"); idx >= 0 {
-					u := *req.URL
-					u.Path = req.URL.Path[:idx+1] + id
-					req.URL = &u
-				}
-			}
-		}
-	}
 
 	return req
 }

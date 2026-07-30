@@ -18,13 +18,15 @@ limitations under the License.
 //
 // Required environment variables:
 //
-//	HYPERFLEET_HOST           — platform API base URL
-//	HYPERFLEET_CLUSTER_ID     — cluster UUID (parent cluster)
-//	HYPERFLEET_CLUSTER_NAME   — cluster name (used as ClusterName in the NodePool spec)
-//	HYPERFLEET_NODEPOOL_NAME  — human-readable name for the new node pool
-//	HYPERFLEET_VERSION        — OpenShift release image (e.g. "5.0.0-ec.2")
-//	HYPERFLEET_SUBNET_ID      — private subnet ID for the node instances
-//	HYPERFLEET_INSTANCE_TYPE  — EC2 instance type (e.g. "m5.large")
+//	HYPERFLEET_HOST              — platform API base URL
+//	HYPERFLEET_CLUSTER_ID        — cluster UUID (parent cluster)
+//	HYPERFLEET_CLUSTER_NAME      — cluster name (used as ClusterName in the NodePool spec)
+//	HYPERFLEET_NODEPOOL_NAME     — human-readable name for the new node pool
+//	HYPERFLEET_VERSION           — OpenShift release image (e.g. "5.0.0-ec.2")
+//	HYPERFLEET_SUBNET_ID         — private subnet ID for the node instances
+//	HYPERFLEET_INSTANCE_TYPE     — EC2 instance type (e.g. "m5.large")
+//	HYPERFLEET_INSTANCE_PROFILE  — IAM instance profile name for worker nodes
+//	                               (e.g. "{cluster-name}-ROSA-Worker-Role", created by rosactl cluster-iam)
 package main
 
 import (
@@ -54,6 +56,7 @@ func main() {
 	version := util.MustEnv("HYPERFLEET_VERSION")
 	subnetID := util.MustEnv("HYPERFLEET_SUBNET_ID")
 	instanceType := util.MustEnv("HYPERFLEET_INSTANCE_TYPE")
+	instanceProfile := util.MustEnv("HYPERFLEET_INSTANCE_PROFILE")
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -90,8 +93,9 @@ func main() {
 				Platform: hypershiftv1beta1.NodePoolPlatform{
 					Type: hypershiftv1beta1.AWSPlatform,
 					AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
-						InstanceType: instanceType,
-						Subnet:       hypershiftv1beta1.AWSResourceReference{ID: &subnetID},
+						InstanceType:    instanceType,
+						InstanceProfile: instanceProfile,
+						Subnet:          hypershiftv1beta1.AWSResourceReference{ID: &subnetID},
 					},
 				},
 				Management: hypershiftv1beta1.NodePoolManagement{
