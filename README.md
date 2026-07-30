@@ -32,3 +32,4 @@ platform-api/go.mod              ← requires: hyperfleet-db, hyperfleet-operato
 - [OpenAPI spec](platform-api/openapi/openapi.yaml)
 - [ZOA Trusted Actions](docs/api/zoa-endpoints.md)
 - [Authorization](docs/authz.md)
+- [Konflux / Quay image tags](docs/konflux/quay-image-tags.md)
