@@ -28,7 +28,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
-	internalversion "github.com/openshift-online/rosa-hyperfleet-api/clientset/clientset/clientset/typed/v1alpha1/internalversion"
+	internalversion "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated/typed/v1alpha1/internalversion"
 )
 
 // ClusterInterface is the platform-scoped client for Cluster resources.

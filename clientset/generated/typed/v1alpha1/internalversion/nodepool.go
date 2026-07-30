@@ -21,7 +21,7 @@ package internalversion
 import (
 	context "context"
 
-	scheme "github.com/openshift-online/rosa-hyperfleet-api/clientset/clientset/clientset/scheme"
+	scheme "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated/scheme"
 	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"

@@ -31,8 +31,8 @@ import (
 	"fmt"
 	"net/http"
 
-	generatedclientset "github.com/openshift-online/rosa-hyperfleet-api/clientset/clientset/clientset"
-	"github.com/openshift-online/rosa-hyperfleet-api/clientset/clientset/clientset/scheme"
+	generatedclientset "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated"
+	"github.com/openshift-online/rosa-hyperfleet-api/clientset/generated/scheme"
 	hfrest "github.com/openshift-online/rosa-hyperfleet-api/clientset/rest"
 	"github.com/openshift-online/rosa-hyperfleet-api/clientset/transport"
 	"github.com/openshift-online/rosa-hyperfleet-api/clientset/wrappers"

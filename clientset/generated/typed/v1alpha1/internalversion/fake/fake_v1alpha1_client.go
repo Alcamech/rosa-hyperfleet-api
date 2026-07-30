@@ -19,7 +19,7 @@ limitations under the License.
 package fake
 
 import (
-	internalversion "github.com/openshift-online/rosa-hyperfleet-api/clientset/clientset/clientset/typed/v1alpha1/internalversion"
+	internalversion "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated/typed/v1alpha1/internalversion"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
 )

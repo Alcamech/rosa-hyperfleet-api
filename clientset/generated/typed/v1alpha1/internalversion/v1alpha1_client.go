@@ -21,7 +21,7 @@ package internalversion
 import (
 	http "net/http"
 
-	scheme "github.com/openshift-online/rosa-hyperfleet-api/clientset/clientset/clientset/scheme"
+	scheme "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated/scheme"
 	rest "k8s.io/client-go/rest"
 )
 
