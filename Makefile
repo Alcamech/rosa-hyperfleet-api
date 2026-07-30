@@ -1,10 +1,10 @@
 .PHONY: help build test test-unit test-integration lint clean \
 	build-hyperfleet-db build-operator build-api build-examples \
-	test-hyperfleet-db test-operator test-operator-int test-api \
+	test-hyperfleet-db test-operator test-operator-int test-api test-clientset \
 	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz test-e2e-sdk \
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
 	fmt vet verify deps \
-	manifests generate generate-clientset setup-envtest \
+	manifests generate generate-clientset verify-clientset setup-envtest \
 	image-api image-operator image-push-api image-push-operator
 
 # ── Configuration ────────────────────────────────────────────────────────
@@ -85,7 +85,8 @@ help:
 	@echo ""
 	@echo "Test:"
 	@echo "  test                 All tests (unit + integration)"
-	@echo "  test-unit            Unit tests: API + operator (no external services)"
+	@echo "  test-unit            Unit tests: API + operator + clientset (no external services)"
+	@echo "  test-clientset       Clientset unit tests (transport, wrappers)"
 	@echo "  test-integration     Integration tests: FleetDB + operator (podman)"
 	@echo "  test-e2e-authz       E2E authz (starts local infra)"
 	@echo "  test-e2e-api         E2E API"
@@ -104,6 +105,7 @@ help:
 	@echo "  manifests            Generate CRD manifests"
 	@echo "  generate             Generate deepcopy methods"
 	@echo "  generate-clientset         Generate typed client SDK from CRD types"
+	@echo "  verify-clientset           Fail if generated clientset is out of date"
 	@echo "  setup-envtest        Install envtest binaries (etcd, kube-apiserver)"
 	@echo "  deps                 Download and tidy all modules"
 	@echo ""
@@ -143,12 +145,15 @@ build-api:
 
 test: test-unit test-integration
 
-test-unit: test-api test-operator
+test-unit: test-api test-operator test-clientset
 
 test-integration: test-hyperfleet-db test-operator-int
 
 test-api:
 	cd platform-api && go test -v -race -count=1 $$(go list ./... | grep -v '/test/e2e')
+
+test-clientset:
+	cd clientset && go test -v -race -count=1 ./...
 
 test-operator: $(SETUP_ENVTEST)
 	@ASSETS=$$($(SETUP_ENVTEST) use -p path --bin-dir $(ENVTEST_BIN_DIR)) && \
@@ -292,6 +297,9 @@ generate-clientset: $(CLIENT_GEN) $(WIRE_GEN)
 		--typed-pkg-import "$(TYPED_PKG_IMPORT)" \
 		--api-pkg-import "$(API_PKG_IMPORT)" \
 		--go-header-file "$(SDK_HEADER_FILE)"
+
+verify-clientset: generate-clientset
+	git diff --exit-code clientset/
 
 ENVTEST_BIN_DIR ?= $(shell pwd)/.envtest
 

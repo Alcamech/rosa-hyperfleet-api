@@ -93,8 +93,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 
-	v1alpha1 "{{.ApiPkgImport}}"
 	internalversion "{{.TypedPkgImport}}"
+	v1alpha1 "{{.ApiPkgImport}}"
 )
 {{range .Types}}
 // {{.Name}}Interface is the platform-scoped client for {{.Name}} resources.
@@ -188,7 +188,7 @@ func (c *{{.LowerName}}Client) WaitUntil(ctx context.Context, id string, conditi
 		}
 	}
 }
-{{end}}
+{{- end}}
 {{end -}}
 // V1alpha1Interface is the platform-scoped typed client for the hyperfleet.io/v1alpha1 group.
 type V1alpha1Interface interface {

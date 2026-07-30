@@ -27,8 +27,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 
-	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
 	internalversion "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated/typed/v1alpha1/internalversion"
+	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
 )
 
 // ClusterInterface is the platform-scoped client for Cluster resources.
@@ -121,7 +121,6 @@ func (c *clusterClient) WaitUntil(ctx context.Context, id string, condition func
 	}
 }
 
-
 // NodePoolInterface is the platform-scoped client for NodePool resources.
 // Only operations and options supported by the Hyperfleet platform API are exposed.
 // Watch is intentionally absent — the platform API does not support the Kubernetes
@@ -211,7 +210,6 @@ func (c *nodePoolClient) WaitUntil(ctx context.Context, id string, condition fun
 		}
 	}
 }
-
 // V1alpha1Interface is the platform-scoped typed client for the hyperfleet.io/v1alpha1 group.
 type V1alpha1Interface interface {
 	RESTClient() rest.Interface

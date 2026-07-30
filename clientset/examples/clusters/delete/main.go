@@ -27,8 +27,8 @@ import (
 	hyperfleet "github.com/openshift-online/rosa-hyperfleet-api/clientset"
 	"github.com/openshift-online/rosa-hyperfleet-api/clientset/examples/util"
 	hfrest "github.com/openshift-online/rosa-hyperfleet-api/clientset/rest"
-	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
 	"github.com/openshift-online/rosa-hyperfleet-api/clientset/wrappers"
+	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
 )
 
 func main() {
