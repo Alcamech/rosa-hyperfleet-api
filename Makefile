@@ -1,7 +1,7 @@
 .PHONY: help build test test-unit test-integration lint clean \
 	build-hyperfleet-db build-operator build-api build-examples \
 	test-hyperfleet-db test-operator test-operator-int test-api \
-	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz \
+	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz test-e2e-sdk \
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
 	fmt vet verify deps \
 	manifests generate generate-clientset setup-envtest \
@@ -91,6 +91,7 @@ help:
 	@echo "  test-e2e-api         E2E API"
 	@echo "  test-e2e-cli         E2E CLI"
 	@echo "  test-e2e-zoa         E2E ZOA"
+	@echo "  test-e2e-sdk         E2E SDK (Go clientset lifecycle)"
 	@echo "  test-e2e-platform-monitoring  E2E monitoring"
 	@echo ""
 	@echo "Code Quality:"
@@ -187,6 +188,17 @@ test-e2e-zoa: $(GINKGO)
 	E2E_BASE_URL="$${BASE_URL}" E2E_ACCOUNT_ID="$${E2E_ACCOUNT_ID}" \
 	$(GINKGO) -vv --junit-report=junit-zoa.xml \
 		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-zoa
+
+test-e2e-sdk: $(GINKGO)
+	BASE_URL="$${BASE_URL}" \
+	E2E_ACCOUNT_ID="$${E2E_ACCOUNT_ID}" \
+	E2E_CUSTOMER_ACCOUNT_ID="$${E2E_CUSTOMER_ACCOUNT_ID}" \
+	CUSTOMER_AWS_PROFILE="$${CUSTOMER_AWS_PROFILE}" \
+	AWS_REGION="$${AWS_REGION}" \
+	ROSACTL_BIN="$${ROSACTL_BIN}" \
+	HYPERFLEET_VERSION="$${HYPERFLEET_VERSION}" \
+	$(GINKGO) -vv --timeout=3h --junit-report=junit-sdk.xml \
+		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-sdk
 
 # ── E2E Infrastructure ──────────────────────────────────────────────────
 
