@@ -2,46 +2,21 @@
 
 package registry
 
-// WriteMode defines how a field can be mutated by customers
-type WriteMode string
-
-const (
-	// Mutable fields can be set on create and changed on update
-	Mutable WriteMode = "mutable"
-
-	// Immutable fields can be set on create but cannot be changed on update
-	Immutable WriteMode = "immutable"
-
-	// ServiceSet fields are set by the platform and cannot be set by customers
-	ServiceSet WriteMode = "service-set"
+import (
+	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/markers"
 )
 
-// FeatureGateWriteMode represents a write-mode override for a specific feature gate
-type FeatureGateWriteMode struct {
-	// FeatureGate is the gate that enables this write-mode (empty string = default/no gates enabled)
-	FeatureGate string
+// Type aliases re-exported from markers so that consumers of this package
+// do not need to import markers directly.
+type WriteMode = markers.WriteMode
+type FieldMeta = markers.FieldMeta
+type FeatureGateWriteMode = markers.FeatureGateWriteMode
 
-	// WriteMode is the effective write-mode when this gate condition matches
-	WriteMode WriteMode
-}
-
-// FieldMeta contains metadata for a single field
-type FieldMeta struct {
-	// FieldPath is the JSON path to the field (e.g., "spec.name")
-	FieldPath string
-
-	// WriteMode controls customer mutability
-	WriteMode WriteMode
-
-	// FeatureGate is the gate required to use this field (empty if no gate required)
-	FeatureGate string
-
-	// Hidden indicates if the field is excluded from OpenAPI
-	Hidden bool
-
-	// FeatureGateAwareWriteModes allows write-mode to vary based on enabled feature gates
-	FeatureGateAwareWriteModes []FeatureGateWriteMode
-}
+const (
+	Mutable    = markers.Mutable
+	Immutable  = markers.Immutable
+	ServiceSet = markers.ServiceSet
+)
 
 // FieldRegistry maps field paths to their metadata
 var FieldRegistry = map[string]FieldMeta{

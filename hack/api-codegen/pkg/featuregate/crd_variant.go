@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 
@@ -46,24 +47,33 @@ func (g *CRDVariantGenerator) GenerateVariant(inputPath string, outputPath strin
 		return fmt.Errorf("filtering CRD: %w", err)
 	}
 
-	// Write output
-	f, err := os.Create(outputPath)
+	// Write to a temp file and rename on success so a failed encode
+	// doesn't destroy the existing valid output file.
+	tmp, err := os.CreateTemp(filepath.Dir(outputPath), ".crd-variant-*.yaml")
 	if err != nil {
-		return fmt.Errorf("creating output file: %w", err)
+		return fmt.Errorf("creating temp file: %w", err)
 	}
+	tmpName := tmp.Name()
 
-	encoder := yaml.NewEncoder(f)
+	encoder := yaml.NewEncoder(tmp)
 	encoder.SetIndent(2)
 	if err := encoder.Encode(&crd); err != nil {
-		f.Close()
+		tmp.Close()
+		os.Remove(tmpName)
 		return fmt.Errorf("writing YAML: %w", err)
 	}
 	if err := encoder.Close(); err != nil {
-		f.Close()
+		tmp.Close()
+		os.Remove(tmpName)
 		return fmt.Errorf("closing YAML encoder: %w", err)
 	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("closing output file: %w", err)
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("closing temp file: %w", err)
+	}
+	if err := os.Rename(tmpName, outputPath); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("renaming temp file: %w", err)
 	}
 
 	return nil
@@ -229,6 +239,9 @@ func (g *CRDVariantGenerator) WriteVariantToWriter(inputPath string, w io.Writer
 	encoder.SetIndent(2)
 	if err := encoder.Encode(&crd); err != nil {
 		return fmt.Errorf("writing YAML: %w", err)
+	}
+	if err := encoder.Close(); err != nil {
+		return fmt.Errorf("closing YAML encoder: %w", err)
 	}
 
 	return nil

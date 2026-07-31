@@ -251,7 +251,7 @@ func (g *Generator) getMarkersForField(jsonTagName string) []string {
 // e.g., "HostedClusterSpec" → "spec.hostedCluster", "NodePoolSpec" → "spec.nodePool"
 func deriveFieldPrefix(typeName string) string {
 	base := strings.TrimSuffix(typeName, "Spec")
-	if base == typeName {
+	if base == typeName || base == "" {
 		return ""
 	}
 	runes := []rune(base)

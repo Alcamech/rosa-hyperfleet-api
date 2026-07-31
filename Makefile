@@ -90,7 +90,7 @@ help:
 
 # ── Build ────────────────────────────────────────────────────────────────
 
-build: build-hyperfleet-db build-operator build-api build-api-codegen
+build: build-hyperfleet-db build-operator build-api
 
 build-hyperfleet-db:
 	cd hyperfleet-db && go build ./...
