@@ -1,11 +1,11 @@
 # V2 SDK Integration into the rosa CLI
 
-**Last Updated Date**: 2026-07-18
+**Last Updated Date**: 2026-07-28
 
 ## Summary
 
 This document explores how the `rosa` CLI can support **both** the v1 SDK
-(`ocm-sdk-go`, against the OCM API) and the v2 SDK (`hyperfleet-sdk/`, against
+(`ocm-sdk-go`, against the OCM API) and the v2 SDK (`clientset/`, against
 the HyperFleet Platform API) side by side, with v1 remaining the default and v2
 selected per-invocation via a flag. It is a companion to
 [v2-sdk-initiative.md](v2-sdk-initiative.md), which covers the SDK itself; this
@@ -290,8 +290,7 @@ Acceptance tests for `WithHyperFleet()` must cover:
 4. **Type divergence** — how far do `v1alpha1.Cluster` / `NodePool` diverge
    from the `cmv1` fields the printers read? This sizes the display mapper
    (see also Open Question 3 in the initiative doc).
-5. **Waiting/status UX** — v1 create supports `--watch`-style polling via OCM;
-   what does the v2 path poll (`Status` conditions on the CRD-shaped resource)?
+5. **Waiting/status UX** — v1 create supports `--watch`-style polling via OCM. The v2 path uses `WaitUntil` (pseudocode: `WaitUntil(ctx, id string, condition func(*ResourceType) bool, interval, timeout time.Duration) error`), available on each resource client; `ResourceType` is the concrete type for that client (`v1alpha1.Cluster`, `v1alpha1.NodePool`, etc.) and the readiness predicate is resource-specific. The condition function receives the live resource on each poll, or `nil` when the resource is absent (404). For create, the condition checks `Status.Phase == ClusterPhaseReady` (or `NodePoolPhaseReady`); for delete, it returns `true` when the resource is `nil`. The Platform API does not support the Kubernetes watch stream protocol — polling via `WaitUntil` is the only synchronization mechanism.
 
 ## Suggested First Steps
 

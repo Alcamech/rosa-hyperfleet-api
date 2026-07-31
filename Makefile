@@ -1,11 +1,11 @@
 .PHONY: help build test test-unit test-integration lint clean \
 	build-hyperfleet-db build-operator build-api build-api-codegen \
-	test-hyperfleet-db test-operator test-operator-int test-api test-api-codegen \
+	test-hyperfleet-db test-operator test-operator-int test-api test-api-codegen test-clientset \
 	coverage-api-codegen \
-	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz \
+	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz test-e2e-sdk \
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
 	fmt vet verify deps \
-	manifests generate setup-envtest \
+	manifests generate generate-clientset verify-clientset setup-envtest \
 	image-api image-operator image-push-api image-push-operator
 
 # ── Configuration ────────────────────────────────────────────────────────
@@ -33,8 +33,26 @@ TOOLS_DIR        := ./hack/tools
 TOOLS_BIN_DIR    := $(TOOLS_DIR)/bin
 GOLANGCI_LINT    := $(abspath $(TOOLS_BIN_DIR)/golangci-lint)
 CONTROLLER_GEN   := $(abspath $(TOOLS_BIN_DIR)/controller-gen)
+CLIENT_GEN       := $(abspath $(TOOLS_BIN_DIR)/client-gen)
+WIRE_GEN         := $(abspath $(TOOLS_BIN_DIR)/wire-gen)
 SETUP_ENVTEST    := $(abspath $(TOOLS_BIN_DIR)/setup-envtest)
 GINKGO           := $(abspath $(TOOLS_BIN_DIR)/ginkgo)
+
+# ── SDK generation ───────────────────────────────────────────────────────
+SDK_MODULE        ?= github.com/openshift-online/rosa-hyperfleet-api
+SDK_API_PKG       ?= $(SDK_MODULE)/hyperfleet-operator/api
+SDK_INPUT         ?= v1alpha1
+SDK_CLIENTSET     ?= generated
+SDK_OUTPUT_DIR    ?= $(abspath clientset)
+SDK_OUTPUT_PKG    ?= $(SDK_MODULE)/clientset
+WIRE_INPUT_DIR        ?= $(abspath hyperfleet-operator/api/v1alpha1)
+WIRE_OUTPUT_DIR       ?= $(abspath clientset/transport)
+WIRE_OUTPUT_PKG       ?= transport
+WRAPPERS_OUTPUT_DIR   ?= $(abspath clientset/wrappers)
+WRAPPERS_OUTPUT_PKG   ?= wrappers
+TYPED_PKG_IMPORT      ?= $(SDK_MODULE)/clientset/generated/typed/v1alpha1/internalversion
+API_PKG_IMPORT        ?= $(SDK_MODULE)/hyperfleet-operator/api/v1alpha1
+SDK_HEADER_FILE       ?= $(abspath hack/clientset/license-boilerplate.go.txt)
 
 $(GOLANGCI_LINT): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/golangci-lint github.com/golangci/golangci-lint/v2/cmd/golangci-lint
@@ -44,6 +62,12 @@ $(CONTROLLER_GEN): $(TOOLS_DIR)/go.mod
 
 $(SETUP_ENVTEST): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/setup-envtest sigs.k8s.io/controller-runtime/tools/setup-envtest
+
+$(CLIENT_GEN): $(TOOLS_DIR)/go.mod
+	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/client-gen k8s.io/code-generator/cmd/client-gen
+
+$(WIRE_GEN): hack/clientset/cmd/wire-gen/main.go
+	cd hack/clientset/cmd/wire-gen && go build -o $(WIRE_GEN) .
 
 $(GINKGO): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/ginkgo github.com/onsi/ginkgo/v2/ginkgo
@@ -62,12 +86,14 @@ help:
 	@echo ""
 	@echo "Test:"
 	@echo "  test                 All tests (unit + integration)"
-	@echo "  test-unit            Unit tests: API + operator + codegen (no external services)"
+	@echo "  test-unit            Unit tests: API + operator + codegen + clientset (no external services)"
+	@echo "  test-clientset       Clientset unit tests (transport, wrappers)"
 	@echo "  test-integration     Integration tests: FleetDB + operator (podman)"
 	@echo "  test-e2e-authz       E2E authz (starts local infra)"
 	@echo "  test-e2e-api         E2E API"
 	@echo "  test-e2e-cli         E2E CLI"
 	@echo "  test-e2e-zoa         E2E ZOA"
+	@echo "  test-e2e-sdk         E2E SDK (Go clientset lifecycle)"
 	@echo "  test-e2e-platform-monitoring  E2E monitoring"
 	@echo ""
 	@echo "  coverage-api-codegen Coverage report for codegen (hack/api-codegen)"
@@ -81,6 +107,8 @@ help:
 	@echo "Code Generation:"
 	@echo "  manifests            Generate CRD manifests"
 	@echo "  generate             Generate deepcopy methods"
+	@echo "  generate-clientset         Generate typed client SDK from CRD types"
+	@echo "  verify-clientset           Fail if generated clientset is out of date"
 	@echo "  setup-envtest        Install envtest binaries (etcd, kube-apiserver)"
 	@echo "  deps                 Download and tidy all modules"
 	@echo ""
@@ -115,7 +143,7 @@ build-api-codegen:
 
 test: test-unit test-integration
 
-test-unit: test-api test-operator test-api-codegen
+test-unit: test-api test-operator test-api-codegen test-clientset
 
 test-integration: test-hyperfleet-db test-operator-int
 
@@ -124,6 +152,9 @@ test-api:
 
 test-api-codegen:
 	cd hack/api-codegen && go test -v -race -count=1 ./...
+
+test-clientset:
+	cd clientset && go test -v -race -count=1 ./...
 
 coverage-api-codegen:
 	cd hack/api-codegen && go test -race -coverprofile=coverage.out ./...
@@ -171,6 +202,17 @@ test-e2e-zoa: $(GINKGO)
 	$(GINKGO) -vv --junit-report=junit-zoa.xml \
 		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-zoa
 
+test-e2e-sdk: $(GINKGO)
+	BASE_URL="$${BASE_URL}" \
+	E2E_ACCOUNT_ID="$${E2E_ACCOUNT_ID}" \
+	E2E_CUSTOMER_ACCOUNT_ID="$${E2E_CUSTOMER_ACCOUNT_ID}" \
+	CUSTOMER_AWS_PROFILE="$${CUSTOMER_AWS_PROFILE}" \
+	AWS_REGION="$${AWS_REGION}" \
+	ROSACTL_BIN="$${ROSACTL_BIN}" \
+	HYPERFLEET_VERSION="$${HYPERFLEET_VERSION}" \
+	$(GINKGO) -vv --timeout=3h --junit-report=junit-sdk.xml \
+		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-sdk
+
 # ── E2E Infrastructure ──────────────────────────────────────────────────
 
 e2e-authz-infra-up:
@@ -195,18 +237,24 @@ fmt:
 	cd hyperfleet-operator && go fmt ./...
 	cd platform-api && go fmt ./...
 	cd hack/api-codegen && go fmt ./...
+	cd clientset && go fmt ./...
+	cd hack/clientset/cmd/wire-gen && go fmt ./...
 
 vet:
 	cd hyperfleet-db && go vet ./...
 	cd hyperfleet-operator && go vet ./...
 	cd platform-api && go vet ./...
 	cd hack/api-codegen && go vet ./...
+	cd clientset && go vet ./...
+	cd hack/clientset/cmd/wire-gen && go vet ./...
 
 lint: $(GOLANGCI_LINT)
 	cd hyperfleet-db && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
 	cd hyperfleet-operator && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
 	cd platform-api && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
 	cd hack/api-codegen && $(GOLANGCI_LINT) run --config ../../.golangci.yml --timeout 5m ./...
+	cd clientset && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
+	cd hack/clientset/cmd/wire-gen && $(GOLANGCI_LINT) run --config $(abspath .golangci.yml) --timeout 5m ./...
 
 verify:
 	cd hyperfleet-db && go mod tidy
@@ -240,6 +288,32 @@ manifests: $(CONTROLLER_GEN)
 
 generate: $(CONTROLLER_GEN)
 	cd hyperfleet-operator && $(CONTROLLER_GEN) object paths="./api/..."
+
+generate-clientset: $(CLIENT_GEN) $(WIRE_GEN)
+	cd hyperfleet-operator/api && $(CLIENT_GEN) \
+		--input-base "$(SDK_API_PKG)" \
+		--input "$(SDK_INPUT)" \
+		--clientset-name "$(SDK_CLIENTSET)" \
+		--output-dir "$(SDK_OUTPUT_DIR)" \
+		--output-pkg "$(SDK_OUTPUT_PKG)" \
+		--go-header-file "$(SDK_HEADER_FILE)"
+	$(WIRE_GEN) \
+		--mode mappings \
+		--input-dir "$(WIRE_INPUT_DIR)" \
+		--output-dir "$(WIRE_OUTPUT_DIR)" \
+		--output-pkg "$(WIRE_OUTPUT_PKG)" \
+		--go-header-file "$(SDK_HEADER_FILE)"
+	$(WIRE_GEN) \
+		--mode wrappers \
+		--input-dir "$(WIRE_INPUT_DIR)" \
+		--output-dir "$(WRAPPERS_OUTPUT_DIR)" \
+		--output-pkg "$(WRAPPERS_OUTPUT_PKG)" \
+		--typed-pkg-import "$(TYPED_PKG_IMPORT)" \
+		--api-pkg-import "$(API_PKG_IMPORT)" \
+		--go-header-file "$(SDK_HEADER_FILE)"
+
+verify-clientset: generate-clientset
+	git diff --exit-code clientset/
 
 ENVTEST_BIN_DIR ?= $(shell pwd)/.envtest
 
