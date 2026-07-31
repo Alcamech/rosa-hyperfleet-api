@@ -1,0 +1,955 @@
+package conversion
+
+import (
+	"bytes"
+	"fmt"
+	"go/ast"
+	"go/format"
+	"go/parser"
+	"go/printer"
+	"go/token"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"text/template"
+
+	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/registry"
+)
+
+// Generator generates REST types and conversion functions from CRD types.
+type Generator struct {
+	APIVersion    string
+	CRDPackage    string
+	OutputDir     string
+	OutputPackage string
+	InputDirs     []string
+
+	knownTypes     map[string]bool
+	typeInfos      map[string]*typeInfo
+	emittedHelpers map[string]bool
+}
+
+type typeInfo struct {
+	Name       string
+	StructType *ast.StructType
+	Doc        *ast.CommentGroup
+	Fields     []*fieldInfo
+}
+
+type fieldInfo struct {
+	GoName    string
+	JSONName  string
+	GoType    string
+	FieldPath string
+	Field     *ast.Field
+	Doc       *ast.CommentGroup
+	Hidden    bool
+	WriteMode registry.WriteMode
+}
+
+// NewGenerator creates a new conversion generator.
+func NewGenerator(apiVersion, crdPackage string, inputDirs []string, outputDir string) *Generator {
+	return &Generator{
+		APIVersion:     apiVersion,
+		CRDPackage:     crdPackage,
+		InputDirs:      inputDirs,
+		OutputDir:      outputDir,
+		knownTypes:     make(map[string]bool),
+		typeInfos:      make(map[string]*typeInfo),
+		emittedHelpers: make(map[string]bool),
+	}
+}
+
+// Generate runs all three generation phases.
+func (g *Generator) Generate() error {
+	if err := g.parseTypes(); err != nil {
+		return fmt.Errorf("parsing types: %w", err)
+	}
+
+	if err := g.generateRESTTypes(); err != nil {
+		return fmt.Errorf("generating REST types: %w", err)
+	}
+
+	if err := g.generateServiceSetFields(); err != nil {
+		return fmt.Errorf("generating ServiceSetFields: %w", err)
+	}
+
+	if err := g.generateConversionFunctions(); err != nil {
+		return fmt.Errorf("generating conversion functions: %w", err)
+	}
+
+	return nil
+}
+
+// --- Parsing ---
+
+func (g *Generator) parseTypes() error {
+	for _, dir := range g.InputDirs {
+		fset := token.NewFileSet()
+
+		//nolint:staticcheck // ParseDir is sufficient for our use case
+		pkgs, err := parser.ParseDir(fset, dir, func(fi os.FileInfo) bool {
+			name := fi.Name()
+			return !strings.HasSuffix(name, "_test.go") &&
+				!strings.HasPrefix(name, "zz_generated")
+		}, parser.ParseComments)
+		if err != nil {
+			return fmt.Errorf("parsing directory %s: %w", dir, err)
+		}
+
+		for _, pkg := range pkgs {
+			for _, file := range pkg.Files {
+				for _, decl := range file.Decls {
+					genDecl, ok := decl.(*ast.GenDecl)
+					if !ok || genDecl.Tok != token.TYPE {
+						continue
+					}
+					for _, spec := range genDecl.Specs {
+						typeSpec, ok := spec.(*ast.TypeSpec)
+						if !ok || !typeSpec.Name.IsExported() {
+							continue
+						}
+						structType, ok := typeSpec.Type.(*ast.StructType)
+						if !ok {
+							continue
+						}
+
+						typeName := typeSpec.Name.Name
+						g.knownTypes[typeName] = true
+
+						ti := &typeInfo{
+							Name:       typeName,
+							StructType: structType,
+							Doc:        genDecl.Doc,
+						}
+
+						for _, field := range structType.Fields.List {
+							if len(field.Names) == 0 {
+								continue
+							}
+							for _, name := range field.Names {
+								if !name.IsExported() {
+									continue
+								}
+								fi := g.parseField(typeName, field, name)
+								if fi != nil {
+									ti.Fields = append(ti.Fields, fi)
+								}
+							}
+						}
+
+						g.typeInfos[typeName] = ti
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (g *Generator) parseField(typeName string, field *ast.Field, name *ast.Ident) *fieldInfo {
+	goName := name.Name
+	jsonName := g.extractJSONTag(field)
+	if jsonName == "" || jsonName == "-" {
+		return nil
+	}
+
+	fieldPath := g.buildFieldPath(typeName, jsonName)
+	meta, exists := registry.FieldRegistry[fieldPath]
+
+	fi := &fieldInfo{
+		GoName:   goName,
+		JSONName: jsonName,
+		GoType:   g.exprToString(field.Type),
+		Field:    field,
+		Doc:      field.Doc,
+	}
+
+	if exists {
+		fi.FieldPath = meta.FieldPath
+		fi.Hidden = meta.Hidden
+		fi.WriteMode = meta.WriteMode
+	}
+
+	return fi
+}
+
+func (g *Generator) buildFieldPath(typeName, jsonName string) string {
+	switch {
+	case strings.HasSuffix(typeName, "Spec"):
+		return "spec." + jsonName
+	case strings.HasSuffix(typeName, "Status"):
+		return "status." + jsonName
+	case strings.Contains(typeName, "Passthrough"):
+		if strings.HasPrefix(typeName, "HostedCluster") {
+			return "spec.hostedCluster." + jsonName
+		}
+		if strings.HasPrefix(typeName, "NodePool") {
+			return "spec.nodePool." + jsonName
+		}
+		return jsonName
+	default:
+		return jsonName
+	}
+}
+
+func (g *Generator) extractJSONTag(field *ast.Field) string {
+	if field.Tag == nil {
+		return ""
+	}
+	tag := strings.Trim(field.Tag.Value, "`")
+	for _, part := range strings.Fields(tag) {
+		if strings.HasPrefix(part, "json:") {
+			jsonTag := strings.Trim(strings.TrimPrefix(part, "json:"), "\"")
+			if idx := strings.Index(jsonTag, ","); idx >= 0 {
+				return jsonTag[:idx]
+			}
+			return jsonTag
+		}
+	}
+	return ""
+}
+
+func (g *Generator) exprToString(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.StarExpr:
+		return "*" + g.exprToString(t.X)
+	case *ast.ArrayType:
+		return "[]" + g.exprToString(t.Elt)
+	case *ast.MapType:
+		return "map[" + g.exprToString(t.Key) + "]" + g.exprToString(t.Value)
+	case *ast.SelectorExpr:
+		return g.exprToString(t.X) + "." + t.Sel.Name
+	case *ast.InterfaceType, *ast.FuncType, *ast.Ellipsis, *ast.IndexExpr, *ast.IndexListExpr:
+		var buf bytes.Buffer
+		if err := printer.Fprint(&buf, token.NewFileSet(), expr); err != nil {
+			return "interface{}"
+		}
+		return buf.String()
+	default:
+		return "interface{}"
+	}
+}
+
+// --- Import detection (replaces hard-coded type lists) ---
+
+// importInfo tracks which external packages a set of fields references.
+type importInfo struct {
+	NeedsMetav1     bool
+	NeedsHyperShift bool
+	NeedsV1alpha1   bool
+	NeedsCorev1     bool
+	NeedsConfigv1   bool
+}
+
+// detectImports scans a list of Go type strings and determines which
+// import aliases are required. This replaces the hard-coded type lists
+// (hypershiftTypes, v1alpha1Types) by deriving imports from the AST.
+func (g *Generator) detectImports(goTypes []string) importInfo {
+	var info importInfo
+	for _, goType := range goTypes {
+		base := strings.TrimPrefix(goType, "*")
+		base = strings.TrimPrefix(base, "[]")
+
+		if strings.Contains(base, "metav1.") {
+			info.NeedsMetav1 = true
+		}
+		if strings.Contains(base, "hypershiftv1beta1.") {
+			info.NeedsHyperShift = true
+		}
+		if strings.Contains(base, "v1alpha1.") {
+			info.NeedsV1alpha1 = true
+		}
+		if strings.Contains(base, "corev1.") {
+			info.NeedsCorev1 = true
+		}
+		if strings.Contains(base, "configv1.") {
+			info.NeedsConfigv1 = true
+		}
+
+		// Check if the unqualified type is from the CRD package
+		if !strings.Contains(base, ".") && !g.isBuiltinType(base) {
+			if _, isCRDType := g.typeInfos[base]; isCRDType {
+				info.NeedsV1alpha1 = true
+			}
+		}
+	}
+	return info
+}
+
+// qualifyType adds package qualifiers for types that are defined in other
+// packages. Instead of hard-coded lists, this derives the qualification from
+// what the AST parser found.
+func (g *Generator) qualifyType(goType string) string {
+	isPointer := strings.HasPrefix(goType, "*")
+	isSlice := strings.HasPrefix(goType, "[]")
+	base := goType
+	base = strings.TrimPrefix(base, "*")
+	base = strings.TrimPrefix(base, "[]")
+
+	if strings.Contains(base, ".") {
+		return goType // Already qualified
+	}
+	if g.isBuiltinType(base) {
+		return goType
+	}
+
+	// If the type exists in our parsed CRD types, qualify with v1alpha1
+	if _, ok := g.typeInfos[base]; ok {
+		qualified := "v1alpha1." + base
+		if isPointer {
+			return "*" + qualified
+		}
+		if isSlice {
+			return "[]" + qualified
+		}
+		return qualified
+	}
+
+	return goType
+}
+
+func (g *Generator) isBuiltinType(t string) bool {
+	switch t {
+	case "string", "bool", "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64",
+		"float32", "float64", "byte", "rune", "error", "interface{}":
+		return true
+	}
+	return false
+}
+
+// --- Phase 1: REST type generation ---
+
+// restTypeData feeds the REST type template.
+type restTypeData struct {
+	TypeName   string
+	DocComment string
+	Fields     []restFieldData
+	Imports    importInfo
+	CRDPackage string
+}
+
+type restFieldData struct {
+	GoName  string
+	GoType  string
+	JSONTag string
+	Comment string
+}
+
+var restTypeTmpl = template.Must(template.New("restType").Parse(`// Code generated by conversion-gen. DO NOT EDIT.
+
+package rest
+
+{{ if or .Imports.NeedsMetav1 .Imports.NeedsHyperShift .Imports.NeedsV1alpha1 -}}
+import (
+{{- if .Imports.NeedsHyperShift }}
+	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
+{{- end }}
+{{- if .Imports.NeedsMetav1 }}
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+{{- end }}
+{{- if .Imports.NeedsV1alpha1 }}
+	v1alpha1 "{{ .CRDPackage }}"
+{{- end }}
+)
+{{ end }}
+{{ .DocComment }}
+type {{ .TypeName }} struct {
+{{- range .Fields }}
+{{- if .Comment }}
+	{{ .Comment }}
+{{- end }}
+	{{ .GoName }} {{ .GoType }} ` + "`" + `json:"{{ .JSONTag }}"` + "`" + `
+{{- end }}
+}
+`))
+
+func (g *Generator) generateRESTTypes() error {
+	restDir := filepath.Join(g.OutputDir, "rest")
+	if err := g.ensureDir(restDir); err != nil {
+		return err
+	}
+
+	// Discover resource types dynamically: types with both Spec and Status subtypes
+	resourceTypes := g.discoverResourceTypes()
+
+	for _, typeName := range resourceTypes {
+		ti, exists := g.typeInfos[typeName]
+		if !exists {
+			continue
+		}
+
+		code, err := g.renderRESTType(ti)
+		if err != nil {
+			return fmt.Errorf("rendering REST type %s: %w", typeName, err)
+		}
+
+		filename := strings.ToLower(typeName) + "_types.go"
+		if err := g.writeFormattedFile(filepath.Join("rest", filename), code); err != nil {
+			return fmt.Errorf("writing REST type %s: %w", typeName, err)
+		}
+	}
+
+	// Also generate passthrough types
+	for typeName := range g.typeInfos {
+		if strings.Contains(typeName, "Passthrough") {
+			ti := g.typeInfos[typeName]
+			code, err := g.renderRESTType(ti)
+			if err != nil {
+				return fmt.Errorf("rendering REST type %s: %w", typeName, err)
+			}
+			filename := strings.ToLower(typeName) + "_types.go"
+			if err := g.writeFormattedFile(filepath.Join("rest", filename), code); err != nil {
+				return fmt.Errorf("writing REST type %s: %w", typeName, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// discoverResourceTypes finds types that form CRD resources (have matching
+// Spec and Status subtypes) plus any types referenced by their visible fields.
+func (g *Generator) discoverResourceTypes() []string {
+	typeSet := make(map[string]bool)
+
+	for typeName := range g.typeInfos {
+		specName := typeName + "Spec"
+		statusName := typeName + "Status"
+		_, hasSpec := g.typeInfos[specName]
+		_, hasStatus := g.typeInfos[statusName]
+		if hasSpec && hasStatus {
+			typeSet[typeName] = true
+			typeSet[specName] = true
+			typeSet[statusName] = true
+		}
+	}
+
+	// Walk visible fields and add referenced types that are in our type set
+	g.addReferencedTypes(typeSet)
+
+	result := make([]string, 0, len(typeSet))
+	for t := range typeSet {
+		result = append(result, t)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func (g *Generator) addReferencedTypes(typeSet map[string]bool) {
+	changed := true
+	for changed {
+		changed = false
+		for typeName := range typeSet {
+			ti, ok := g.typeInfos[typeName]
+			if !ok {
+				continue
+			}
+			for _, fi := range ti.Fields {
+				if fi.Hidden {
+					continue
+				}
+				base := strings.TrimPrefix(fi.GoType, "*")
+				base = strings.TrimPrefix(base, "[]")
+				if strings.Contains(base, ".") {
+					continue // Already qualified, external type
+				}
+				if _, ok := g.typeInfos[base]; ok && !typeSet[base] {
+					typeSet[base] = true
+					changed = true
+				}
+			}
+		}
+	}
+}
+
+func (g *Generator) renderRESTType(ti *typeInfo) (string, error) {
+	var visibleFields []restFieldData
+	var goTypes []string
+
+	for _, fi := range ti.Fields {
+		if fi.Hidden {
+			continue
+		}
+		qualifiedType := g.qualifyType(fi.GoType)
+		goTypes = append(goTypes, qualifiedType)
+
+		jsonTag := fi.JSONName
+		if fi.Field.Tag != nil {
+			tag := strings.Trim(fi.Field.Tag.Value, "`")
+			for _, part := range strings.Fields(tag) {
+				if strings.HasPrefix(part, "json:") {
+					jsonTag = strings.Trim(strings.TrimPrefix(part, "json:"), "\"")
+					break
+				}
+			}
+		}
+
+		comment := ""
+		if fi.Doc != nil {
+			lines := strings.Split(strings.TrimSpace(fi.Doc.Text()), "\n")
+			var commentLines []string
+			for _, line := range lines {
+				if line != "" {
+					if !strings.HasPrefix(line, "//") {
+						commentLines = append(commentLines, "// "+line)
+					} else {
+						commentLines = append(commentLines, line)
+					}
+				}
+			}
+			comment = strings.Join(commentLines, "\n\t")
+		}
+
+		visibleFields = append(visibleFields, restFieldData{
+			GoName:  fi.GoName,
+			GoType:  qualifiedType,
+			JSONTag: jsonTag,
+			Comment: comment,
+		})
+	}
+
+	docComment := ""
+	if ti.Doc != nil {
+		lines := strings.Split(strings.TrimSpace(ti.Doc.Text()), "\n")
+		var docLines []string
+		for _, line := range lines {
+			if !strings.HasPrefix(line, "//") {
+				docLines = append(docLines, "// "+line)
+			} else {
+				docLines = append(docLines, line)
+			}
+		}
+		docComment = strings.Join(docLines, "\n")
+	} else {
+		docComment = fmt.Sprintf("// %s is the REST representation of %s (visible fields only)", ti.Name, ti.Name)
+	}
+
+	data := restTypeData{
+		TypeName:   ti.Name,
+		DocComment: docComment,
+		Fields:     visibleFields,
+		Imports:    g.detectImports(goTypes),
+		CRDPackage: g.CRDPackage,
+	}
+
+	var buf bytes.Buffer
+	if err := restTypeTmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("executing template: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
+// --- Phase 2: ServiceSetFields ---
+
+type serviceSetData struct {
+	PackageName string
+	CRDPackage  string
+	Fields      []serviceSetFieldData
+	Imports     importInfo
+}
+
+type serviceSetFieldData struct {
+	GoName    string
+	GoType    string
+	JSONTag   string
+	FieldPath string
+}
+
+var serviceSetTmpl = template.Must(template.New("serviceSet").Parse(`// Code generated by conversion-gen. DO NOT EDIT.
+
+package {{ .PackageName }}
+
+{{ if or .Imports.NeedsCorev1 .Imports.NeedsConfigv1 .Imports.NeedsMetav1 .Imports.NeedsHyperShift .Imports.NeedsV1alpha1 -}}
+import (
+{{- if .Imports.NeedsConfigv1 }}
+	configv1 "github.com/openshift/api/config/v1"
+{{- end }}
+{{- if .Imports.NeedsHyperShift }}
+	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
+{{- end }}
+{{- if .Imports.NeedsCorev1 }}
+	corev1 "k8s.io/api/core/v1"
+{{- end }}
+{{- if .Imports.NeedsMetav1 }}
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+{{- end }}
+{{- if .Imports.NeedsV1alpha1 }}
+	v1alpha1 "{{ .CRDPackage }}"
+{{- end }}
+)
+{{ end }}
+// ServiceSetFields contains platform-managed fields injected during UnprojectX conversions
+type ServiceSetFields struct {
+{{- range .Fields }}
+	// {{ .GoName }} is service-set (platform-managed, hidden from API)
+	{{ .GoName }} {{ .GoType }} ` + "`" + `json:"{{ .JSONTag }}"` + "`" + `
+{{- end }}
+}
+`))
+
+func (g *Generator) generateServiceSetFields() error {
+	type ssField struct {
+		GoName    string
+		GoType    string
+		JSONTag   string
+		FieldPath string
+	}
+
+	fieldsMap := make(map[string]ssField)
+	for path, meta := range registry.FieldRegistry {
+		if meta.WriteMode == registry.ServiceSet {
+			goName := g.pathToGoName(path)
+			goType := g.inferTypeFromPath(path)
+			jsonTag := g.pathToJSONTag(path)
+
+			if existing, exists := fieldsMap[jsonTag]; exists {
+				if len(goType) > len(existing.GoType) {
+					fieldsMap[jsonTag] = ssField{GoName: goName, GoType: goType, JSONTag: jsonTag, FieldPath: path}
+				}
+			} else {
+				fieldsMap[jsonTag] = ssField{GoName: goName, GoType: goType, JSONTag: jsonTag, FieldPath: path}
+			}
+		}
+	}
+
+	var fields []serviceSetFieldData
+	var goTypes []string
+	for _, f := range fieldsMap {
+		qt := g.qualifyType(f.GoType)
+		goTypes = append(goTypes, qt)
+		fields = append(fields, serviceSetFieldData{
+			GoName:    f.GoName,
+			GoType:    qt,
+			JSONTag:   f.JSONTag,
+			FieldPath: f.FieldPath,
+		})
+	}
+
+	sort.Slice(fields, func(i, j int) bool {
+		return fields[i].GoName < fields[j].GoName
+	})
+
+	typesDir := filepath.Dir(g.OutputDir)
+	pkgName := filepath.Base(typesDir)
+
+	data := serviceSetData{
+		PackageName: pkgName,
+		CRDPackage:  g.CRDPackage,
+		Fields:      fields,
+		Imports:     g.detectImports(goTypes),
+	}
+
+	var buf bytes.Buffer
+	if err := serviceSetTmpl.Execute(&buf, data); err != nil {
+		return fmt.Errorf("executing service-set template: %w", err)
+	}
+
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		formatted = buf.Bytes()
+	}
+
+	typesPath := filepath.Join(typesDir, "types.go")
+	if err := g.ensureDir(typesDir); err != nil {
+		return err
+	}
+	return os.WriteFile(typesPath, formatted, 0644)
+}
+
+func (g *Generator) pathToGoName(path string) string {
+	parts := strings.Split(path, ".")
+	if len(parts) == 0 {
+		return ""
+	}
+	lastPart := parts[len(parts)-1]
+	lastPart = strings.ReplaceAll(lastPart, "Id", "ID")
+	lastPart = strings.ReplaceAll(lastPart, "Arn", "ARN")
+	if len(lastPart) > 0 && lastPart[0] >= 'a' && lastPart[0] <= 'z' {
+		lastPart = strings.ToUpper(string(lastPart[0])) + lastPart[1:]
+	}
+	return lastPart
+}
+
+func (g *Generator) pathToJSONTag(path string) string {
+	parts := strings.Split(path, ".")
+	if len(parts) == 0 {
+		return path
+	}
+	return parts[len(parts)-1]
+}
+
+func (g *Generator) inferTypeFromPath(path string) string {
+	for _, ti := range g.typeInfos {
+		for _, fi := range ti.Fields {
+			if fi.FieldPath == path {
+				return fi.GoType
+			}
+		}
+	}
+	return "string"
+}
+
+// --- Phase 3: JSON-roundtrip conversion functions ---
+
+type conversionData struct {
+	PackageName  string
+	CRDPackage   string
+	ParentPkg    string
+	RESTPkg      string
+	Resource     string
+	SpecType     string
+	StatusType   string
+	SpecFields   []convFieldData
+	StatusFields []convFieldData
+	MirrorTypes  []mirrorConvData
+}
+
+type convFieldData struct {
+	GoName     string
+	IsMirror   bool
+	MirrorBase string
+}
+
+type mirrorConvData struct {
+	BaseType string
+}
+
+var conversionTmpl = template.Must(template.New("conversion").Parse(`// Code generated by conversion-gen. DO NOT EDIT.
+
+package {{ .PackageName }}
+
+import (
+	"encoding/json"
+
+	v1alpha1 "{{ .CRDPackage }}"
+	"{{ .ParentPkg }}"
+	"{{ .RESTPkg }}"
+)
+
+// Project{{ .Resource }} converts CRD {{ .Resource }} to REST (visible fields only).
+// Uses JSON roundtrip: marshal CRD → unmarshal into REST, so hidden fields are
+// automatically dropped (REST types lack them).
+func Project{{ .Resource }}(crd *v1alpha1.{{ .Resource }}) *rest.{{ .Resource }} {
+	if crd == nil {
+		return nil
+	}
+
+	spec := project{{ .SpecType }}(crd.Spec)
+	status := project{{ .StatusType }}(crd.Status)
+	return &rest.{{ .Resource }}{
+		Spec:   spec,
+		Status: status,
+	}
+}
+
+func project{{ .SpecType }}(crd v1alpha1.{{ .SpecType }}) rest.{{ .SpecType }} {
+	data, _ := json.Marshal(crd)
+	var out rest.{{ .SpecType }}
+	_ = json.Unmarshal(data, &out)
+{{- range .SpecFields }}
+{{- if .IsMirror }}
+	out.{{ .GoName }} = Convert{{ .MirrorBase }}_v1beta1_to_v1alpha1(crd.{{ .GoName }})
+{{- end }}
+{{- end }}
+	return out
+}
+
+func project{{ .StatusType }}(crd v1alpha1.{{ .StatusType }}) rest.{{ .StatusType }} {
+	data, _ := json.Marshal(crd)
+	var out rest.{{ .StatusType }}
+	_ = json.Unmarshal(data, &out)
+	return out
+}
+
+// Unproject{{ .Resource }} converts REST {{ .SpecType }} to CRD with service-set enrichment.
+// Uses JSON roundtrip: marshal REST → unmarshal into CRD, then overlay service-set fields.
+func Unproject{{ .Resource }}(spec *rest.{{ .SpecType }}, enrichment *conversion.ServiceSetFields) *v1alpha1.{{ .SpecType }} {
+	if spec == nil {
+		return nil
+	}
+
+	data, _ := json.Marshal(spec)
+	var crdSpec v1alpha1.{{ .SpecType }}
+	_ = json.Unmarshal(data, &crdSpec)
+{{- range .SpecFields }}
+{{- if .IsMirror }}
+	crdSpec.{{ .GoName }} = Convert{{ .MirrorBase }}_v1alpha1_to_v1beta1(spec.{{ .GoName }})
+{{- end }}
+{{- end }}
+
+	if enrichment != nil {
+		enrichCRD(&crdSpec, enrichment)
+	}
+
+	return &crdSpec
+}
+
+// enrichCRD applies service-set fields from the enrichment struct onto the CRD spec.
+func enrichCRD(crdSpec *v1alpha1.{{ .SpecType }}, enrichment *conversion.ServiceSetFields) {
+	data, _ := json.Marshal(enrichment)
+	_ = json.Unmarshal(data, crdSpec)
+}
+{{ range .MirrorTypes }}
+// Convert{{ .BaseType }}_v1beta1_to_v1alpha1 converts upstream HyperShift to HyperFleet mirror type via JSON roundtrip.
+func Convert{{ .BaseType }}_v1beta1_to_v1alpha1(in interface{}) interface{} {
+	data, _ := json.Marshal(in)
+	var out interface{}
+	_ = json.Unmarshal(data, &out)
+	return out
+}
+
+// Convert{{ .BaseType }}_v1alpha1_to_v1beta1 converts HyperFleet mirror type to upstream HyperShift via JSON roundtrip.
+func Convert{{ .BaseType }}_v1alpha1_to_v1beta1(in interface{}) interface{} {
+	data, _ := json.Marshal(in)
+	var out interface{}
+	_ = json.Unmarshal(data, &out)
+	return out
+}
+{{ end }}
+`))
+
+func (g *Generator) generateConversionFunctions() error {
+	resources := g.discoverResources()
+
+	for _, resource := range resources {
+		specType := resource + "Spec"
+		if _, ok := g.typeInfos[specType]; !ok {
+			continue
+		}
+
+		code, err := g.renderConversionFunctions(resource)
+		if err != nil {
+			return fmt.Errorf("rendering conversions for %s: %w", resource, err)
+		}
+
+		filename := strings.ToLower(resource) + ".go"
+		if err := g.writeFormattedFile(filename, code); err != nil {
+			return fmt.Errorf("writing conversions for %s: %w", resource, err)
+		}
+	}
+	return nil
+}
+
+// discoverResources returns top-level resource names (types with Spec+Status).
+func (g *Generator) discoverResources() []string {
+	var resources []string
+	seen := make(map[string]bool)
+	for typeName := range g.typeInfos {
+		if strings.HasSuffix(typeName, "Spec") {
+			resource := strings.TrimSuffix(typeName, "Spec")
+			if _, hasStatus := g.typeInfos[resource+"Status"]; hasStatus && !seen[resource] {
+				// Exclude passthrough types — they are sub-types, not top-level resources
+				if !strings.Contains(resource, "Passthrough") {
+					seen[resource] = true
+					resources = append(resources, resource)
+				}
+			}
+		}
+	}
+	sort.Strings(resources)
+	return resources
+}
+
+func (g *Generator) renderConversionFunctions(resource string) (string, error) {
+	specType := resource + "Spec"
+	statusType := resource + "Status"
+
+	convPkgName := filepath.Base(g.OutputDir)
+	parentPkg := g.outputImportPath()
+	restPkg := parentPkg + "/" + convPkgName + "/rest"
+
+	specTI := g.typeInfos[specType]
+	var specFields []convFieldData
+	var mirrorTypes []mirrorConvData
+	mirrorSeen := make(map[string]bool)
+
+	if specTI != nil {
+		for _, fi := range specTI.Fields {
+			if fi.Hidden {
+				continue
+			}
+			cf := convFieldData{GoName: fi.GoName}
+			if IsMirrorType(fi.GoName) {
+				mapping := GetMirrorMapping(fi.GoName)
+				if mapping != nil {
+					baseType := strings.TrimPrefix(fi.GoType, "*")
+					baseType = strings.TrimPrefix(baseType, "[]")
+					if idx := strings.LastIndex(baseType, "."); idx != -1 {
+						baseType = baseType[idx+1:]
+					}
+					cf.IsMirror = true
+					cf.MirrorBase = baseType
+					if !mirrorSeen[baseType] {
+						mirrorSeen[baseType] = true
+						mirrorTypes = append(mirrorTypes, mirrorConvData{BaseType: baseType})
+					}
+				}
+			}
+			specFields = append(specFields, cf)
+		}
+	}
+
+	statusTI := g.typeInfos[statusType]
+	var statusFields []convFieldData
+	if statusTI != nil {
+		for _, fi := range statusTI.Fields {
+			if fi.Hidden {
+				continue
+			}
+			statusFields = append(statusFields, convFieldData{GoName: fi.GoName})
+		}
+	}
+
+	data := conversionData{
+		PackageName:  convPkgName,
+		CRDPackage:   g.CRDPackage,
+		ParentPkg:    parentPkg,
+		RESTPkg:      restPkg,
+		Resource:     resource,
+		SpecType:     specType,
+		StatusType:   statusType,
+		SpecFields:   specFields,
+		StatusFields: statusFields,
+		MirrorTypes:  mirrorTypes,
+	}
+
+	var buf bytes.Buffer
+	if err := conversionTmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("executing conversion template: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
+// --- Helpers ---
+
+func (g *Generator) outputImportPath() string {
+	if g.OutputPackage != "" {
+		return g.OutputPackage
+	}
+	return "github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/conversion"
+}
+
+func (g *Generator) ensureDir(dir string) error {
+	return os.MkdirAll(dir, 0755)
+}
+
+func (g *Generator) writeFormattedFile(relativePath, content string) error {
+	fullPath := filepath.Join(g.OutputDir, relativePath)
+	if err := g.ensureDir(filepath.Dir(fullPath)); err != nil {
+		return err
+	}
+
+	formatted, err := format.Source([]byte(content))
+	if err != nil {
+		formatted = []byte(content)
+	}
+
+	return os.WriteFile(fullPath, formatted, 0644)
+}
