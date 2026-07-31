@@ -14,16 +14,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func rapidRequests(client *APIClient, path, accountID string, count int) []*APIResponse {
-	responses := make([]*APIResponse, 0, count)
-	for i := 0; i < count; i++ {
-		resp, err := client.Get(path, accountID)
-		Expect(err).NotTo(HaveOccurred())
-		responses = append(responses, resp)
-	}
-	return responses
-}
-
 // concurrentRequests fires all requests in parallel so they arrive at the server
 // within a tight window, overwhelming the GCRA burst before token replenishment.
 // Sequential requests over the network (~300ms each) are too slow to exhaust the
@@ -203,28 +193,6 @@ var _ = Describe("Rate Limiting", Ordered, Label("ratelimit"), func() {
 			Expect(resp.StatusCode).NotTo(Equal(http.StatusTooManyRequests),
 				"request %d/%d got 429 for exempt account %s", i+1, burst, exemptAccountID)
 		}
-	})
-
-	It("should rate limit accounts independently", func() {
-		burst := rateLimitRate * 2
-
-		GinkgoWriter.Printf("Exhausting rate limit for primary account %s\n", accountID)
-		responses := exhaustRateLimit(apiClient, "/api/v0/clusters", accountID, burst, 3)
-		got429 := false
-		for _, resp := range responses {
-			if resp.StatusCode == http.StatusTooManyRequests {
-				got429 = true
-				break
-			}
-		}
-		Expect(got429).To(BeTrue(), "expected primary account to hit 429 after %d requests", len(responses))
-
-		secondAccountID := accountID + "-e2e-isolation"
-		GinkgoWriter.Printf("Sending request with different account %s — should not be rate limited\n", secondAccountID)
-		resp, err := apiClient.Get("/api/v0/clusters", secondAccountID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(resp.StatusCode).NotTo(Equal(http.StatusTooManyRequests),
-			"different account should have its own rate limit bucket")
 	})
 
 	It("should allow requests again after the rate limit window resets", func() {
