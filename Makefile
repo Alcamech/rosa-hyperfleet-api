@@ -1,5 +1,5 @@
 .PHONY: help build test test-unit test-integration lint clean \
-	build-hyperfleet-db build-operator build-api build-examples \
+	build-hyperfleet-db build-operator build-api \
 	test-hyperfleet-db test-operator test-operator-int test-api test-clientset \
 	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz test-e2e-sdk \
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
@@ -81,7 +81,6 @@ help:
 	@echo "  build-api            Platform API server"
 	@echo "  build-operator       Hyperfleet operator (manager + compactor)"
 	@echo "  build-hyperfleet-db  Hyperfleet DB library"
-	@echo "  build-examples       Compile SDK examples to clientset/examples/bin/"
 	@echo ""
 	@echo "Test:"
 	@echo "  test                 All tests (unit + integration)"
@@ -116,20 +115,6 @@ help:
 # ── Build ────────────────────────────────────────────────────────────────
 
 build: build-hyperfleet-db build-operator build-api
-
-build-examples:
-	@mkdir -p clientset/examples/bin
-	@for dir in clientset/examples/*/; do \
-		group=$$(basename "$$dir"); \
-		[ "$$group" = "util" ] && continue; \
-		[ "$$group" = "bin" ] && continue; \
-		for subdir in "$$dir"*/; do \
-			[ -f "$$subdir/main.go" ] || continue; \
-			name="$$group-$$(basename "$$subdir")"; \
-			echo "building $$name..."; \
-			cd clientset && go build -o "examples/bin/$$name" "./examples/$$group/$$(basename "$$subdir")" && cd ..; \
-		done; \
-	done
 
 build-hyperfleet-db:
 	cd hyperfleet-db && go build ./...

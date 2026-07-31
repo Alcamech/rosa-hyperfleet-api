@@ -213,7 +213,10 @@ restCfg := &k8srest.Config{
 }
 
 httpClient := &http.Client{Transport: transport.NewAdapter(sigv4)}
-restClient, _ := k8srest.RESTClientForConfigAndClient(restCfg, httpClient)
+restClient, err := k8srest.RESTClientForConfigAndClient(restCfg, httpClient)
+if err != nil {
+    return nil, fmt.Errorf("hyperfleet: building REST client: %w", err)
+}
 return &Clientset{generated: generatedclientset.New(restClient)}, nil
 ```
 

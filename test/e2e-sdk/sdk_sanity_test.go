@@ -44,7 +44,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -101,6 +103,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		subnetID string
 		iamOut   iamStackOutputs
 
+		awsCfg    aws.Config
 		cs        *hyperfleet.Clientset
 		apiClient *awstest.APIClient
 
@@ -168,7 +171,8 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		}
 		GinkgoWriter.Printf("Cluster name: %s\n", clusterName)
 
-		awsCfg, err := awsconfig.LoadDefaultConfig(ctx,
+		var err error
+		awsCfg, err = awsconfig.LoadDefaultConfig(ctx,
 			awsconfig.WithSharedConfigProfile(customerProfile),
 			awsconfig.WithRegion(region),
 		)
@@ -289,6 +293,13 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 
 		By("creating cluster via SDK")
 		subnetRef := subnetID
+		subnetOut, err := ec2.NewFromConfig(awsCfg).DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
+			SubnetIds: []string{subnetID},
+		})
+		Expect(err).ToNot(HaveOccurred(), "describing subnet %s", subnetID)
+		Expect(subnetOut.Subnets).ToNot(BeEmpty(), "subnet %s not found", subnetID)
+		zone := *subnetOut.Subnets[0].AvailabilityZone
+
 		cluster, err := cs.HyperfleetV1alpha1().Clusters(customerAccountID).Create(ctx, &v1alpha1.Cluster{
 			ObjectMeta: metav1.ObjectMeta{Name: clusterName},
 			Spec: v1alpha1.ClusterSpec{
@@ -301,7 +312,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 							RolesRef: iamOut.Roles,
 							CloudProviderConfig: &hypershiftv1beta1.AWSCloudProviderConfig{
 								VPC:    vpcID,
-								Zone:   region + "a",
+								Zone:   zone,
 								Subnet: &hypershiftv1beta1.AWSResourceReference{ID: &subnetRef},
 							},
 						},

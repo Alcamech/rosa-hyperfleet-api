@@ -18,6 +18,7 @@ package transport
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -81,6 +82,39 @@ func assertNoField(t *testing.T, m map[string]json.RawMessage, key string) {
 	}
 }
 
+// mustAdaptRequest calls adaptRequest and fails the test if it returns an error.
+func mustAdaptRequest(t *testing.T, a *Adapter, req *http.Request) *http.Request {
+	t.Helper()
+	out, err := a.adaptRequest(req)
+	if err != nil {
+		t.Fatalf("adaptRequest: unexpected error: %v", err)
+	}
+	return out
+}
+
+// mustAdaptResponse calls adaptResponse and fails the test if it returns an error.
+func mustAdaptResponse(t *testing.T, a *Adapter, resp *http.Response) *http.Response {
+	t.Helper()
+	out, err := a.adaptResponse(resp)
+	if err != nil {
+		t.Fatalf("adaptResponse: unexpected error: %v", err)
+	}
+	return out
+}
+
+// errReader returns the given error on Read.
+type errReader struct{ err error }
+
+func (e errReader) Read([]byte) (int, error) { return 0, e.err }
+
+// errCloser wraps a reader and returns the given error on Close.
+type errCloser struct {
+	io.Reader
+	err error
+}
+
+func (e errCloser) Close() error { return e.err }
+
 // adaptRequest tests
 
 func TestAdaptRequest_MetadataFlattenedToTopLevel(t *testing.T) {
@@ -88,7 +122,7 @@ func TestAdaptRequest_MetadataFlattenedToTopLevel(t *testing.T) {
 	req := putRequest("https://example.com/api/v0/clusters/uid-1",
 		`{"metadata":{"name":"my-cluster","uid":"uid-1","resourceVersion":"42","generation":3},"spec":{"foo":"bar"}}`)
 
-	adapted := a.adaptRequest(req)
+	adapted := mustAdaptRequest(t, a, req)
 	m := readRequestBody(adapted)
 
 	assertField(t, m, "name", `"my-cluster"`)
@@ -103,7 +137,7 @@ func TestAdaptRequest_SpecPassesThroughUnchanged(t *testing.T) {
 	req := putRequest("https://example.com/api/v0/clusters/uid-1",
 		`{"metadata":{"name":"c"},"spec":{"replicas":3}}`)
 
-	adapted := a.adaptRequest(req)
+	adapted := mustAdaptRequest(t, a, req)
 	m := readRequestBody(adapted)
 
 	assertField(t, m, "spec", `{"replicas":3}`)
@@ -114,10 +148,22 @@ func TestAdaptRequest_ClusterIDInjectedOnPOSTWithNamespace(t *testing.T) {
 	req := postRequest("https://example.com/api/v0/namespaces/cluster-uuid-123/nodepools",
 		`{"metadata":{"name":"np1"},"spec":{}}`)
 
-	adapted := a.adaptRequest(req)
+	adapted := mustAdaptRequest(t, a, req)
 	m := readRequestBody(adapted)
 
 	assertField(t, m, "cluster_id", `"cluster-uuid-123"`)
+}
+
+func TestAdaptRequest_ClusterIDNotInjectedOnClusterPOST(t *testing.T) {
+	a := newAdapter()
+	// Cluster creation: namespace is account ID, not a parent cluster ID.
+	req := postRequest("https://example.com/api/v0/namespaces/123456789012/clusters",
+		`{"metadata":{"name":"my-cluster"},"spec":{}}`)
+
+	adapted := mustAdaptRequest(t, a, req)
+	m := readRequestBody(adapted)
+
+	assertNoField(t, m, "cluster_id")
 }
 
 func TestAdaptRequest_ClusterIDNotOverwrittenIfAlreadyPresent(t *testing.T) {
@@ -125,7 +171,7 @@ func TestAdaptRequest_ClusterIDNotOverwrittenIfAlreadyPresent(t *testing.T) {
 	req := postRequest("https://example.com/api/v0/namespaces/cluster-uuid-123/nodepools",
 		`{"metadata":{"name":"np1"},"cluster_id":"existing-id","spec":{}}`)
 
-	adapted := a.adaptRequest(req)
+	adapted := mustAdaptRequest(t, a, req)
 	m := readRequestBody(adapted)
 
 	assertField(t, m, "cluster_id", `"existing-id"`)
@@ -136,7 +182,7 @@ func TestAdaptRequest_ClusterIDNotInjectedOnNonPOST(t *testing.T) {
 	req := putRequest("https://example.com/api/v0/namespaces/cluster-uuid-123/nodepools/np1",
 		`{"metadata":{"name":"np1"},"spec":{}}`)
 
-	adapted := a.adaptRequest(req)
+	adapted := mustAdaptRequest(t, a, req)
 	m := readRequestBody(adapted)
 
 	assertNoField(t, m, "cluster_id")
@@ -146,7 +192,7 @@ func TestAdaptRequest_NilBodyReturnedUnchanged(t *testing.T) {
 	a := newAdapter()
 	req := getRequest("https://example.com/api/v0/clusters")
 
-	adapted := a.adaptRequest(req)
+	adapted := mustAdaptRequest(t, a, req)
 	if adapted.Body != nil {
 		t.Error("expected nil body to remain nil")
 	}
@@ -157,7 +203,7 @@ func TestAdaptRequest_NoMetadataPassesThrough(t *testing.T) {
 	original := `{"spec":{"foo":"bar"}}`
 	req := putRequest("https://example.com/api/v0/clusters/id", original)
 
-	adapted := a.adaptRequest(req)
+	adapted := mustAdaptRequest(t, a, req)
 	b, _ := io.ReadAll(adapted.Body)
 	if string(b) != original {
 		t.Errorf("body = %q, want %q", string(b), original)
@@ -169,10 +215,30 @@ func TestAdaptRequest_InvalidJSONPassesThrough(t *testing.T) {
 	original := `not json`
 	req := putRequest("https://example.com/api/v0/clusters/id", original)
 
-	adapted := a.adaptRequest(req)
+	adapted := mustAdaptRequest(t, a, req)
 	b, _ := io.ReadAll(adapted.Body)
 	if string(b) != original {
 		t.Errorf("body = %q, want %q", string(b), original)
+	}
+}
+
+func TestAdaptRequest_ReadErrorPropagated(t *testing.T) {
+	a := newAdapter()
+	req, _ := http.NewRequest(http.MethodPut, "https://example.com/api/v0/clusters/id",
+		io.NopCloser(errReader{err: errors.New("read failure")}))
+
+	if _, err := a.adaptRequest(req); err == nil {
+		t.Error("expected error when body read fails")
+	}
+}
+
+func TestAdaptRequest_CloseErrorPropagated(t *testing.T) {
+	a := newAdapter()
+	req, _ := http.NewRequest(http.MethodPut, "https://example.com/api/v0/clusters/id",
+		errCloser{Reader: strings.NewReader(`{"metadata":{"name":"c"},"spec":{}}`), err: errors.New("close failure")})
+
+	if _, err := a.adaptRequest(req); err == nil {
+		t.Error("expected error when body close fails")
 	}
 }
 
@@ -187,7 +253,7 @@ func TestAdaptResponse_SingleItemLiftedIntoMetadata(t *testing.T) {
 		Header: make(http.Header),
 	}
 
-	out := a.adaptResponse(resp)
+	out := mustAdaptResponse(t, a, resp)
 	m := readResponseBody(out)
 
 	assertNoField(t, m, "id")
@@ -212,7 +278,7 @@ func TestAdaptResponse_ListItemsAdapted(t *testing.T) {
 		Header: make(http.Header),
 	}
 
-	out := a.adaptResponse(resp)
+	out := mustAdaptResponse(t, a, resp)
 	m := readResponseBody(out)
 
 	var items []map[string]json.RawMessage
@@ -237,7 +303,7 @@ func TestAdaptResponse_NonSuccessPassesThrough(t *testing.T) {
 		Header:     make(http.Header),
 	}
 
-	out := a.adaptResponse(resp)
+	out := mustAdaptResponse(t, a, resp)
 	b, _ := io.ReadAll(out.Body)
 	if string(b) != original {
 		t.Errorf("body changed on non-success response: %s", b)
@@ -253,7 +319,7 @@ func TestAdaptResponse_NoWireFieldsPassesThrough(t *testing.T) {
 		Header:     make(http.Header),
 	}
 
-	out := a.adaptResponse(resp)
+	out := mustAdaptResponse(t, a, resp)
 	b, _ := io.ReadAll(out.Body)
 	if string(b) != original {
 		t.Errorf("body unexpectedly changed: %s", b)
@@ -268,14 +334,39 @@ func TestAdaptResponse_MalformedListItemPassesThroughUnchanged(t *testing.T) {
 		Header:     make(http.Header),
 	}
 
-	// Should not panic; malformed item passes through as-is.
-	out := a.adaptResponse(resp)
+	out := mustAdaptResponse(t, a, resp)
 	m := readResponseBody(out)
 
 	var items []json.RawMessage
 	_ = json.Unmarshal(m["items"], &items)
 	if len(items) != 1 {
 		t.Fatalf("len(items) = %d, want 1", len(items))
+	}
+}
+
+func TestAdaptResponse_ReadErrorPropagated(t *testing.T) {
+	a := newAdapter()
+	resp := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(errReader{err: errors.New("read failure")}),
+		Header:     make(http.Header),
+	}
+
+	if _, err := a.adaptResponse(resp); err == nil {
+		t.Error("expected error when response body read fails")
+	}
+}
+
+func TestAdaptResponse_CloseErrorPropagated(t *testing.T) {
+	a := newAdapter()
+	resp := &http.Response{
+		StatusCode: 200,
+		Body:       errCloser{Reader: strings.NewReader(`{"id":"x","name":"y","spec":{}}`), err: errors.New("close failure")},
+		Header:     make(http.Header),
+	}
+
+	if _, err := a.adaptResponse(resp); err == nil {
+		t.Error("expected error when response body close fails")
 	}
 }
 

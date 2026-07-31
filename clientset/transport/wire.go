@@ -19,9 +19,11 @@ package transport
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 // FieldMapping declares a correspondence between a platform-api wire-format
@@ -45,14 +47,22 @@ func NewAdapter(inner http.RoundTripper) *Adapter {
 	return &Adapter{inner: inner, mappings: defaultMappings}
 }
 
+// RoundTrip implements http.RoundTripper. It rewrites the request body from
+// Kubernetes wire format to the platform-api flat format, adjusts pagination
+// query parameters, forwards the request via the inner transport, then rewrites
+// the response body back to Kubernetes format.
 func (a *Adapter) RoundTrip(req *http.Request) (*http.Response, error) {
-	req = a.adaptRequest(req)
+	var err error
+	req, err = a.adaptRequest(req)
+	if err != nil {
+		return nil, err
+	}
 	req = a.adaptListQuery(req)
 	resp, err := a.inner.RoundTrip(req)
 	if err != nil {
 		return nil, err
 	}
-	return a.adaptResponse(resp), nil
+	return a.adaptResponse(resp)
 }
 
 // adaptRequest transforms a Kubernetes-format request body into the platform-api
@@ -68,34 +78,36 @@ func (a *Adapter) RoundTrip(req *http.Request) (*http.Response, error) {
 // For namespaced POST requests the namespace segment encodes the parent resource
 // ID (e.g. clusterID); it is injected as "cluster_id" in the body before the
 // SigV4 transport strips the namespace from the URL.
-func (a *Adapter) adaptRequest(req *http.Request) *http.Request {
+func (a *Adapter) adaptRequest(req *http.Request) (*http.Request, error) {
 	if req.Body == nil {
-		return req
+		return req, nil
 	}
 
-	body, err := io.ReadAll(req.Body)
-	_ = req.Body.Close()
-	if err != nil {
-		req.Body = io.NopCloser(bytes.NewReader(body))
-		return req
+	body, readErr := io.ReadAll(req.Body)
+	closeErr := req.Body.Close()
+	if readErr != nil {
+		return nil, fmt.Errorf("reading request body: %w", readErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("closing request body: %w", closeErr)
 	}
 
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(body, &raw); err != nil {
 		req.Body = io.NopCloser(bytes.NewReader(body))
-		return req
+		return req, nil
 	}
 
 	metaJSON, ok := raw["metadata"]
 	if !ok {
 		req.Body = io.NopCloser(bytes.NewReader(body))
-		return req
+		return req, nil
 	}
 
 	var meta map[string]json.RawMessage
 	if err := json.Unmarshal(metaJSON, &meta); err != nil {
 		req.Body = io.NopCloser(bytes.NewReader(body))
-		return req
+		return req, nil
 	}
 
 	for _, fm := range a.mappings {
@@ -105,16 +117,27 @@ func (a *Adapter) adaptRequest(req *http.Request) *http.Request {
 	}
 	delete(raw, "metadata")
 
-	// For namespaced POST requests the Kubernetes client encodes the parent
-	// resource ID (e.g. clusterID) as the URL namespace segment. The platform
-	// API expects it as a "cluster_id" body field instead, so inject it here
-	// before the SigV4 transport strips the namespace from the URL.
+	// The generated client encodes the caller-supplied Go "namespace" value in
+	// the URL path as /namespaces/{value}/. For child resources (e.g. nodepools)
+	// that value is the parent cluster ID, which the platform API expects as
+	// "cluster_id" in the request body. The SigV4 transport later strips the
+	// /namespaces/{value}/ segment from the URL, so the injection must happen here.
+	//
+	// Injection is skipped for /clusters routes because their URL encodes the
+	// account ID, not a parent resource ID — injecting cluster_id there would
+	// be wrong. (Currently harmless because the server ignores unknown fields,
+	// but semantically incorrect.)
+	//
+	// Note: "cluster_id" is currently the only parent resource field needed.
+	// If a new resource introduces a different parent type, this logic will need
+	// to be extended to handle that field name.
 	if req.Method == http.MethodPost {
 		if m := namespaceRE.FindStringSubmatchIndex(req.URL.Path); m != nil {
-			ns := req.URL.Path[m[2]:m[3]]
-			if ns != "" {
+			value := req.URL.Path[m[2]:m[3]]
+			tail := req.URL.Path[m[1]:]
+			if value != "" && !strings.HasPrefix(tail, "/clusters") {
 				if _, exists := raw["cluster_id"]; !exists {
-					raw["cluster_id"], _ = json.Marshal(ns)
+					raw["cluster_id"], _ = json.Marshal(value)
 				}
 			}
 		}
@@ -123,14 +146,14 @@ func (a *Adapter) adaptRequest(req *http.Request) *http.Request {
 	adapted, err := json.Marshal(raw)
 	if err != nil {
 		req.Body = io.NopCloser(bytes.NewReader(body))
-		return req
+		return req, nil
 	}
 
 	req = req.Clone(req.Context())
 	req.Body = io.NopCloser(bytes.NewReader(adapted))
 	req.ContentLength = int64(len(adapted))
 
-	return req
+	return req, nil
 }
 
 // adaptResponse transforms a platform-api wire response into the Kubernetes
@@ -143,22 +166,24 @@ func (a *Adapter) adaptRequest(req *http.Request) *http.Request {
 // The Kubernetes runtime decoder populates v1alpha1.Cluster by JSON field name,
 // so it expects the cluster name in metadata.name, the UUID in metadata.uid, etc.
 // Fields that have no mapping are preserved as-is (spec, status pass through).
-func (a *Adapter) adaptResponse(resp *http.Response) *http.Response {
+func (a *Adapter) adaptResponse(resp *http.Response) (*http.Response, error) {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return resp
+		return resp, nil
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if err != nil {
-		resp.Body = io.NopCloser(bytes.NewReader(body))
-		return resp
+	body, readErr := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
+	if readErr != nil {
+		return nil, fmt.Errorf("reading response body: %w", readErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("closing response body: %w", closeErr)
 	}
 
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(body, &raw); err != nil {
 		resp.Body = io.NopCloser(bytes.NewReader(body))
-		return resp
+		return resp, nil
 	}
 
 	var adapted []byte
@@ -172,7 +197,7 @@ func (a *Adapter) adaptResponse(resp *http.Response) *http.Response {
 
 	resp.Body = io.NopCloser(bytes.NewReader(adapted))
 	resp.ContentLength = int64(len(adapted))
-	return resp
+	return resp, nil
 }
 
 // hasWireField reports whether any mapped wire field is present in raw,

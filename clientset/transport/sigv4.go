@@ -71,6 +71,10 @@ func New(inner http.RoundTripper, awsCfg aws.Config, region, accountID, callerAR
 	}
 }
 
+// RoundTrip implements http.RoundTripper. It rewrites the URL to remove the
+// /namespaces/{ns} segment injected by client-gen, sets the X-Amz-Account-Id
+// and X-Amz-Caller-Arn signed headers, hashes the body, signs the request with
+// AWS SigV4, and forwards it via the inner transport.
 func (t *SigV4RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Clone to avoid mutating the caller's request.
 	req = req.Clone(req.Context())
@@ -121,12 +125,15 @@ func (t *SigV4RoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 func hashBody(req *http.Request) (string, error) {
 	var body []byte
 	if req.Body != nil {
-		var err error
-		body, err = io.ReadAll(req.Body)
-		if err != nil {
-			return "", err
+		var readErr error
+		body, readErr = io.ReadAll(req.Body)
+		closeErr := req.Body.Close()
+		if readErr != nil {
+			return "", readErr
 		}
-		_ = req.Body.Close()
+		if closeErr != nil {
+			return "", closeErr
+		}
 		req.Body = io.NopCloser(bytes.NewReader(body))
 	}
 	sum := sha256.Sum256(body)

@@ -19,6 +19,7 @@ package wrappers
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -60,6 +61,12 @@ func (c *clusterClient) Get(ctx context.Context, name string, opts GetOptions) (
 }
 
 func (c *clusterClient) List(ctx context.Context, opts ListOptions) (*v1alpha1.ClusterList, error) {
+	if opts.Limit < 0 || opts.Limit > 100 {
+		return nil, fmt.Errorf("List: Limit must be between 0 and 100, got %d", opts.Limit)
+	}
+	if opts.Offset < 0 {
+		return nil, fmt.Errorf("List: Offset must be non-negative, got %d", opts.Offset)
+	}
 	mo := metav1.ListOptions{Limit: opts.Limit}
 	if opts.Offset > 0 {
 		mo.Continue = strconv.FormatInt(opts.Offset, 10)
@@ -103,6 +110,9 @@ func (c *clusterClient) WaitUntil(ctx context.Context, id string, condition func
 			return false, err
 		}
 		return condition(obj), nil
+	}
+	if interval <= 0 {
+		return fmt.Errorf("WaitUntil: interval must be positive, got %v", interval)
 	}
 	if done, err := poll(); err != nil || done {
 		return err
@@ -150,6 +160,12 @@ func (c *nodePoolClient) Get(ctx context.Context, name string, opts GetOptions) 
 }
 
 func (c *nodePoolClient) List(ctx context.Context, opts ListOptions) (*v1alpha1.NodePoolList, error) {
+	if opts.Limit < 0 || opts.Limit > 100 {
+		return nil, fmt.Errorf("List: Limit must be between 0 and 100, got %d", opts.Limit)
+	}
+	if opts.Offset < 0 {
+		return nil, fmt.Errorf("List: Offset must be non-negative, got %d", opts.Offset)
+	}
 	mo := metav1.ListOptions{Limit: opts.Limit}
 	if opts.Offset > 0 {
 		mo.Continue = strconv.FormatInt(opts.Offset, 10)
@@ -193,6 +209,9 @@ func (c *nodePoolClient) WaitUntil(ctx context.Context, id string, condition fun
 			return false, err
 		}
 		return condition(obj), nil
+	}
+	if interval <= 0 {
+		return fmt.Errorf("WaitUntil: interval must be positive, got %v", interval)
 	}
 	if done, err := poll(); err != nil || done {
 		return err

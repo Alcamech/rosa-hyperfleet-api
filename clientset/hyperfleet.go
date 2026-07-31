@@ -60,11 +60,17 @@ func (c *Clientset) HyperfleetV1alpha1() wrappers.V1alpha1Interface {
 // NewForConfig creates a Clientset from a Config, wiring AWS SigV4 authentication
 // and pointing the underlying REST client at /api/v0.
 func NewForConfig(cfg *hfrest.Config) (*Clientset, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("hyperfleet: Config must not be nil")
+	}
 	if cfg.Host == "" {
 		return nil, fmt.Errorf("hyperfleet: Config.Host is required")
 	}
 	if cfg.AccountID == "" {
 		return nil, fmt.Errorf("hyperfleet: Config.AccountID is required")
+	}
+	if cfg.AWSConfig.Credentials == nil {
+		return nil, fmt.Errorf("hyperfleet: Config.AWSConfig.Credentials must not be nil; use awsconfig.LoadDefaultConfig to populate it")
 	}
 
 	region, err := cfg.ResolveRegion()

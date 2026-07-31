@@ -85,11 +85,12 @@ package {{.Package}}
 
 import (
 	"context"
+	"fmt"
 	"strconv"
-	"time"
-
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+{{if .AnyWait}}	"time"
+{{end}}
+{{if .AnyWait}}	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+{{end}}	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 
@@ -128,6 +129,12 @@ func (c *{{.LowerName}}Client) Get(ctx context.Context, name string, opts GetOpt
 }
 
 func (c *{{.LowerName}}Client) List(ctx context.Context, opts ListOptions) (*v1alpha1.{{.Name}}List, error) {
+	if opts.Limit < 0 || opts.Limit > 100 {
+		return nil, fmt.Errorf("List: Limit must be between 0 and 100, got %d", opts.Limit)
+	}
+	if opts.Offset < 0 {
+		return nil, fmt.Errorf("List: Offset must be non-negative, got %d", opts.Offset)
+	}
 	mo := metav1.ListOptions{Limit: opts.Limit}
 	if opts.Offset > 0 {
 		mo.Continue = strconv.FormatInt(opts.Offset, 10)
@@ -171,6 +178,9 @@ func (c *{{.LowerName}}Client) WaitUntil(ctx context.Context, id string, conditi
 			return false, err
 		}
 		return condition(obj), nil
+	}
+	if interval <= 0 {
+		return fmt.Errorf("WaitUntil: interval must be positive, got %v", interval)
 	}
 	if done, err := poll(); err != nil || done {
 		return err
@@ -267,9 +277,12 @@ func generateMappings(inputDir, outputDir, pkg, header string) {
 		if err := f.Close(); err != nil {
 			fatalf("closing %s: %v", outPath, err)
 		}
+		fmt.Printf("wire-gen: wrote %s\n", outPath)
 	}()
 
-	fmt.Fprint(f, header)
+	if _, err := fmt.Fprint(f, header); err != nil {
+		fatalf("writing header to %s: %v", outPath, err)
+	}
 
 	tmpl := template.Must(template.New("mappings").Parse(mappingsTmpl))
 	if err := tmpl.Execute(f, map[string]any{
@@ -278,8 +291,6 @@ func generateMappings(inputDir, outputDir, pkg, header string) {
 	}); err != nil {
 		fatalf("rendering template: %v", err)
 	}
-
-	fmt.Printf("wire-gen: wrote %s\n", outPath)
 }
 
 // collectMappings parses all Go source files in dir and extracts unique
@@ -332,21 +343,34 @@ func generateWrappers(inputDir, outputDir, pkg, typedPkgImport, apiPkgImport, he
 		if err := f.Close(); err != nil {
 			fatalf("closing %s: %v", outPath, err)
 		}
+		fmt.Printf("wire-gen: wrote %s\n", outPath)
 	}()
 
-	fmt.Fprint(f, header)
+	if _, err := fmt.Fprint(f, header); err != nil {
+		fatalf("writing header to %s: %v", outPath, err)
+	}
+
+	anyWait, anyWatchDisabled := false, false
+	for _, t := range types {
+		if t.Wait {
+			anyWait = true
+		}
+		if t.WatchDisabled {
+			anyWatchDisabled = true
+		}
+	}
 
 	tmpl := template.Must(template.New("wrappers").Parse(wrappersTmpl))
 	if err := tmpl.Execute(f, map[string]any{
-		"Package":        pkg,
-		"ApiPkgImport":   apiPkgImport,
-		"TypedPkgImport": typedPkgImport,
-		"Types":          types,
+		"Package":          pkg,
+		"ApiPkgImport":     apiPkgImport,
+		"TypedPkgImport":   typedPkgImport,
+		"Types":            types,
+		"AnyWait":          anyWait,
+		"AnyWatchDisabled": anyWatchDisabled,
 	}); err != nil {
 		fatalf("rendering template: %v", err)
 	}
-
-	fmt.Printf("wire-gen: wrote %s\n", outPath)
 }
 
 // collectResourceTypes scans all Go source files in dir for type declarations

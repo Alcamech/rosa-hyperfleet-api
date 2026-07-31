@@ -162,7 +162,7 @@ In v1, the SDK was released separately from the backend. The v2 api will support
 
 The v2 SDK generation pipeline runs from CRD type definitions directly:
 
-```
+```text
 Go types (api/v1alpha1/*.go)
     ↓ client-gen (k8s.io/code-generator)
     ↓ Typed clientset: Create/Get/List/Update/Delete per resource
@@ -181,7 +181,7 @@ The entire pipeline runs as `make generate-clientset`.
 
 ### Dynamic Generation
 
-Goal: the v2 SDK generation is fully automated as part of the `make generate-clientset` target. When a developer adds or modifies a field in the Go types, runs `make generate-clientset`, and gets an updated clientset and wrappers in one pass. This is achievable because the entire chain derives from CRD type annotations — no manual model definitions to maintain.
+Goal: the v2 SDK generation is fully automated as part of the `make generate-clientset` target. When a developer adds or modifies a field in the Go types, runs `make generate-clientset`, and gets an updated clientset and wrappers in one pass. This is achievable because the entire chain derives from CRD-type annotations — no manual model definitions to maintain.
 
 ### Interface Decision
 
