@@ -53,3 +53,38 @@ make build-api-codegen     # Build all 7 generator binaries
 make test-api-codegen      # Run tests
 make coverage-api-codegen  # Generate coverage report
 ```
+
+## Makefile codegen pipeline
+
+The top-level Makefile exposes the following targets for running the codegen pipeline:
+
+| Target | Description |
+|--------|-------------|
+| `codegen-passthrough` | Generate passthrough types from HyperShift into `api/v1alpha1/` |
+| `codegen-registry` | Generate field metadata registry from `+hyperfleet:` markers |
+| `codegen-verify` | Verify codegen outputs compile (`api` + `platform-api/internal/codegen/`) |
+| `codegen` | Run full pipeline: passthrough + registry + verify |
+| `verify-codegen` | Fail if codegen outputs are out of date (git diff check) |
+
+### Dependency chain
+
+```
+codegen
+  └─ codegen-verify
+       └─ codegen-registry
+            ├─ generate          (controller-gen deepcopy on api/...)
+            └─ build-api-codegen (builds marker-scanner + other tools)
+                 └─ marker-scanner scans api/v1alpha1 → platform-api/internal/codegen/registry/field_metadata.go
+```
+
+`codegen-passthrough` is intentionally **not** in the `codegen` chain yet — it needs to be run manually since `passthrough-gen` rewrites `api/v1alpha1/` files that are currently hand-curated (`hostedclusterspec.passthrough.go`). Once the passthrough codegen is fully wired in a future PR, it can be chained in.
+
+### Migration notes (from ROSAENG-61802 branch)
+
+The codegen targets were originally developed on the `ROSAENG-61802-field-validation-v2` branch targeting `api/public/v2alpha1/`. They were ported and refactored for the current type layout:
+
+- **Paths**: `api/public/v2alpha1/` → `api/v1alpha1/`
+- **Package**: `v2alpha1` → `v1alpha1`
+- **No `generate-public-deepcopy`**: Eliminated — the existing `generate` target already runs controller-gen on `api/...` which covers `v1alpha1`
+- **`codegen-registry`** depends on `generate` instead of `generate-public-deepcopy`
+- **`verify-codegen`** diffs `api/v1alpha1/` instead of `api/public/v2alpha1/`

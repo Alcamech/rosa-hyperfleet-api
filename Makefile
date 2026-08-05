@@ -6,6 +6,7 @@
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
 	fmt vet verify deps \
 	manifests generate generate-clientset verify-clientset setup-envtest \
+	codegen-passthrough codegen-registry codegen-verify codegen verify-codegen \
 	image-api image-operator image-push-api image-push-operator
 
 # ── Configuration ────────────────────────────────────────────────────────
@@ -109,6 +110,11 @@ help:
 	@echo "  generate             Generate deepcopy methods"
 	@echo "  generate-clientset         Generate typed client SDK from CRD types"
 	@echo "  verify-clientset           Fail if generated clientset is out of date"
+	@echo "  codegen-passthrough  Generate passthrough types from HyperShift"
+	@echo "  codegen-registry     Generate field metadata registry from markers"
+	@echo "  codegen-verify       Verify codegen outputs compile"
+	@echo "  codegen              Run full codegen pipeline (passthrough + registry + verify)"
+	@echo "  verify-codegen       Fail if codegen outputs are out of date"
 	@echo "  setup-envtest        Install envtest binaries (etcd, kube-apiserver)"
 	@echo "  deps                 Download and tidy all modules"
 	@echo ""
@@ -314,6 +320,28 @@ generate-clientset: $(CLIENT_GEN) $(WIRE_GEN)
 
 verify-clientset: generate-clientset
 	git diff --exit-code clientset/
+
+codegen-passthrough: build-api-codegen
+	cd api && ../bin/passthrough-gen \
+		-import-path github.com/openshift/hypershift/api/hypershift/v1beta1 \
+		-types HostedClusterSpec,NodePoolSpec \
+		-output-dir v1alpha1 \
+		-package v1alpha1
+
+codegen-registry: generate build-api-codegen
+	./bin/marker-scanner \
+		-input-dirs api/v1alpha1 \
+		-output-file platform-api/internal/codegen/registry/field_metadata.go
+
+codegen-verify: codegen-registry
+	cd api && go build ./...
+	cd platform-api && go build ./internal/codegen/...
+
+codegen: codegen-verify
+
+verify-codegen: codegen
+	git diff --exit-code api/v1alpha1/zz_generated.deepcopy.go
+	git diff --exit-code platform-api/internal/codegen/registry/
 
 ENVTEST_BIN_DIR ?= $(shell pwd)/.envtest
 
