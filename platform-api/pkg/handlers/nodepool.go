@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/internal/codegen/featuregate"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
@@ -116,7 +117,8 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("creating nodepool", "account_id", accountID, "cluster_id", req.ClusterID, "nodepool_name", req.Name)
 
-	cr, err := hyperfleetdb.PlatformCreateToNodePoolCR(accountID, &req)
+	internalPoolID := uuid.New().String()
+	cr, err := hyperfleetdb.PlatformCreateToNodePoolCR(accountID, internalPoolID, &req)
 	if err != nil {
 		h.logger.Error("failed to convert nodepool spec", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-CREATE-002", "Invalid nodepool spec")
@@ -193,11 +195,17 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	snapshot := cr.Spec
+
 	if err := hyperfleetdb.ApplyPlatformUpdateToNodePoolCR(cr, &req); err != nil {
 		h.logger.Error("failed to merge nodepool spec", "error", err)
 		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-002", "Invalid nodepool spec")
 		return
 	}
+
+	// Restore service-set fields wiped by the full spec replacement.
+	cr.Spec.AccountID = snapshot.AccountID
+	cr.Spec.InternalPoolID = snapshot.InternalPoolID
 
 	if err := h.db.UpdateNodePool(ctx, cr); err != nil {
 		h.logger.Error("failed to update nodepool", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)

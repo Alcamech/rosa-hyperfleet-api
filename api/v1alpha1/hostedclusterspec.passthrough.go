@@ -36,8 +36,8 @@ type HostedClusterSpecPassthrough struct {
 	// +hyperfleet:write-mode=service-set
 	Channel string `json:"channel,omitempty"`
 	// platform specifies the underlying infrastructure provider for the cluster
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
 	Platform hypershiftv1beta1.PlatformSpec `json:"platform"`
 	// kubeAPIServerDNSName specifies a desired DNS name to resolve to the KAS.
 	// +k8s:openapi-gen=false
@@ -56,8 +56,8 @@ type HostedClusterSpecPassthrough struct {
 	// +hyperfleet:write-mode=service-set
 	DNS hypershiftv1beta1.DNSSpec `json:"dns,omitempty"`
 	// networking specifies network configuration for the hosted cluster.
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
 	Networking hypershiftv1beta1.ClusterNetworking `json:"networking"`
 	// autoscaling specifies auto-scaling behavior that applies to all NodePools
 	// +k8s:openapi-gen=false
@@ -69,8 +69,8 @@ type HostedClusterSpecPassthrough struct {
 	// +optional
 	AutoNode hypershiftv1beta1.AutoNode `json:"autoNode,omitzero"`
 	// etcd specifies configuration for the control plane etcd cluster. The
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
 	Etcd hypershiftv1beta1.EtcdSpec `json:"etcd"`
 	// services specifies how individual control plane services endpoints are published for consumption.
 	// +k8s:openapi-gen=false
@@ -96,7 +96,7 @@ type HostedClusterSpecPassthrough struct {
 	// configuration specifies configuration for individual OCP components in the
 	// +k8s:openapi-gen=true
 	// +hyperfleet:write-mode=service-set
-	Configuration *hypershiftv1beta1.ClusterConfiguration `json:"configuration,omitempty"`
+	Configuration *ClusterConfiguration `json:"configuration,omitempty"`
 	// operatorConfiguration specifies configuration for individual OCP operators in the cluster.
 	// +k8s:openapi-gen=true
 	// +hyperfleet:write-mode=service-set
@@ -106,8 +106,8 @@ type HostedClusterSpecPassthrough struct {
 	// +hyperfleet:write-mode=service-set
 	AuditWebhook *corev1.LocalObjectReference `json:"auditWebhook,omitempty"`
 	// imageContentSources specifies image mirrors that can be used by cluster
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
 	// +kubebuilder:validation:MaxItems=50
 	ImageContentSources []hypershiftv1beta1.ImageContentSource `json:"imageContentSources,omitempty"`
 	// additionalTrustBundle is a local reference to a ConfigMap that must have a "ca-bundle.crt" key
