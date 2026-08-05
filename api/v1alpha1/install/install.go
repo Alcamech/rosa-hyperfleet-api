@@ -18,7 +18,7 @@ limitations under the License.
 package install
 
 import (
-	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
+	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 

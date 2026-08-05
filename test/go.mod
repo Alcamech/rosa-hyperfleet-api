@@ -9,8 +9,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.45.0
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
+	github.com/openshift-online/rosa-hyperfleet-api/api v0.0.0
 	github.com/openshift-online/rosa-hyperfleet-api/clientset v0.0.0
-	github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api v0.0.0
 	github.com/openshift/hypershift/api v0.0.0-20260625052409-9acec4759a16
 	k8s.io/apimachinery v0.36.0
 )
@@ -75,6 +75,6 @@ require (
 )
 
 replace (
+	github.com/openshift-online/rosa-hyperfleet-api/api => ../api
 	github.com/openshift-online/rosa-hyperfleet-api/clientset => ../clientset
-	github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api => ../hyperfleet-operator/api
 )

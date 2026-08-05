@@ -22,9 +22,9 @@ make help    # full target list
 
 ```
 hyperfleet-db/go.mod             ← standalone
-hyperfleet-operator/api/go.mod   ← standalone (CRD types)
-hyperfleet-operator/go.mod       ← requires: hyperfleet-db, hyperfleet-operator/api
-platform-api/go.mod              ← requires: hyperfleet-db, hyperfleet-operator/api
+api/go.mod                       ← standalone (CRD types)
+hyperfleet-operator/go.mod       ← requires: hyperfleet-db, api
+platform-api/go.mod              ← requires: hyperfleet-db, api
 ```
 
 ## Docs

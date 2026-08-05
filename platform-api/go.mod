@@ -3,8 +3,8 @@ module github.com/openshift-online/rosa-hyperfleet-api/platform-api
 go 1.26.3
 
 replace (
+	github.com/openshift-online/rosa-hyperfleet-api/api => ../api
 	github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db => ../hyperfleet-db
-	github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api => ../hyperfleet-operator/api
 )
 
 require (
@@ -20,8 +20,8 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/onsi/ginkgo/v2 v2.28.1
+	github.com/openshift-online/rosa-hyperfleet-api/api v0.0.0
 	github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db v0.0.0
-	github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api v0.0.0
 	github.com/openshift/hypershift/api v0.0.0-20260625052409-9acec4759a16
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.21.0

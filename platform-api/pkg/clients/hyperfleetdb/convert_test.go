@@ -3,7 +3,7 @@ package hyperfleetdb
 import (
 	"testing"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
+	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/types"
