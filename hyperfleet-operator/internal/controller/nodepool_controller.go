@@ -109,7 +109,10 @@ func (r *NodePoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	statusPrefix := dynamo.StatusPrefix(mc)
 
 	// Generate NodePool resource and create ApplyDesire.
-	m := render.NodePoolResource(&nodePool, &cluster)
+	m, err := render.NodePoolResource(&nodePool, &cluster)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("render nodepool resource: %w", err)
+	}
 	ns := m.Namespace
 
 	docID := dynamo.NewDocumentID(taskKey, m.Group, m.Version, m.Resource, ns, m.Name)
@@ -213,7 +216,10 @@ func (r *NodePoolReconciler) reconcileDelete(ctx context.Context, nodePool *hype
 		specsPrefix := dynamo.SpecsPrefix(mc)
 		statusPrefix := dynamo.StatusPrefix(mc)
 
-		m := render.NodePoolResource(nodePool, cluster)
+		m, err := render.NodePoolResource(nodePool, cluster)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("render nodepool resource for deletion: %w", err)
+		}
 		ns := m.Namespace
 
 		// Switch the ApplyDesire to Type=Delete in-place, using the same

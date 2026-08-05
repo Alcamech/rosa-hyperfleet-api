@@ -17,7 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -36,11 +35,39 @@ const (
 // NodePoolSpec defines the desired state of a NodePool.
 // The parent Cluster is identified by the shared metadata.Namespace (cluster UUID).
 type NodePoolSpec struct {
-	// NodePool is the full HyperShift NodePoolSpec. The customer provides replicas,
-	// platform, release, etc. The operator overrides ClusterName and adds system
-	// resource tags at render time.
+	// DisplayName is a human-readable name for the node pool.
+	// +hyperfleet:write-mode=mutable
+	// +kubebuilder:validation:MaxLength=256
+	// +optional
+	DisplayName string `json:"displayName,omitempty"`
+
+	// AutoRepair controls whether unhealthy nodes are automatically replaced.
+	// +hyperfleet:write-mode=mutable
+	// +optional
+	AutoRepair *bool `json:"autoRepair,omitempty"`
+
+	// Labels are customer-defined labels applied to nodes in this pool.
+	// +hyperfleet:write-mode=mutable
+	// +kubebuilder:validation:MaxProperties=100
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+
+	// AccountID is the AWS account that owns this node pool.
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
+	// +optional
+	AccountID string `json:"accountId,omitempty"`
+
+	// InternalPoolID is a platform-assigned unique identifier.
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
+	// +optional
+	InternalPoolID string `json:"internalPoolId,omitempty"`
+
+	// NodePool contains the upstream HyperShift fields, mirrored as
+	// passthrough types with per-field visibility and write-mode markers.
 	// +kubebuilder:validation:Required
-	NodePool hypershiftv1beta1.NodePoolSpec `json:"nodePool"`
+	NodePool NodePoolSpecPassthrough `json:"nodePool"`
 }
 
 // NodePoolStatus defines the observed state of a NodePool.

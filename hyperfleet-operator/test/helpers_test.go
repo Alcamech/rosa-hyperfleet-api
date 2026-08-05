@@ -140,7 +140,7 @@ func newTestCluster(name string) *hyperfleetv1alpha1.Cluster {
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "cluster-e2e-cluster-id"},
 		Spec: hyperfleetv1alpha1.ClusterSpec{
 			CreatorARN: "arn:aws:iam::111222333444:user/e2etester",
-			HostedCluster: hypershiftv1beta1.HostedClusterSpec{
+			HostedCluster: hyperfleetv1alpha1.HostedClusterSpecPassthrough{
 				Release:    hypershiftv1beta1.Release{Image: "quay.io/ocp:4.17"},
 				IssuerURL:  "https://oidc.e2e.example.com/" + name,
 				PullSecret: corev1.LocalObjectReference{Name: "pull-secret"},
@@ -206,7 +206,7 @@ func newTestNodePool() *hyperfleetv1alpha1.NodePool {
 	return &hyperfleetv1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{Name: "e2e-nodepool", Namespace: "cluster-e2e-cluster-id"},
 		Spec: hyperfleetv1alpha1.NodePoolSpec{
-			NodePool: hypershiftv1beta1.NodePoolSpec{
+			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
 				ClusterName: "e2e-test-01",
 				Replicas:    ptr.To(int32(3)),
 				Management: hypershiftv1beta1.NodePoolManagement{

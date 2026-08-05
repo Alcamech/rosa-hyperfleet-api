@@ -303,7 +303,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		cluster, err := cs.HyperfleetV1alpha1().Clusters(customerAccountID).Create(ctx, &v1alpha1.Cluster{
 			ObjectMeta: metav1.ObjectMeta{Name: clusterName},
 			Spec: v1alpha1.ClusterSpec{
-				HostedCluster: hypershiftv1beta1.HostedClusterSpec{
+				HostedCluster: v1alpha1.HostedClusterSpecPassthrough{
 					Release: hypershiftv1beta1.Release{Image: version},
 					Platform: hypershiftv1beta1.PlatformSpec{
 						Type: hypershiftv1beta1.AWSPlatform,
@@ -376,7 +376,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		np, err := cs.HyperfleetV1alpha1().NodePools(clusterID).Create(ctx, &v1alpha1.NodePool{
 			ObjectMeta: metav1.ObjectMeta{Name: npName},
 			Spec: v1alpha1.NodePoolSpec{
-				NodePool: hypershiftv1beta1.NodePoolSpec{
+				NodePool: v1alpha1.NodePoolSpecPassthrough{
 					ClusterName: clusterName,
 					Replicas:    &initialReplicas,
 					Platform: hypershiftv1beta1.NodePoolPlatform{
@@ -428,7 +428,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		extraNp, err := cs.HyperfleetV1alpha1().NodePools(clusterID).Create(ctx, &v1alpha1.NodePool{
 			ObjectMeta: metav1.ObjectMeta{Name: extraNpName},
 			Spec: v1alpha1.NodePoolSpec{
-				NodePool: hypershiftv1beta1.NodePoolSpec{
+				NodePool: v1alpha1.NodePoolSpecPassthrough{
 					ClusterName: clusterName,
 					Replicas:    &extraReplicas,
 					Platform: hypershiftv1beta1.NodePoolPlatform{

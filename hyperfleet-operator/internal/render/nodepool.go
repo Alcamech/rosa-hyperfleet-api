@@ -11,13 +11,16 @@ import (
 )
 
 // NodePoolResource generates the HyperShift NodePool resource for the MC.
-func NodePoolResource(nodePool *hyperfleetv1alpha1.NodePool, cluster *hyperfleetv1alpha1.Cluster) Resource {
+func NodePoolResource(nodePool *hyperfleetv1alpha1.NodePool, cluster *hyperfleetv1alpha1.Cluster) (Resource, error) {
 	clusterID := ClusterIDFromNamespace(cluster.Namespace)
 	clusterName := cluster.Name // human-readable
 	ns := cluster.Namespace     // already "cluster-<uuid>"
 	npName := fmt.Sprintf("%s-%s", clusterName, nodePool.Name)
 
-	npSpec := nodePool.Spec.NodePool.DeepCopy()
+	npSpec, err := toNodePoolSpec(&nodePool.Spec.NodePool)
+	if err != nil {
+		return Resource{}, fmt.Errorf("converting NodePoolSpec for nodepool %s/%s: %w", ns, npName, err)
+	}
 	npSpec.ClusterName = clusterName
 	npSpec.Release.Image = "quay.io/openshift-release-dev/ocp-release:5.0.0-ec.2-multi"
 
@@ -66,5 +69,5 @@ func NodePoolResource(nodePool *hyperfleetv1alpha1.NodePool, cluster *hyperfleet
 			},
 			Spec: *npSpec,
 		},
-	}
+	}, nil
 }

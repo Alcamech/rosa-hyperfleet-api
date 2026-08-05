@@ -14,7 +14,7 @@ func TestPlatformCreateToNodePoolCR_SetsAccountLabel(t *testing.T) {
 		ClusterID: "test-cluster-id",
 		Name:      "my-nodepool",
 		Spec: &hyperfleetv1alpha1.NodePoolSpec{
-			NodePool: hypershiftv1beta1.NodePoolSpec{
+			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
 				Platform: hypershiftv1beta1.NodePoolPlatform{
 					Type: hypershiftv1beta1.AWSPlatform,
 					AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
@@ -43,7 +43,7 @@ func TestPlatformCreateToClusterCR_SetsAccountLabel(t *testing.T) {
 	req := &types.ClusterCreateRequest{
 		Name: "my-cluster",
 		Spec: &hyperfleetv1alpha1.ClusterSpec{
-			HostedCluster: hypershiftv1beta1.HostedClusterSpec{
+			HostedCluster: hyperfleetv1alpha1.HostedClusterSpecPassthrough{
 				Platform: hypershiftv1beta1.PlatformSpec{
 					Type: hypershiftv1beta1.AWSPlatform,
 					AWS: &hypershiftv1beta1.AWSPlatformSpec{
