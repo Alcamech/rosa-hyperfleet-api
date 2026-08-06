@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"flag"
@@ -213,9 +212,7 @@ func jsonSchemaToYAML(raw json.RawMessage, baseIndent int) ([]byte, error) {
 
 	prefix := strings.Repeat(" ", baseIndent)
 	var buf bytes.Buffer
-	scanner := bufio.NewScanner(bytes.NewReader(yamlBytes))
-	for scanner.Scan() {
-		line := scanner.Text()
+	for _, line := range strings.Split(string(yamlBytes), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -250,10 +247,9 @@ func rewriteRefs(obj map[string]any) {
 }
 
 func splitLines(data []byte) []string {
-	var lines []string
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
+	lines := strings.Split(string(data), "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
 	}
 	return lines
 }
