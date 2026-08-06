@@ -708,8 +708,7 @@
   },
   {
     "fieldPath": "spec.nodePool.platform",
-    "writeMode": "service-set",
-    "hidden": true
+    "writeMode": "mutable"
   },
   {
     "fieldPath": "spec.nodePool.release",
@@ -718,8 +717,7 @@
   },
   {
     "fieldPath": "spec.nodePool.replicas",
-    "writeMode": "service-set",
-    "hidden": true
+    "writeMode": "mutable"
   },
   {
     "fieldPath": "spec.nodePool.taints",

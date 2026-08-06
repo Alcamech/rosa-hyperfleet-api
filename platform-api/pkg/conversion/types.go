@@ -122,16 +122,12 @@ type ServiceSetFields struct {
 	OsImageStream hypershiftv1beta1.OSImageStreamReference `json:"osImageStream"`
 	// PausedUntil is service-set (platform-managed, hidden from API)
 	PausedUntil *string `json:"pausedUntil"`
-	// Platform is service-set (platform-managed, hidden from API)
-	Platform hypershiftv1beta1.NodePoolPlatform `json:"platform"`
 	// Proxy is service-set (platform-managed, hidden from API)
 	Proxy *v1alpha1.ProxyConfiguration `json:"proxy"`
 	// PullSecret is service-set (platform-managed, hidden from API)
 	PullSecret corev1.LocalObjectReference `json:"pullSecret"`
 	// Release is service-set (platform-managed, hidden from API)
 	Release hypershiftv1beta1.Release `json:"release"`
-	// Replicas is service-set (platform-managed, hidden from API)
-	Replicas *int32 `json:"replicas"`
 	// Scheduler is service-set (platform-managed, hidden from API)
 	Scheduler *v1alpha1.SchedulerConfiguration `json:"scheduler"`
 	// SecretEncryption is service-set (platform-managed, hidden from API)

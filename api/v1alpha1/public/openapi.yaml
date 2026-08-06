@@ -3044,6 +3044,16 @@ components:
     NodePoolSpecPassthrough:
       additionalProperties: true
       description: NodePoolSpecPassthrough mirrors NodePoolSpec from upstream HyperShift
+      properties:
+          platform:
+              description: platform specifies the underlying infrastructure provider for the NodePool
+              type: object
+          replicas:
+              description: replicas is the desired number of nodes the pool should maintain. If unset, the controller default value is 0.
+              format: int32
+              type: integer
+      required:
+          - platform
       type: object
     ClusterConfiguration:
       description: |-
@@ -3075,6 +3085,7 @@ components:
           kubeReserved:
               additionalProperties:
                   type: string
+              maxProperties: 32
               type: object
           maxPods:
               format: int32
@@ -3095,6 +3106,7 @@ components:
           systemReserved:
               additionalProperties:
                   type: string
+              maxProperties: 32
               type: object
       type: object
     MachineConfigSpec:
@@ -3103,9 +3115,8 @@ components:
           allowedKernelArguments:
               items:
                   type: string
+              maxItems: 128
               type: array
-          fips:
-              type: boolean
       type: object
   responses:
     BadRequest:

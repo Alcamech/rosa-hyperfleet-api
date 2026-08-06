@@ -729,8 +729,7 @@ var FieldRegistry = map[string]FieldMeta{
 	},
 	"spec.nodePool.platform": {
 		FieldPath: "spec.nodePool.platform",
-		WriteMode: ServiceSet,
-		Hidden:    true,
+		WriteMode: Mutable,
 	},
 	"spec.nodePool.release": {
 		FieldPath: "spec.nodePool.release",
@@ -739,8 +738,7 @@ var FieldRegistry = map[string]FieldMeta{
 	},
 	"spec.nodePool.replicas": {
 		FieldPath: "spec.nodePool.replicas",
-		WriteMode: ServiceSet,
-		Hidden:    true,
+		WriteMode: Mutable,
 	},
 	"spec.nodePool.taints": {
 		FieldPath: "spec.nodePool.taints",
