@@ -39,7 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
+	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
 	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/dynamo"
 	"github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/internal/render"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"

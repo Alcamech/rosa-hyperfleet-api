@@ -19,7 +19,7 @@ It is built in two parts:
 
 ### Prerequisites: markers in the CRD types
 
-`client-gen` generates a typed client for every type annotated with `// +genclient` in the operator API package (`hyperfleet-operator/api/v1alpha1`). Two types have this marker:
+`client-gen` generates a typed client for every type annotated with `// +genclient` in the operator API package (`api/v1alpha1`). Two types have this marker:
 
 ```go
 // +genclient
@@ -46,7 +46,7 @@ make verify-clientset     # fail if generated output differs from committed file
 SDK_CLIENTSET    ?= generated
 SDK_OUTPUT_DIR   ?= $(abspath clientset)
 SDK_OUTPUT_PKG   ?= $(SDK_MODULE)/clientset
-WIRE_INPUT_DIR   ?= $(abspath hyperfleet-operator/api/v1alpha1)
+WIRE_INPUT_DIR   ?= $(abspath api/v1alpha1)
 WIRE_OUTPUT_DIR  ?= $(abspath clientset/transport)
 WRAPPERS_OUTPUT_DIR ?= $(abspath clientset/wrappers)
 ```
@@ -78,14 +78,14 @@ clientset/wrappers/
 
 ### install package (hand-written, required by generated code)
 
-The generated `scheme/register.go` imports `hyperfleet-operator/api/v1alpha1/install`, which does not exist in the operator module by default. It must be created manually:
+The generated `scheme/register.go` imports `api/v1alpha1/install`, which does not exist in the api module by default. It must be created manually:
 
 ```go
-// hyperfleet-operator/api/v1alpha1/install/install.go
+// api/v1alpha1/install/install.go
 package install
 
 import (
-    v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1"
+    v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
     "k8s.io/apimachinery/pkg/runtime"
 )
 

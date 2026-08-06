@@ -1,4 +1,4 @@
-module github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api
+module github.com/openshift-online/rosa-hyperfleet-api/api
 
 go 1.26.3
 

@@ -15,7 +15,7 @@ resources:
   controller: true
   domain: hyperfleet.io
   kind: Cluster
-  path: github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1
+  path: github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -23,7 +23,7 @@ resources:
   controller: true
   domain: hyperfleet.io
   kind: NodePool
-  path: github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1
+  path: github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -31,6 +31,6 @@ resources:
   controller: true
   domain: hyperfleet.io
   kind: Placement
-  path: github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-operator/api/v1alpha1
+  path: github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1
   version: v1alpha1
 version: "3"

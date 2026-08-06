@@ -40,18 +40,18 @@ GINKGO           := $(abspath $(TOOLS_BIN_DIR)/ginkgo)
 
 # ── SDK generation ───────────────────────────────────────────────────────
 SDK_MODULE        ?= github.com/openshift-online/rosa-hyperfleet-api
-SDK_API_PKG       ?= $(SDK_MODULE)/hyperfleet-operator/api
+SDK_API_PKG       ?= $(SDK_MODULE)/api
 SDK_INPUT         ?= v1alpha1
 SDK_CLIENTSET     ?= generated
 SDK_OUTPUT_DIR    ?= $(abspath clientset)
 SDK_OUTPUT_PKG    ?= $(SDK_MODULE)/clientset
-WIRE_INPUT_DIR        ?= $(abspath hyperfleet-operator/api/v1alpha1)
+WIRE_INPUT_DIR        ?= $(abspath api/v1alpha1)
 WIRE_OUTPUT_DIR       ?= $(abspath clientset/transport)
 WIRE_OUTPUT_PKG       ?= transport
 WRAPPERS_OUTPUT_DIR   ?= $(abspath clientset/wrappers)
 WRAPPERS_OUTPUT_PKG   ?= wrappers
 TYPED_PKG_IMPORT      ?= $(SDK_MODULE)/clientset/generated/typed/v1alpha1/internalversion
-API_PKG_IMPORT        ?= $(SDK_MODULE)/hyperfleet-operator/api/v1alpha1
+API_PKG_IMPORT        ?= $(SDK_MODULE)/api/v1alpha1
 SDK_HEADER_FILE       ?= $(abspath hack/clientset/license-boilerplate.go.txt)
 
 $(GOLANGCI_LINT): $(TOOLS_DIR)/go.mod
@@ -258,7 +258,7 @@ lint: $(GOLANGCI_LINT)
 
 verify:
 	cd hyperfleet-db && go mod tidy
-	cd hyperfleet-operator/api && go mod tidy
+	cd api && go mod tidy
 	cd hyperfleet-operator && go mod tidy
 	cd platform-api && go mod tidy
 	cd test && go mod tidy
@@ -266,7 +266,7 @@ verify:
 	cd hack/api-codegen && go mod tidy
 	git diff --exit-code \
 		hyperfleet-db/go.mod hyperfleet-db/go.sum \
-		hyperfleet-operator/api/go.mod hyperfleet-operator/api/go.sum \
+		api/go.mod api/go.sum \
 		hyperfleet-operator/go.mod hyperfleet-operator/go.sum \
 		platform-api/go.mod platform-api/go.sum \
 		test/go.mod test/go.sum \
@@ -275,7 +275,7 @@ verify:
 
 deps:
 	cd hyperfleet-db && go mod download && go mod tidy
-	cd hyperfleet-operator/api && go mod download && go mod tidy
+	cd api && go mod download && go mod tidy
 	cd hyperfleet-operator && go mod download && go mod tidy
 	cd platform-api && go mod download && go mod tidy
 	cd test && go mod download && go mod tidy
@@ -284,13 +284,13 @@ deps:
 # ── Code Generation ──────────────────────────────────────────────────────
 
 manifests: $(CONTROLLER_GEN)
-	cd hyperfleet-operator && $(CONTROLLER_GEN) crd paths="./api/..." output:crd:dir=config/crd/bases
+	cd hyperfleet-operator && $(CONTROLLER_GEN) crd paths="../api/..." output:crd:dir=config/crd/bases
 
 generate: $(CONTROLLER_GEN)
-	cd hyperfleet-operator && $(CONTROLLER_GEN) object paths="./api/..."
+	$(CONTROLLER_GEN) object paths="./api/..."
 
 generate-clientset: $(CLIENT_GEN) $(WIRE_GEN)
-	cd hyperfleet-operator/api && $(CLIENT_GEN) \
+	cd api && $(CLIENT_GEN) \
 		--input-base "$(SDK_API_PKG)" \
 		--input "$(SDK_INPUT)" \
 		--clientset-name "$(SDK_CLIENTSET)" \

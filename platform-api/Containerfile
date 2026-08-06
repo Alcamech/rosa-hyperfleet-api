@@ -7,12 +7,12 @@ ARG TARGETARCH=amd64
 WORKDIR /app
 
 COPY hyperfleet-db/go.mod hyperfleet-db/go.sum ./hyperfleet-db/
-COPY hyperfleet-operator/api/go.mod hyperfleet-operator/api/go.sum ./hyperfleet-operator/api/
+COPY api/go.mod api/go.sum ./api/
 COPY platform-api/go.mod platform-api/go.sum ./platform-api/
 RUN cd platform-api && go mod download
 
 COPY hyperfleet-db/ ./hyperfleet-db/
-COPY hyperfleet-operator/api/ ./hyperfleet-operator/api/
+COPY api/ ./api/
 COPY platform-api/ ./platform-api/
 
 RUN cd platform-api && \

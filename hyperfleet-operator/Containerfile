@@ -9,10 +9,11 @@ USER 1001
 WORKDIR /workspace
 
 COPY hyperfleet-db/go.mod hyperfleet-db/go.sum ./hyperfleet-db/
-COPY hyperfleet-operator/api/go.mod hyperfleet-operator/api/go.sum ./hyperfleet-operator/api/
+COPY api/go.mod api/go.sum ./api/
 COPY hyperfleet-operator/go.mod hyperfleet-operator/go.sum ./hyperfleet-operator/
 RUN cd hyperfleet-operator && go mod download
 
+COPY api/ ./api/
 COPY hyperfleet-db/ ./hyperfleet-db/
 COPY hyperfleet-operator/ ./hyperfleet-operator/
 
