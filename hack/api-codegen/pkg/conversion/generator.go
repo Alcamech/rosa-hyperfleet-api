@@ -203,6 +203,14 @@ func (g *Generator) parseField(typeName string, field *ast.Field, name *ast.Iden
 }
 
 func (g *Generator) buildFieldPath(typeName, jsonName string) string {
+	switch typeName {
+	case "KubeletConfig":
+		return "kubelet." + jsonName
+	case "MachineConfigSpec":
+		return "machineConfig." + jsonName
+	case "ClusterConfiguration":
+		return jsonName
+	}
 	switch {
 	case strings.HasSuffix(typeName, "Spec"):
 		return "spec." + jsonName

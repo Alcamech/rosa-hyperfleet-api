@@ -199,7 +199,11 @@ func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, h4, zoneDomain string) (
 	hcSpec.SSHKey = corev1.LocalObjectReference{Name: "ssh-key"}
 	hcSpec.KubeAPIServerDNSName = apiHost
 	hcSpec.Services = servicePublishingStrategies(clusterName, h4, baseDomain)
-	hcSpec.Configuration = apiServerConfiguration()
+	if hcSpec.Configuration == nil {
+		hcSpec.Configuration = apiServerConfiguration()
+	} else {
+		hcSpec.Configuration.APIServer = apiServerConfiguration().APIServer
+	}
 
 	// --- Defaults (only set if customer didn't specify) ---
 	if hcSpec.Etcd.ManagementType == "" {

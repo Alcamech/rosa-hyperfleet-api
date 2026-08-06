@@ -65,11 +65,11 @@ type ServiceSetFields struct {
 	// EvictionSoftGracePeriod is service-set (platform-managed, hidden from API)
 	EvictionSoftGracePeriod map[string]string `json:"evictionSoftGracePeriod"`
 	// Extensions is service-set (platform-managed, hidden from API)
-	Extensions string `json:"extensions"`
+	Extensions []string `json:"extensions"`
 	// FeatureGate is service-set (platform-managed, hidden from API)
 	FeatureGate *v1alpha1.FeatureGateConfiguration `json:"featureGate"`
 	// Files is service-set (platform-managed, hidden from API)
-	Files string `json:"files"`
+	Files []v1alpha1.FileSpec `json:"files"`
 	// Fips is service-set (platform-managed, hidden from API)
 	Fips bool `json:"fips"`
 	// Image is service-set (platform-managed, hidden from API)
@@ -87,9 +87,9 @@ type ServiceSetFields struct {
 	// IssuerURL is service-set (platform-managed, hidden from API)
 	IssuerURL string `json:"issuerURL"`
 	// KernelArguments is service-set (platform-managed, hidden from API)
-	KernelArguments string `json:"kernelArguments"`
+	KernelArguments []string `json:"kernelArguments"`
 	// KernelType is service-set (platform-managed, hidden from API)
-	KernelType string `json:"kernelType"`
+	KernelType *string `json:"kernelType"`
 	// KubeAPIServerDNSName is service-set (platform-managed, hidden from API)
 	KubeAPIServerDNSName string `json:"kubeAPIServerDNSName"`
 	// Kubelet is service-set (platform-managed, hidden from API)
@@ -139,7 +139,7 @@ type ServiceSetFields struct {
 	// SshKey is service-set (platform-managed, hidden from API)
 	SshKey corev1.LocalObjectReference `json:"sshKey"`
 	// SystemdUnits is service-set (platform-managed, hidden from API)
-	SystemdUnits string `json:"systemdUnits"`
+	SystemdUnits []v1alpha1.SystemdUnit `json:"systemdUnits"`
 	// Taints is service-set (platform-managed, hidden from API)
 	Taints []hypershiftv1beta1.Taint `json:"taints"`
 	// Tolerations is service-set (platform-managed, hidden from API)

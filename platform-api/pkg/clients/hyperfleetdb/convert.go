@@ -91,14 +91,12 @@ func PlatformCreateToClusterCR(clusterID, accountID string, req *types.ClusterCr
 	}, nil
 }
 
-// ApplyPlatformUpdateToClusterCR merges an update request into an existing CR.
-// Fields present in the request overwrite existing values; omitted fields
-// (zero/nil with omitempty) are preserved, keeping all service-set fields intact.
-func ApplyPlatformUpdateToClusterCR(cr *hyperfleetv1alpha1.Cluster, req *types.ClusterUpdateRequest) error {
-	if req.Spec == nil {
-		return nil
-	}
-	return mergeSpec(&cr.Spec, req.Spec)
+// MergeSpecJSON merges raw JSON into dst. Only fields present in the JSON
+// overwrite dst; omitted fields are preserved. This avoids data loss from
+// non-omitempty struct fields (e.g. HostedCluster, NodePool passthrough)
+// that would serialize as empty objects if marshaled from a typed Go struct.
+func MergeSpecJSON(dst any, specJSON json.RawMessage) error {
+	return json.Unmarshal(specJSON, dst)
 }
 
 // ClusterStatusFromCR builds the status response from a Cluster CR.
@@ -166,26 +164,6 @@ func PlatformCreateToNodePoolCR(accountID, internalPoolID string, req *types.Nod
 		},
 		Spec: spec,
 	}, nil
-}
-
-// ApplyPlatformUpdateToNodePoolCR merges an update request into an existing CR.
-// Fields present in the request overwrite existing values; omitted fields
-// (zero/nil with omitempty) are preserved, keeping all service-set fields intact.
-func ApplyPlatformUpdateToNodePoolCR(cr *hyperfleetv1alpha1.NodePool, req *types.NodePoolUpdateRequest) error {
-	if req.Spec == nil {
-		return nil
-	}
-	return mergeSpec(&cr.Spec, req.Spec)
-}
-
-// mergeSpec JSON-merges patch into dst. Fields present in patch overwrite dst;
-// fields omitted from patch (zero-value with omitempty) are preserved in dst.
-func mergeSpec(dst, patch any) error {
-	data, err := json.Marshal(patch)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, dst)
 }
 
 // NodePoolStatusFromCR builds the status response from a NodePool CR.

@@ -8,23 +8,4 @@ type MachineConfigSpec struct {
 	// +hyperfleet:write-mode=immutable
 	// +kubebuilder:validation:MaxItems=128
 	AllowedKernelArguments []string `json:"allowedKernelArguments,omitempty"`
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
-	// +kubebuilder:validation:MaxItems=128
-	KernelArguments []string `json:"kernelArguments,omitempty"`
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
-	// +kubebuilder:validation:MaxItems=64
-	SystemdUnits []SystemdUnit `json:"systemdUnits,omitempty"`
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
-	// +kubebuilder:validation:MaxItems=256
-	Files []FileSpec `json:"files,omitempty"`
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
-	KernelType *string `json:"kernelType,omitempty"`
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
-	// +kubebuilder:validation:MaxItems=64
-	Extensions []string `json:"extensions,omitempty"`
 }

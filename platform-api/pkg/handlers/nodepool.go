@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -166,8 +167,14 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	nodepoolID := vars["id"]
 
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-001", "Failed to read request body")
+		return
+	}
+
 	var req types.NodePoolUpdateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-001", "Invalid request body")
 		return
 	}
@@ -195,7 +202,15 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := hyperfleetdb.ApplyPlatformUpdateToNodePoolCR(cr, &req); err != nil {
+	var envelope struct {
+		Spec json.RawMessage `json:"spec"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-001", "Invalid request body")
+		return
+	}
+
+	if err := hyperfleetdb.MergeSpecJSON(&cr.Spec, envelope.Spec); err != nil {
 		h.logger.Error("failed to merge nodepool spec", "error", err)
 		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-002", "Invalid nodepool spec")
 		return
