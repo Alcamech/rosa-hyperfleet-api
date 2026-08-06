@@ -7,6 +7,7 @@ RUN mkdir -p /workspace && chown 1001:0 /workspace
 USER 1001
 
 WORKDIR /workspace
+ENV GOCACHE=/workspace/.cache/go-build
 
 COPY hyperfleet-db/go.mod hyperfleet-db/go.sum ./hyperfleet-db/
 COPY api/go.mod api/go.sum ./api/

@@ -6,6 +6,9 @@
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
 	fmt vet verify deps \
 	manifests generate generate-clientset verify-clientset setup-envtest \
+	codegen-passthrough codegen-registry codegen-verify codegen verify-codegen \
+	codegen-conversion verify-conversion \
+	generate-openapi verify-openapi swagger-ui \
 	image-api image-operator image-push-api image-push-operator
 
 # ── Configuration ────────────────────────────────────────────────────────
@@ -53,6 +56,11 @@ WRAPPERS_OUTPUT_PKG   ?= wrappers
 TYPED_PKG_IMPORT      ?= $(SDK_MODULE)/clientset/generated/typed/v1alpha1/internalversion
 API_PKG_IMPORT        ?= $(SDK_MODULE)/api/v1alpha1
 SDK_HEADER_FILE       ?= $(abspath hack/clientset/license-boilerplate.go.txt)
+
+# ── Code generation ───────────────────────────────────────────────────────
+OPENAPI_GENERATED ?= api/v1alpha1/public/generated-schemas.json
+OPENAPI_SPEC      ?= api/v1alpha1/public/openapi.yaml
+SWAGGER_UI_PORT ?= 8282
 
 $(GOLANGCI_LINT): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/golangci-lint github.com/golangci/golangci-lint/v2/cmd/golangci-lint
@@ -109,6 +117,16 @@ help:
 	@echo "  generate             Generate deepcopy methods"
 	@echo "  generate-clientset         Generate typed client SDK from CRD types"
 	@echo "  verify-clientset           Fail if generated clientset is out of date"
+	@echo "  codegen-passthrough  Generate passthrough types from HyperShift"
+	@echo "  codegen-registry     Generate field metadata registry from markers"
+	@echo "  codegen-verify       Verify codegen outputs compile"
+	@echo "  codegen              Run full codegen pipeline (passthrough + registry + verify)"
+	@echo "  verify-codegen       Fail if codegen outputs are out of date"
+	@echo "  codegen-conversion   Generate REST types and conversion functions from CRD types"
+	@echo "  verify-conversion    Fail if conversion outputs are out of date"
+	@echo "  generate-openapi     Generate and merge typed schemas into OpenAPI spec"
+	@echo "  verify-openapi       Fail if OpenAPI spec is out of date with codegen"
+	@echo "  swagger-ui           Run Swagger UI locally (default port 8282)"
 	@echo "  setup-envtest        Install envtest binaries (etcd, kube-apiserver)"
 	@echo "  deps                 Download and tidy all modules"
 	@echo ""
@@ -134,6 +152,7 @@ build-api-codegen:
 	cd hack/api-codegen && go build -o ../../bin/passthrough-gen ./cmd/passthrough-gen
 	cd hack/api-codegen && go build -o ../../bin/marker-scanner ./cmd/marker-scanner
 	cd hack/api-codegen && go build -o ../../bin/openapi-gen ./cmd/openapi-gen
+	cd hack/api-codegen && go build -o ../../bin/openapi-merge ./cmd/openapi-merge
 	cd hack/api-codegen && go build -o ../../bin/conversion-gen ./cmd/conversion-gen
 	cd hack/api-codegen && go build -o ../../bin/crd-variants ./cmd/crd-variants
 	cd hack/api-codegen && go build -o ../../bin/featuregate-info ./cmd/featuregate-info
@@ -284,7 +303,7 @@ deps:
 # ── Code Generation ──────────────────────────────────────────────────────
 
 manifests: $(CONTROLLER_GEN)
-	cd hyperfleet-operator && $(CONTROLLER_GEN) crd paths="../api/..." output:crd:dir=config/crd/bases
+	cd hyperfleet-operator && $(CONTROLLER_GEN) crd:allowDangerousTypes=true paths="../api/..." output:crd:dir=config/crd/bases
 
 generate: $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) object paths="./api/..."
@@ -314,6 +333,70 @@ generate-clientset: $(CLIENT_GEN) $(WIRE_GEN)
 
 verify-clientset: generate-clientset
 	git diff --exit-code clientset/
+
+codegen-passthrough: build-api-codegen
+	cd api && ../bin/passthrough-gen \
+		-import-path github.com/openshift/hypershift/api/hypershift/v1beta1 \
+		-types HostedClusterSpec,NodePoolSpec \
+		-output-dir v1alpha1 \
+		-package v1alpha1
+
+codegen-registry: generate build-api-codegen
+	./bin/marker-scanner \
+		-input-dirs api/v1alpha1 \
+		-output-file hack/api-codegen/pkg/registry/field_metadata.go \
+		$(if $(VERBOSE),-verbose)
+
+codegen-verify: codegen-registry
+	cd api && go build ./...
+	cd platform-api && go build ./...
+
+codegen: codegen-verify
+
+verify-codegen: codegen
+	git diff --exit-code api/v1alpha1/zz_generated.deepcopy.go
+	git diff --exit-code hack/api-codegen/pkg/registry/
+
+CONVERSION_OUTPUT_DIR   ?= platform-api/pkg/conversion/v1alpha1
+CONVERSION_OUTPUT_PKG   ?= github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/conversion
+CONVERSION_CRD_PKG      ?= github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1
+CONVERSION_REST_DIR     ?= api/v1alpha1/public
+CONVERSION_REST_PKG     ?= github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public
+
+codegen-conversion: codegen-registry build-api-codegen
+	./bin/conversion-gen \
+		--api-version=v1alpha1 \
+		--crd-package=$(CONVERSION_CRD_PKG) \
+		--input-dirs=./api/v1alpha1 \
+		--output-dir=$(CONVERSION_OUTPUT_DIR) \
+		--output-package=$(CONVERSION_OUTPUT_PKG) \
+		--rest-output-dir=$(CONVERSION_REST_DIR) \
+		--rest-package=$(CONVERSION_REST_PKG)
+
+verify-conversion: codegen-conversion
+	cd api && go build ./...
+	cd platform-api && go build ./...
+	git diff --exit-code $(CONVERSION_REST_DIR)/ $(CONVERSION_OUTPUT_DIR)/ platform-api/pkg/conversion/types.go
+
+generate-openapi: codegen-registry
+	cd hack/api-codegen && go build -o ../../bin/openapi-gen ./cmd/openapi-gen
+	./bin/openapi-gen \
+		-input-dirs ./api/v1alpha1 \
+		-output-file $(OPENAPI_GENERATED)
+	./bin/openapi-merge \
+		-spec $(OPENAPI_SPEC) \
+		-generated $(OPENAPI_GENERATED) \
+		-schemas ClusterSpec,NodePoolSpec,HostedClusterSpecPassthrough,NodePoolSpecPassthrough,ClusterConfiguration,KubeletConfig,MachineConfigSpec
+
+verify-openapi: generate-openapi
+	git diff --exit-code $(OPENAPI_SPEC)
+
+swagger-ui:
+	@echo "Swagger UI available at http://localhost:$(SWAGGER_UI_PORT)"
+	$(CONTAINER_ENGINE) run --rm -p $(SWAGGER_UI_PORT):8080 \
+		-e SWAGGER_JSON=/spec/openapi.yaml \
+		-v $(CURDIR)/$(OPENAPI_SPEC):/spec/openapi.yaml:ro \
+		swaggerapi/swagger-ui
 
 ENVTEST_BIN_DIR ?= $(shell pwd)/.envtest
 

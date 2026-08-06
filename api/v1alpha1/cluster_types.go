@@ -37,22 +37,58 @@ const (
 // metadata.Name is the human-readable cluster name; metadata.Namespace is the cluster UUID.
 // The owning AWS account is stored as the label hyperfleet.io/account-id.
 type ClusterSpec struct {
+	// DisplayName is a human-readable name for the cluster.
+	// +hyperfleet:write-mode=mutable
+	// +kubebuilder:validation:MaxLength=256
+	// +optional
+	DisplayName string `json:"displayName,omitempty"`
+
+	// DeleteProtection prevents accidental deletion when enabled.
+	// +hyperfleet:write-mode=mutable
+	// +optional
+	DeleteProtection *bool `json:"deleteProtection,omitempty"`
+
+	// ExpirationTimestamp marks when this cluster should be automatically deleted.
+	// +hyperfleet:write-mode=mutable
+	// +optional
+	ExpirationTimestamp *metav1.Time `json:"expirationTimestamp,omitempty"`
+
+	// Properties are arbitrary key-value pairs for customer metadata.
+	// +hyperfleet:write-mode=mutable
+	// +kubebuilder:validation:MaxProperties=100
+	// +optional
+	Properties map[string]string `json:"properties,omitempty"`
+
+	// Tags are customer-defined labels for organizational purposes.
+	// +hyperfleet:write-mode=mutable
+	// +openshift:enable:FeatureGate=HyperFleetAutoScaling
+	// +kubebuilder:validation:MaxProperties=100
+	// +optional
+	Tags map[string]string `json:"tags,omitempty"`
+
+	// AccountID is the AWS account that owns this cluster.
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
+	// +optional
+	AccountID string `json:"accountId,omitempty"`
+
 	// CreatorARN is the IAM ARN of the user who created this cluster.
-	// Used to bootstrap the initial cluster-admin RBAC mapping.
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
 	// +optional
 	// +kubebuilder:validation:Pattern=`^arn:aws:`
 	CreatorARN string `json:"creatorARN,omitempty"`
 
-	// ExpirationTimestamp is the time after which the cluster will be
-	// automatically deleted. If nil, the cluster has no expiration.
+	// InternalID is a platform-assigned unique identifier.
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
 	// +optional
-	ExpirationTimestamp *metav1.Time `json:"expirationTimestamp,omitempty"`
+	InternalID string `json:"internalId,omitempty"`
 
-	// HostedCluster is the full HyperShift HostedClusterSpec. The customer provides
-	// the fields they care about; the operator overrides platform-managed fields
-	// (InfraID, DNS, PullSecret, Services, etc.) at render time.
+	// HostedCluster contains the upstream HyperShift fields, mirrored as
+	// passthrough types with per-field visibility and write-mode markers.
 	// +kubebuilder:validation:Required
-	HostedCluster hypershiftv1beta1.HostedClusterSpec `json:"hostedCluster"`
+	HostedCluster HostedClusterSpecPassthrough `json:"hostedCluster"`
 }
 
 // ClusterStatus defines the observed state of a Cluster.

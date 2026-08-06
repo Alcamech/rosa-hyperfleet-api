@@ -18,7 +18,7 @@ func testCluster() *hyperfleetv1alpha1.Cluster {
 		},
 		Spec: hyperfleetv1alpha1.ClusterSpec{
 			CreatorARN: "arn:aws:iam::123456789012:user/admin",
-			HostedCluster: hypershiftv1beta1.HostedClusterSpec{
+			HostedCluster: hyperfleetv1alpha1.HostedClusterSpecPassthrough{
 				Release:   hypershiftv1beta1.Release{Image: "quay.io/ocp:4.17"},
 				IssuerURL: "https://oidc.example.com/abc12345",
 				Networking: hypershiftv1beta1.ClusterNetworking{

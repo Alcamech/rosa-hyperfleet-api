@@ -2,25 +2,31 @@ package handlers
 
 import (
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/internal/codegen/featuregate"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/types"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/validation"
 )
 
 type NodePoolHandler struct {
-	db     *hyperfleetdb.Client
-	logger *slog.Logger
+	db        *hyperfleetdb.Client
+	validator *validation.FieldValidator
+	logger    *slog.Logger
 }
 
 func NewNodePoolHandler(db *hyperfleetdb.Client, logger *slog.Logger) *NodePoolHandler {
 	return &NodePoolHandler{
-		db:     db,
-		logger: logger,
+		db:        db,
+		validator: validation.NewFieldValidator(),
+		logger:    logger,
 	}
 }
 
@@ -95,6 +101,11 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if errs := h.validator.ValidateCreate(req.Spec, featuregate.Default); errs != nil {
+		h.writeValidationErrors(w, errs)
+		return
+	}
+
 	if _, err := h.db.GetCluster(ctx, accountID, req.ClusterID); err != nil {
 		if hyperfleetdb.IsNotFound(err) {
 			h.writeError(w, http.StatusNotFound, "NODEPOOLS-MGMT-CREATE-004", "Referenced cluster not found")
@@ -107,7 +118,8 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("creating nodepool", "account_id", accountID, "cluster_id", req.ClusterID, "nodepool_name", req.Name)
 
-	cr, err := hyperfleetdb.PlatformCreateToNodePoolCR(accountID, &req)
+	internalPoolID := uuid.New().String()
+	cr, err := hyperfleetdb.PlatformCreateToNodePoolCR(accountID, internalPoolID, &req)
 	if err != nil {
 		h.logger.Error("failed to convert nodepool spec", "error", err, "account_id", accountID)
 		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-CREATE-002", "Invalid nodepool spec")
@@ -155,8 +167,14 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	nodepoolID := vars["id"]
 
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-001", "Failed to read request body")
+		return
+	}
+
 	var req types.NodePoolUpdateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-001", "Invalid request body")
 		return
 	}
@@ -179,7 +197,20 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := hyperfleetdb.ApplyPlatformUpdateToNodePoolCR(cr, &req); err != nil {
+	if errs := h.validator.ValidateUpdate(req.Spec, &cr.Spec, featuregate.Default); errs != nil {
+		h.writeValidationErrors(w, errs)
+		return
+	}
+
+	var envelope struct {
+		Spec json.RawMessage `json:"spec"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-001", "Invalid request body")
+		return
+	}
+
+	if err := hyperfleetdb.MergeSpecJSON(&cr.Spec, envelope.Spec); err != nil {
 		h.logger.Error("failed to merge nodepool spec", "error", err)
 		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-002", "Invalid nodepool spec")
 		return
@@ -247,6 +278,18 @@ func (h *NodePoolHandler) writeJSON(w http.ResponseWriter, status int, data any)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
+}
+
+func (h *NodePoolHandler) writeValidationErrors(w http.ResponseWriter, errs validation.ValidationErrors) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnprocessableEntity)
+	resp := map[string]any{
+		"kind":   "Error",
+		"code":   "NODEPOOLS-MGMT-VALIDATION-001",
+		"reason": "Request validation failed",
+		"errors": errs,
+	}
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func (h *NodePoolHandler) writeError(w http.ResponseWriter, status int, code, reason string) {

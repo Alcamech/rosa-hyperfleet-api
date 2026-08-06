@@ -1,6 +1,7 @@
 package hyperfleetdb
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -75,6 +76,8 @@ func ClusterCRToPlatform(cr *hyperfleetv1alpha1.Cluster) *types.Cluster {
 // metadata.Name = human-readable cluster name.
 func PlatformCreateToClusterCR(clusterID, accountID string, req *types.ClusterCreateRequest) (*hyperfleetv1alpha1.Cluster, error) {
 	spec := *req.Spec
+	spec.AccountID = accountID
+	spec.InternalID = clusterID
 
 	return &hyperfleetv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -88,13 +91,12 @@ func PlatformCreateToClusterCR(clusterID, accountID string, req *types.ClusterCr
 	}, nil
 }
 
-// ApplyPlatformUpdateToClusterCR applies an update request to an existing CR.
-func ApplyPlatformUpdateToClusterCR(cr *hyperfleetv1alpha1.Cluster, req *types.ClusterUpdateRequest) error {
-	if req.Spec == nil {
-		return nil
-	}
-	cr.Spec = *req.Spec
-	return nil
+// MergeSpecJSON merges raw JSON into dst. Only fields present in the JSON
+// overwrite dst; omitted fields are preserved. This avoids data loss from
+// non-omitempty struct fields (e.g. HostedCluster, NodePool passthrough)
+// that would serialize as empty objects if marshaled from a typed Go struct.
+func MergeSpecJSON(dst any, specJSON json.RawMessage) error {
+	return json.Unmarshal(specJSON, dst)
 }
 
 // ClusterStatusFromCR builds the status response from a Cluster CR.
@@ -147,8 +149,10 @@ func NodePoolCRToPlatform(cr *hyperfleetv1alpha1.NodePool) *types.NodePool {
 
 // PlatformCreateToNodePoolCR converts a platform NodePoolCreateRequest into a
 // v1alpha1.NodePool CR. metadata.Namespace = clusterID, metadata.Name = human name.
-func PlatformCreateToNodePoolCR(accountID string, req *types.NodePoolCreateRequest) (*hyperfleetv1alpha1.NodePool, error) {
+func PlatformCreateToNodePoolCR(accountID, internalPoolID string, req *types.NodePoolCreateRequest) (*hyperfleetv1alpha1.NodePool, error) {
 	spec := *req.Spec
+	spec.AccountID = accountID
+	spec.InternalPoolID = internalPoolID
 
 	return &hyperfleetv1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
@@ -160,15 +164,6 @@ func PlatformCreateToNodePoolCR(accountID string, req *types.NodePoolCreateReque
 		},
 		Spec: spec,
 	}, nil
-}
-
-// ApplyPlatformUpdateToNodePoolCR applies an update request to an existing CR.
-func ApplyPlatformUpdateToNodePoolCR(cr *hyperfleetv1alpha1.NodePool, req *types.NodePoolUpdateRequest) error {
-	if req.Spec == nil {
-		return nil
-	}
-	cr.Spec = *req.Spec
-	return nil
 }
 
 // NodePoolStatusFromCR builds the status response from a NodePool CR.

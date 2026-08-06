@@ -13,16 +13,22 @@ import (
 
 func main() {
 	var (
-		apiVersion string
-		crdPackage string
-		inputDirs  string
-		outputDir  string
+		apiVersion    string
+		crdPackage    string
+		inputDirs     string
+		outputDir     string
+		outputPackage string
+		restOutputDir string
+		restPackage   string
 	)
 
 	flag.StringVar(&apiVersion, "api-version", "v1alpha1", "API version to generate for")
 	flag.StringVar(&crdPackage, "crd-package", "", "Import path to CRD types (required)")
 	flag.StringVar(&inputDirs, "input-dirs", "", "Comma-separated list of directories containing CRD source files (required)")
 	flag.StringVar(&outputDir, "output-dir", "", "Output directory for generated code (required)")
+	flag.StringVar(&outputPackage, "output-package", "", "Import path for the parent package of the output directory (overrides default)")
+	flag.StringVar(&restOutputDir, "rest-output-dir", "", "Output directory for REST types (defaults to <output-dir>/rest)")
+	flag.StringVar(&restPackage, "rest-package", "", "Import path for the REST types package (defaults to <output-package>/<base>/rest)")
 	flag.Parse()
 
 	if crdPackage == "" || inputDirs == "" || outputDir == "" {
@@ -31,9 +37,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Example usage:\n")
 		fmt.Fprintf(os.Stderr, "  %s \\\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "    --api-version=v1alpha1 \\\n")
-		fmt.Fprintf(os.Stderr, "    --crd-package=github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/api/v1alpha1 \\\n")
+		fmt.Fprintf(os.Stderr, "    --crd-package=github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1 \\\n")
 		fmt.Fprintf(os.Stderr, "    --input-dirs=./api/v1alpha1 \\\n")
-		fmt.Fprintf(os.Stderr, "    --output-dir=./pkg/conversion/v1alpha1\n")
+		fmt.Fprintf(os.Stderr, "    --output-dir=./platform-api/pkg/conversion/v1alpha1 \\\n")
+		fmt.Fprintf(os.Stderr, "    --output-package=github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/conversion\n")
 		os.Exit(1)
 	}
 
@@ -50,12 +57,30 @@ func main() {
 
 	// Create generator
 	gen := conversion.NewGenerator(apiVersion, crdPackage, dirs, outputDir)
+	if outputPackage != "" {
+		gen.OutputPackage = outputPackage
+	}
+	if restOutputDir != "" {
+		gen.RESTOutputDir = restOutputDir
+	}
+	if restPackage != "" {
+		gen.RESTImportPath = restPackage
+	}
 
 	log.Printf("Conversion code generator")
 	log.Printf("  API Version: %s", apiVersion)
 	log.Printf("  CRD Package: %s", crdPackage)
 	log.Printf("  Input Dirs: %s", strings.Join(dirs, ", "))
 	log.Printf("  Output Dir: %s", outputDir)
+	if outputPackage != "" {
+		log.Printf("  Output Pkg: %s", outputPackage)
+	}
+	if restOutputDir != "" {
+		log.Printf("  REST Dir:   %s", restOutputDir)
+	}
+	if restPackage != "" {
+		log.Printf("  REST Pkg:   %s", restPackage)
+	}
 	log.Println()
 
 	// Generate
@@ -63,8 +88,12 @@ func main() {
 		log.Fatalf("Generation failed: %v", err)
 	}
 
+	restTarget := gen.RESTOutputDir
+	if restTarget == "" {
+		restTarget = outputDir + "/rest"
+	}
 	log.Println("✓ Successfully generated:")
-	log.Println("  - REST types (rest/)")
+	log.Printf("  - REST types (%s)", restTarget)
 	log.Println("  - ServiceSetFields (../types.go)")
 	log.Println("  - Conversion functions (cluster.go, nodepool.go)")
 }

@@ -53,30 +53,40 @@ spec:
               NodePoolSpec defines the desired state of a NodePool.
               The parent Cluster is identified by the shared metadata.Namespace (cluster UUID).
             properties:
+              accountId:
+                description: AccountID is the AWS account that owns this node pool.
+                type: string
+              autoRepair:
+                description: AutoRepair controls whether unhealthy nodes are automatically
+                  replaced.
+                type: boolean
+              displayName:
+                description: DisplayName is a human-readable name for the node pool.
+                maxLength: 256
+                type: string
+              internalPoolId:
+                description: InternalPoolID is a platform-assigned unique identifier.
+                type: string
+              labels:
+                additionalProperties:
+                  type: string
+                description: Labels are customer-defined labels applied to nodes in
+                  this pool.
+                maxProperties: 100
+                type: object
               nodePool:
                 description: |-
-                  NodePool is the full HyperShift NodePoolSpec. The customer provides replicas,
-                  platform, release, etc. The operator overrides ClusterName and adds system
-                  resource tags at render time.
+                  NodePool contains the upstream HyperShift fields, mirrored as
+                  passthrough types with per-field visibility and write-mode markers.
                 properties:
                   arch:
-                    default: amd64
-                    description: "arch is the preferred processor architecture for
+                    description: arch is the preferred processor architecture for
                       the NodePool. Different platforms might have different supported
-                      architectures.\n\thttps://github.com/kubernetes/kubernetes/issues/108768#issuecomment-1253912215"
-                    enum:
-                    - arm64
-                    - amd64
-                    - ppc64le
-                    - s390x
+                      architectures.
                     type: string
-                    x-kubernetes-validations:
-                    - message: Arch is immutable
-                      rule: self == oldSelf
                   autoScaling:
-                    description: |-
-                      autoScaling specifies auto-scaling behavior for the NodePool.
-                      autoScaling is mutually exclusive with replicas. If replicas is set, this field must be omitted.
+                    description: autoScaling specifies auto-scaling behavior for the
+                      NodePool.
                     properties:
                       max:
                         description: max is the maximum number of nodes allowed in
@@ -100,39 +110,12 @@ spec:
                     - message: max must be equal or greater than min
                       rule: self.max >= self.min
                   clusterName:
-                    description: |-
-                      clusterName is the name of the HostedCluster this NodePool belongs to.
-                      If a HostedCluster with this name doesn't exist, the controller will no-op until it exists.
-                    maxLength: 253
-                    minLength: 1
+                    description: clusterName is the name of the HostedCluster this
+                      NodePool belongs to.
                     type: string
-                    x-kubernetes-validations:
-                    - message: ClusterName is immutable
-                      rule: self == oldSelf
-                    - message: clusterName must consist of lowercase alphanumeric
-                        characters or '-', start and end with an alphanumeric character,
-                        and be between 1 and 253 characters
-                      rule: self.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
                   config:
-                    description: |-
-                      config is a list of references to ConfigMaps containing serialized
-                      MachineConfig resources to be injected into the ignition configurations of
-                      nodes in the NodePool. The MachineConfig API schema is defined here:
-
-                      https://github.com/openshift/machine-config-operator/blob/18963e4f8fe66e8c513ca4b131620760a414997f/pkg/apis/machineconfiguration.openshift.io/v1/types.go#L185
-
-                      Each ConfigMap must have a single key named "config" whose value is the YML
-                      with one or more serialized machineconfiguration.openshift.io resources:
-
-                      * KubeletConfig
-                      * ContainerRuntimeConfig
-                      * MachineConfig
-                      * ClusterImagePolicy
-                      * ImageContentSourcePolicy
-                      * ImageDigestMirrorSet
-
-                      This is validated in the backend and signaled back via validMachineConfig condition.
-                      Changing this field will trigger a NodePool rollout.
+                    description: config is a list of references to ConfigMaps containing
+                      serialized
                     items:
                       description: |-
                         LocalObjectReference contains enough information to let you locate the
@@ -149,12 +132,10 @@ spec:
                           type: string
                       type: object
                       x-kubernetes-map-type: atomic
-                    maxItems: 10
                     type: array
                   management:
-                    description: |-
-                      management specifies behavior for managing nodes in the pool, such as
-                      upgrade strategies and auto-repair behaviors.
+                    description: management specifies behavior for managing nodes
+                      in the pool, such as
                     properties:
                       autoRepair:
                         default: false
@@ -287,42 +268,25 @@ spec:
                         is 'InPlace'
                       rule: '!has(self.inPlace) || self.upgradeType == ''InPlace'''
                   nodeDrainTimeout:
-                    description: |-
-                      nodeDrainTimeout is the maximum amount of time that the controller will spend on retrying to drain a node until it succeeds.
-                      The default value is 0, meaning that the node can retry drain without any time limitations.
-                      Changing this field propagate inplace into existing Nodes.
+                    description: nodeDrainTimeout is the maximum amount of time that
+                      the controller will spend on retrying to drain a node until
+                      it succeeds.
                     type: string
                   nodeLabels:
                     additionalProperties:
                       type: string
-                    description: |-
-                      nodeLabels propagates a list of labels to Nodes, only once on creation.
-                      Valid values are those in https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set
+                    description: nodeLabels propagates a list of labels to Nodes,
+                      only once on creation.
+                    maxProperties: 100
                     type: object
                   nodeVolumeDetachTimeout:
-                    description: |-
-                      nodeVolumeDetachTimeout is the maximum amount of time that the controller will spend on detaching volumes from a node.
-                      The default value is 0, meaning that the volumes will be detached from the node without any time limitations.
-                      After the timeout, any remaining attached volumes will be ignored and the removal of the machine will continue.
-                      Changing this field propagate inplace into existing Nodes.
+                    description: nodeVolumeDetachTimeout is the maximum amount of
+                      time that the controller will spend on detaching volumes from
+                      a node.
                     type: string
                   osImageStream:
-                    description: |-
-                      osImageStream specifies an OS stream to be used for nodes in this pool.
-
-                      This field can be optionally set to a known OSImageStream name to change
-                      the OS and Extension images with a well-known, tested, release-provided
-                      set of images. This enables a streamlined way of switching the pool's
-                      node OS to a different version than the cluster default, such as
-                      transitioning to a major RHEL version.
-
-                      When set, the referenced stream overrides the default OS images for the
-                      pool. When omitted, the pool uses the release version's default stream
-                      (rhel-9 for OCP < 5.0, rhel-10 for OCP >= 5.0).
-                      Changing this field triggers a rollout. Forward transitions
-                      (rhel-9 -> rhel-10) are allowed; backward transitions
-                      (rhel-10 -> rhel-9) are rejected by CEL validation because
-                      in-place OS downgrades are not supported.
+                    description: osImageStream specifies an OS stream to be used for
+                      nodes in this pool.
                     properties:
                       name:
                         description: name is a required reference to an OSImageStream
@@ -334,29 +298,14 @@ spec:
                     required:
                     - name
                     type: object
-                    x-kubernetes-validations:
-                    - message: OS stream downgrade from rhel-10 to rhel-9 is not allowed;
-                        create a new NodePool instead
-                      rule: '!has(oldSelf.name) || oldSelf.name != ''rhel-10'' ||
-                        (has(self.name) && self.name != ''rhel-9'')'
                   pausedUntil:
-                    description: |-
-                      pausedUntil is a field that can be used to pause reconciliation on the NodePool controller. Resulting in any change to the NodePool being ignored.
-                      Either a date can be provided in RFC3339 format or a boolean as in 'true', 'false', 'True', 'False'. If a date is
-                      provided: reconciliation is paused on the resource until that date. If the boolean true is
-                      provided: reconciliation is paused on the resource until the field is removed.
-                    maxLength: 35
-                    minLength: 1
+                    description: pausedUntil is a field that can be used to pause
+                      reconciliation on the NodePool controller. Resulting in any
+                      change to the NodePool being ignored.
                     type: string
-                    x-kubernetes-validations:
-                    - message: PausedUntil must be a date in RFC3339 format or 'True',
-                        'true', 'False' or 'false'
-                      rule: self.matches('^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*$')
-                        || self in ['true', 'false', 'True', 'False']
                   platform:
-                    description: |-
-                      platform specifies the underlying infrastructure provider for the NodePool
-                      and is used to configure platform specific behavior.
+                    description: platform specifies the underlying infrastructure
+                      provider for the NodePool
                     properties:
                       agent:
                         description: agent specifies the configuration used when using
@@ -1846,20 +1795,8 @@ spec:
                     - type
                     type: object
                   release:
-                    description: |-
-                      release specifies the OCP release used for this NodePool. It drives the machine ignition configuration (including
-                      the kubelet version) and other platform-specific properties (e.g. an AMI on AWS).
-
-                      Version-skew rules and effects:
-                        - The minor-version skew relative to the control-plane release must be <= N-2.
-                          This is not currently enforced, but exceeding this limit is unsupported and
-                          may lead to unpredictable behavior.
-                        - If the specified release is higher than the HostedCluster's release, the
-                          NodePool will be degraded and the ValidReleaseImage condition will be false.
-                        - If the specified release is lower than the NodePool's current y-stream,
-                          the NodePool will be degraded and the ValidReleaseImage condition will be false.
-
-                      Changing this field triggers a NodePool rollout.
+                    description: release specifies the OCP release used for this NodePool.
+                      It drives the machine ignition configuration (including
                     properties:
                       image:
                         description: |-
@@ -1876,15 +1813,13 @@ spec:
                     - image
                     type: object
                   replicas:
-                    description: |-
-                      replicas is the desired number of nodes the pool should maintain. If unset, the controller default value is 0.
-                      replicas is mutually exclusive with autoscaling. If autoscaling is configured, replicas must be omitted and autoscaling will control the NodePool size internally.
+                    description: replicas is the desired number of nodes the pool
+                      should maintain. If unset, the controller default value is 0.
                     format: int32
                     type: integer
                   taints:
-                    description: |-
-                      taints if specified, propagates a list of taints to Nodes, only once on creation.
-                      These taints are additive to the ones applied by other controllers
+                    description: taints if specified, propagates a list of taints
+                      to Nodes, only once on creation.
                     items:
                       description: |-
                         taint is as v1 Core but without TimeAdded.
@@ -1927,19 +1862,8 @@ spec:
                     maxItems: 50
                     type: array
                   tuningConfig:
-                    description: |-
-                      tuningConfig is a list of references to ConfigMaps containing serialized
-                      Tuned or PerformanceProfile resources to define the tuning configuration to be applied to
-                      nodes in the NodePool. The Tuned API is defined here:
-
-                      https://github.com/openshift/cluster-node-tuning-operator/blob/2c76314fb3cc8f12aef4a0dcd67ddc3677d5b54f/pkg/apis/tuned/v1/tuned_types.go
-
-                      The PerformanceProfile API is defined here:
-                      https://github.com/openshift/cluster-node-tuning-operator/tree/b41042d42d4ba5bb2e99960248cf1d6ae4935018/pkg/apis/performanceprofile/v2
-
-                      Each ConfigMap must have a single key named "tuning" whose value is the
-                      JSON or YAML of a serialized Tuned or PerformanceProfile.
-                      Changing this field will trigger a NodePool rollout.
+                    description: tuningConfig is a list of references to ConfigMaps
+                      containing serialized
                     items:
                       description: |-
                         LocalObjectReference contains enough information to let you locate the
@@ -1956,7 +1880,6 @@ spec:
                           type: string
                       type: object
                       x-kubernetes-map-type: atomic
-                    maxItems: 10
                     type: array
                 required:
                 - clusterName
@@ -1964,26 +1887,6 @@ spec:
                 - platform
                 - release
                 type: object
-                x-kubernetes-validations:
-                - message: Arch is required once set
-                  rule: '!has(oldSelf.arch) || has(self.arch)'
-                - message: Setting Arch to arm64 is only supported for AWS, Azure,
-                    Agent, GCP and None
-                  rule: self.arch != 'arm64' || has(self.platform.aws) || has(self.platform.azure)
-                    || has(self.platform.agent) || self.platform.type == 'GCP' ||
-                    self.platform.type == 'None'
-                - message: Both replicas or autoScaling should not be set
-                  rule: '!has(self.replicas) || !has(self.autoScaling)'
-                - message: s390x is only supported on KubeVirt platform
-                  rule: self.arch != 's390x' || has(self.platform.kubevirt)
-                - message: ImageType 'Windows' requires arch 'amd64' (AWS only)
-                  rule: '!has(self.platform.aws) || !has(self.platform.aws.imageType)
-                    || self.platform.aws.imageType != ''Windows'' || self.arch ==
-                    ''amd64'''
-                - message: Scale-from-zero (autoScaling.min=0) is currently only supported
-                    for AWS platform
-                  rule: '!has(self.autoScaling) || self.autoScaling.min > 0 || self.platform.type
-                    == ''AWS'''
             required:
             - nodePool
             type: object

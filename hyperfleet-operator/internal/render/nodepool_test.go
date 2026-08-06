@@ -16,7 +16,7 @@ func testNodePool() *hyperfleetv1alpha1.NodePool {
 			Namespace: "cluster-abc12345",
 		},
 		Spec: hyperfleetv1alpha1.NodePoolSpec{
-			NodePool: hypershiftv1beta1.NodePoolSpec{
+			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
 				Replicas: ptr.To(int32(3)),
 				Management: hypershiftv1beta1.NodePoolManagement{
 					AutoRepair:  true,
@@ -44,7 +44,10 @@ func testNodePool() *hyperfleetv1alpha1.NodePool {
 }
 
 func TestNodePoolResourceGVR(t *testing.T) {
-	r := NodePoolResource(testNodePool(), testCluster())
+	r, err := NodePoolResource(testNodePool(), testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
 
 	if r.Group != "hypershift.openshift.io" {
 		t.Errorf("Group = %q, want %q", r.Group, "hypershift.openshift.io")
@@ -58,7 +61,10 @@ func TestNodePoolResourceGVR(t *testing.T) {
 }
 
 func TestNodePoolResourceNaming(t *testing.T) {
-	r := NodePoolResource(testNodePool(), testCluster())
+	r, err := NodePoolResource(testNodePool(), testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
 
 	wantName := "my-cluster-workers"
 	if r.Name != wantName {
@@ -71,7 +77,10 @@ func TestNodePoolResourceNaming(t *testing.T) {
 }
 
 func TestNodePoolResourceObject(t *testing.T) {
-	r := NodePoolResource(testNodePool(), testCluster())
+	r, err := NodePoolResource(testNodePool(), testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
 	np, ok := r.Object.(*hypershiftv1beta1.NodePool)
 	if !ok {
 		t.Fatalf("Object is %T, want *NodePool", r.Object)
@@ -104,7 +113,7 @@ func TestNodePoolResourceDefaults(t *testing.T) {
 			Namespace: "cluster-abc12345",
 		},
 		Spec: hyperfleetv1alpha1.NodePoolSpec{
-			NodePool: hypershiftv1beta1.NodePoolSpec{
+			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
 				Platform: hypershiftv1beta1.NodePoolPlatform{
 					Type: hypershiftv1beta1.AWSPlatform,
 					AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
@@ -117,7 +126,10 @@ func TestNodePoolResourceDefaults(t *testing.T) {
 		},
 	}
 
-	r := NodePoolResource(minimalNP, testCluster())
+	r, err := NodePoolResource(minimalNP, testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
 	np := r.Object.(*hypershiftv1beta1.NodePool)
 
 	tests := []struct {
@@ -162,7 +174,10 @@ func TestNodePoolResourceDefaults(t *testing.T) {
 }
 
 func TestNodePoolResourceLabels(t *testing.T) {
-	r := NodePoolResource(testNodePool(), testCluster())
+	r, err := NodePoolResource(testNodePool(), testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
 	np := r.Object.(*hypershiftv1beta1.NodePool)
 
 	if np.Labels["hyperfleet.io/cluster-id"] != "abc12345" {

@@ -33,7 +33,7 @@ spec:
   - name: hermetic
     value: "true"
   - name: prefetch-input
-    value: '[{"type": "gomod", "path": "hyperfleet-db"}, {"type": "gomod", "path": "api"}, {"type": "gomod", "path": "platform-api"}]'
+    value: '[{"type": "gomod", "path": "hyperfleet-db"}, {"type": "gomod", "path": "api"}, {"type": "gomod", "path": "hack/api-codegen"}, {"type": "gomod", "path": "platform-api"}]'
   - name: build-source-image
     value: "true"
   pipelineSpec:

@@ -507,7 +507,7 @@ func newTestCluster(name string) *hyperfleetv1alpha1.Cluster {
 		},
 		Spec: hyperfleetv1alpha1.ClusterSpec{
 			CreatorARN: "arn:aws:iam::123456789012:user/admin",
-			HostedCluster: hypershiftv1beta1.HostedClusterSpec{
+			HostedCluster: hyperfleetv1alpha1.HostedClusterSpecPassthrough{
 				Release:    hypershiftv1beta1.Release{Image: "quay.io/openshift-release-dev/ocp-release:4.17.0-ec.2-x86_64"},
 				IssuerURL:  "https://oidc.example.com/cluster-01",
 				PullSecret: corev1.LocalObjectReference{Name: "pull-secret"},

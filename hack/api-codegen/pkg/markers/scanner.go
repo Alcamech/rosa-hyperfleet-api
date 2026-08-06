@@ -19,21 +19,31 @@ var (
 )
 
 // NewScanner creates a new marker scanner
-func NewScanner(inputDirs []string) *MarkerScanner {
+func NewScanner(inputDirs []string, verbose bool) *MarkerScanner {
 	return &MarkerScanner{
 		InputDirs: inputDirs,
 		Registry:  make(FieldRegistry),
 		typeCache: make(map[string]*ast.StructType),
+		verbose:   verbose,
+	}
+}
+
+// logf writes a formatted log line to stderr when verbose mode is enabled.
+func (s *MarkerScanner) logf(format string, args ...any) {
+	if s.verbose {
+		fmt.Fprintf(os.Stderr, "[scanner] "+format+"\n", args...)
 	}
 }
 
 // Scan walks the input directories and extracts marker metadata
 func (s *MarkerScanner) Scan() error {
 	for _, dir := range s.InputDirs {
+		s.logf("scanning directory: %s", dir)
 		if err := s.scanDir(dir); err != nil {
 			return fmt.Errorf("scanning directory %s: %w", dir, err)
 		}
 	}
+	s.logf("scan complete: %d fields in registry", len(s.Registry))
 	return nil
 }
 
@@ -77,26 +87,49 @@ func (s *MarkerScanner) scanDir(dir string) error {
 
 	// Install this directory's cache for nested-type resolution
 	s.typeCache = dirCache
+	s.logf("  cached %d struct types", len(dirCache))
 
 	// Second pass: process root types once with the full cache available
 	for typeName, structType := range dirCache {
 		if isRootType(typeName) {
 			visited := make(map[string]bool)
 			visited[typeName] = true
-			s.processStruct(typeName, structType, "", visited)
+			prefix := rootTypePrefix(typeName)
+			s.logf("  root type: %s (prefix=%q)", typeName, prefix)
+			s.processStruct(typeName, structType, prefix, visited)
 		}
 	}
 
 	return nil
 }
 
-// isRootType returns true for top-level CRD types (not Spec/Status/Passthrough types)
+// rootTypePrefix returns a dotted prefix that namespaces registry keys by root
+// type, so fields with the same JSON name in different root types (e.g.
+// HostedClusterSpecPassthrough.PausedUntil vs NodePoolSpecPassthrough.PausedUntil)
+// don't collide in the flat FieldRegistry map. The prefixes mirror
+// conversion/generator.go buildFieldPath so consumers can look up entries
+// with the same key they construct.
+func rootTypePrefix(typeName string) string {
+	if strings.HasSuffix(typeName, "Passthrough") {
+		if strings.HasPrefix(typeName, "HostedCluster") {
+			return "spec.hostedCluster"
+		}
+		if strings.HasPrefix(typeName, "NodePool") {
+			return "spec.nodePool"
+		}
+	}
+	return ""
+}
+
+// isRootType returns true for types that are entry points for marker scanning.
+// Passthrough types ARE root types since they carry curated markers.
 func isRootType(typeName string) bool {
-	// Root types don't have suffixes
+	if strings.HasSuffix(typeName, "Passthrough") {
+		return true
+	}
 	return !strings.HasSuffix(typeName, "Spec") &&
 		!strings.HasSuffix(typeName, "Status") &&
 		!strings.HasSuffix(typeName, "List") &&
-		!strings.HasSuffix(typeName, "Passthrough") &&
 		typeName != "ClusterReference"
 }
 
@@ -126,6 +159,7 @@ func (s *MarkerScanner) processField(field *ast.Field, parentPath string, visite
 	// Extract markers from comments
 	meta := s.extractMarkers(field, fieldPath)
 	if meta != nil {
+		s.logf("    field: %s  write-mode=%s  hidden=%v  gate=%s", fieldPath, meta.WriteMode, meta.Hidden, meta.FeatureGate)
 		s.Registry[fieldPath] = *meta
 	}
 

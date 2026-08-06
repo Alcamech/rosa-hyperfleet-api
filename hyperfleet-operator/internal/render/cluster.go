@@ -23,7 +23,10 @@ func ClusterResources(cluster *hyperfleetv1alpha1.Cluster, rcfg RegionalConfig) 
 	// Zone shard 0 is hardcoded; will be dynamically assigned per-cluster in a future phase.
 	zoneDomain := fmt.Sprintf("0.%s", rcfg.BaseDomain)
 
-	hc := hostedCluster(cluster, h4, zoneDomain)
+	hc, err := hostedCluster(cluster, h4, zoneDomain)
+	if err != nil {
+		return nil, err
+	}
 
 	return []Resource{
 		namespace(clusterID, ns),
@@ -175,14 +178,17 @@ func apiServingCert(clusterID, clusterName, h4, baseDomain, ns string) Resource 
 	}
 }
 
-func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, h4, zoneDomain string) Resource {
+func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, h4, zoneDomain string) (Resource, error) {
 	clusterID := ClusterIDFromNamespace(cluster.Namespace)
 	clusterName := cluster.Name // human-readable
 	ns := cluster.Namespace     // already "cluster-<uuid>"
 	baseDomain := zoneDomain
 	apiHost := fmt.Sprintf("api.%s.%s.%s", clusterName, h4, baseDomain)
 
-	hcSpec := cluster.Spec.HostedCluster.DeepCopy()
+	hcSpec, err := toHostedClusterSpec(&cluster.Spec.HostedCluster)
+	if err != nil {
+		return Resource{}, fmt.Errorf("converting HostedClusterSpec for cluster %s/%s: %w", ns, clusterName, err)
+	}
 
 	// --- Platform-managed overrides (always set by the operator) ---
 	hcSpec.InfraID = clusterID
@@ -193,7 +199,11 @@ func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, h4, zoneDomain string) R
 	hcSpec.SSHKey = corev1.LocalObjectReference{Name: "ssh-key"}
 	hcSpec.KubeAPIServerDNSName = apiHost
 	hcSpec.Services = servicePublishingStrategies(clusterName, h4, baseDomain)
-	hcSpec.Configuration = apiServerConfiguration()
+	if hcSpec.Configuration == nil {
+		hcSpec.Configuration = apiServerConfiguration()
+	} else {
+		hcSpec.Configuration.APIServer = apiServerConfiguration().APIServer
+	}
 
 	// --- Defaults (only set if customer didn't specify) ---
 	if hcSpec.Etcd.ManagementType == "" {
@@ -253,7 +263,7 @@ func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, h4, zoneDomain string) R
 			},
 			Spec: *hcSpec,
 		},
-	}
+	}, nil
 }
 
 func servicePublishingStrategies(clusterName, h4, baseDomain string) []hypershiftv1beta1.ServicePublishingStrategyMapping {

@@ -232,10 +232,6 @@ var FieldRegistry = map[string]FieldMeta{
 		WriteMode: ServiceSet,
 		Hidden:    true,
 	},
-	"machineConfig.fips": {
-		FieldPath: "machineConfig.fips",
-		WriteMode: Immutable,
-	},
 	"machineConfig.kernelArguments": {
 		FieldPath: "machineConfig.kernelArguments",
 		WriteMode: ServiceSet,
@@ -362,6 +358,194 @@ var FieldRegistry = map[string]FieldMeta{
 		FieldPath: "spec.hostedCluster.configuration",
 		WriteMode: ServiceSet,
 	},
+	"spec.hostedCluster.configuration.apiServer": {
+		FieldPath: "spec.hostedCluster.configuration.apiServer",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.authentication": {
+		FieldPath: "spec.hostedCluster.configuration.authentication",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.featureGate": {
+		FieldPath: "spec.hostedCluster.configuration.featureGate",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.image": {
+		FieldPath: "spec.hostedCluster.configuration.image",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.ingress": {
+		FieldPath: "spec.hostedCluster.configuration.ingress",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.kubelet": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet",
+		WriteMode: ServiceSet,
+	},
+	"spec.hostedCluster.configuration.kubelet.allowedUnsafeSysctls": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.allowedUnsafeSysctls",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.kubelet.containerLogMaxFiles": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.containerLogMaxFiles",
+		WriteMode: Mutable,
+	},
+	"spec.hostedCluster.configuration.kubelet.containerLogMaxSize": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.containerLogMaxSize",
+		WriteMode: Mutable,
+	},
+	"spec.hostedCluster.configuration.kubelet.cpuManagerPolicy": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.cpuManagerPolicy",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.kubelet.cpuManagerPolicyOptions": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.cpuManagerPolicyOptions",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.kubelet.cpuManagerReconcilePeriod": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.cpuManagerReconcilePeriod",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.kubelet.evictionHard": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.evictionHard",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.kubelet.evictionSoft": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.evictionSoft",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.kubelet.evictionSoftGracePeriod": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.evictionSoftGracePeriod",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.kubelet.imageGCHighThresholdPercent": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.imageGCHighThresholdPercent",
+		WriteMode: Mutable,
+	},
+	"spec.hostedCluster.configuration.kubelet.imageGCLowThresholdPercent": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.imageGCLowThresholdPercent",
+		WriteMode: Mutable,
+	},
+	"spec.hostedCluster.configuration.kubelet.imageMinimumGCAge": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.imageMinimumGCAge",
+		WriteMode: Mutable,
+	},
+	"spec.hostedCluster.configuration.kubelet.kubeReserved": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.kubeReserved",
+		WriteMode: Immutable,
+	},
+	"spec.hostedCluster.configuration.kubelet.maxPods": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.maxPods",
+		WriteMode: Mutable,
+	},
+	"spec.hostedCluster.configuration.kubelet.memoryThrottlingFactor": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.memoryThrottlingFactor",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.kubelet.podPidsLimit": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.podPidsLimit",
+		WriteMode: Mutable,
+	},
+	"spec.hostedCluster.configuration.kubelet.registryBurst": {
+		FieldPath:   "spec.hostedCluster.configuration.kubelet.registryBurst",
+		WriteMode:   Mutable,
+		FeatureGate: "HyperFleetKubeletAdvanced",
+	},
+	"spec.hostedCluster.configuration.kubelet.registryPullQPS": {
+		FieldPath:   "spec.hostedCluster.configuration.kubelet.registryPullQPS",
+		WriteMode:   Mutable,
+		FeatureGate: "HyperFleetKubeletAdvanced",
+	},
+	"spec.hostedCluster.configuration.kubelet.serializeImagePulls": {
+		FieldPath:   "spec.hostedCluster.configuration.kubelet.serializeImagePulls",
+		WriteMode:   Mutable,
+		FeatureGate: "HyperFleetKubeletAdvanced",
+	},
+	"spec.hostedCluster.configuration.kubelet.streamingConnectionIdleTimeout": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.streamingConnectionIdleTimeout",
+		WriteMode: Mutable,
+	},
+	"spec.hostedCluster.configuration.kubelet.systemReserved": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.systemReserved",
+		WriteMode: Immutable,
+	},
+	"spec.hostedCluster.configuration.kubelet.topologyManagerPolicy": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.topologyManagerPolicy",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.kubelet.topologyManagerScope": {
+		FieldPath: "spec.hostedCluster.configuration.kubelet.topologyManagerScope",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.machineConfig": {
+		FieldPath: "spec.hostedCluster.configuration.machineConfig",
+		WriteMode: ServiceSet,
+	},
+	"spec.hostedCluster.configuration.machineConfig.allowedKernelArguments": {
+		FieldPath:   "spec.hostedCluster.configuration.machineConfig.allowedKernelArguments",
+		WriteMode:   Immutable,
+		FeatureGate: "HyperFleetMachineConfig",
+	},
+	"spec.hostedCluster.configuration.machineConfig.extensions": {
+		FieldPath: "spec.hostedCluster.configuration.machineConfig.extensions",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.machineConfig.files": {
+		FieldPath: "spec.hostedCluster.configuration.machineConfig.files",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.machineConfig.kernelArguments": {
+		FieldPath: "spec.hostedCluster.configuration.machineConfig.kernelArguments",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.machineConfig.kernelType": {
+		FieldPath: "spec.hostedCluster.configuration.machineConfig.kernelType",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.machineConfig.systemdUnits": {
+		FieldPath: "spec.hostedCluster.configuration.machineConfig.systemdUnits",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.network": {
+		FieldPath: "spec.hostedCluster.configuration.network",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.oauth": {
+		FieldPath: "spec.hostedCluster.configuration.oauth",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.proxy": {
+		FieldPath: "spec.hostedCluster.configuration.proxy",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration.scheduler": {
+		FieldPath: "spec.hostedCluster.configuration.scheduler",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
 	"spec.hostedCluster.controlPlaneRelease": {
 		FieldPath: "spec.hostedCluster.controlPlaneRelease",
 		WriteMode: ServiceSet,
@@ -379,8 +563,7 @@ var FieldRegistry = map[string]FieldMeta{
 	},
 	"spec.hostedCluster.etcd": {
 		FieldPath: "spec.hostedCluster.etcd",
-		WriteMode: ServiceSet,
-		Hidden:    true,
+		WriteMode: Mutable,
 	},
 	"spec.hostedCluster.fips": {
 		FieldPath: "spec.hostedCluster.fips",
@@ -388,8 +571,7 @@ var FieldRegistry = map[string]FieldMeta{
 	},
 	"spec.hostedCluster.imageContentSources": {
 		FieldPath: "spec.hostedCluster.imageContentSources",
-		WriteMode: ServiceSet,
-		Hidden:    true,
+		WriteMode: Mutable,
 	},
 	"spec.hostedCluster.infraID": {
 		FieldPath: "spec.hostedCluster.infraID",
@@ -418,8 +600,7 @@ var FieldRegistry = map[string]FieldMeta{
 	},
 	"spec.hostedCluster.networking": {
 		FieldPath: "spec.hostedCluster.networking",
-		WriteMode: ServiceSet,
-		Hidden:    true,
+		WriteMode: Mutable,
 	},
 	"spec.hostedCluster.nodeSelector": {
 		FieldPath: "spec.hostedCluster.nodeSelector",
@@ -441,8 +622,7 @@ var FieldRegistry = map[string]FieldMeta{
 	},
 	"spec.hostedCluster.platform": {
 		FieldPath: "spec.hostedCluster.platform",
-		WriteMode: ServiceSet,
-		Hidden:    true,
+		WriteMode: Mutable,
 	},
 	"spec.hostedCluster.pullSecret": {
 		FieldPath: "spec.hostedCluster.pullSecret",
@@ -451,8 +631,7 @@ var FieldRegistry = map[string]FieldMeta{
 	},
 	"spec.hostedCluster.release": {
 		FieldPath: "spec.hostedCluster.release",
-		WriteMode: ServiceSet,
-		Hidden:    true,
+		WriteMode: Mutable,
 	},
 	"spec.hostedCluster.secretEncryption": {
 		FieldPath: "spec.hostedCluster.secretEncryption",
@@ -538,6 +717,11 @@ var FieldRegistry = map[string]FieldMeta{
 		WriteMode: ServiceSet,
 		Hidden:    true,
 	},
+	"spec.nodePool.osImageStream": {
+		FieldPath: "spec.nodePool.osImageStream",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
 	"spec.nodePool.pausedUntil": {
 		FieldPath: "spec.nodePool.pausedUntil",
 		WriteMode: ServiceSet,
@@ -545,8 +729,7 @@ var FieldRegistry = map[string]FieldMeta{
 	},
 	"spec.nodePool.platform": {
 		FieldPath: "spec.nodePool.platform",
-		WriteMode: ServiceSet,
-		Hidden:    true,
+		WriteMode: Mutable,
 	},
 	"spec.nodePool.release": {
 		FieldPath: "spec.nodePool.release",
@@ -555,8 +738,7 @@ var FieldRegistry = map[string]FieldMeta{
 	},
 	"spec.nodePool.replicas": {
 		FieldPath: "spec.nodePool.replicas",
-		WriteMode: ServiceSet,
-		Hidden:    true,
+		WriteMode: Mutable,
 	},
 	"spec.nodePool.taints": {
 		FieldPath: "spec.nodePool.taints",

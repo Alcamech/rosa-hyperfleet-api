@@ -57,3 +57,7 @@ hyperfleet-operator/bin/
 # Compiled operator binaries (built outside bin/)
 hyperfleet-operator/manager
 hyperfleet-operator/compactor
+
+# Codegen intermediates
+*.passthrough.go.raw
+api/v1alpha1/public/generated-schemas.json

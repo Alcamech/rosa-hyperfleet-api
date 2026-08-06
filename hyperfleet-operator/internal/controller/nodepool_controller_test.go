@@ -361,7 +361,7 @@ func newTestNodePool() *hyperfleetv1alpha1.NodePool {
 			Namespace: "cluster-test-cluster-id",
 		},
 		Spec: hyperfleetv1alpha1.NodePoolSpec{
-			NodePool: hypershiftv1beta1.NodePoolSpec{
+			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
 				ClusterName: "test-np-cluster",
 				Replicas:    ptr.To(int32(2)),
 				Management: hypershiftv1beta1.NodePoolManagement{
