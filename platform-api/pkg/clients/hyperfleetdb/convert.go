@@ -1,6 +1,7 @@
 package hyperfleetdb
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -90,13 +91,14 @@ func PlatformCreateToClusterCR(clusterID, accountID string, req *types.ClusterCr
 	}, nil
 }
 
-// ApplyPlatformUpdateToClusterCR applies an update request to an existing CR.
+// ApplyPlatformUpdateToClusterCR merges an update request into an existing CR.
+// Fields present in the request overwrite existing values; omitted fields
+// (zero/nil with omitempty) are preserved, keeping all service-set fields intact.
 func ApplyPlatformUpdateToClusterCR(cr *hyperfleetv1alpha1.Cluster, req *types.ClusterUpdateRequest) error {
 	if req.Spec == nil {
 		return nil
 	}
-	cr.Spec = *req.Spec
-	return nil
+	return mergeSpec(&cr.Spec, req.Spec)
 }
 
 // ClusterStatusFromCR builds the status response from a Cluster CR.
@@ -166,13 +168,24 @@ func PlatformCreateToNodePoolCR(accountID, internalPoolID string, req *types.Nod
 	}, nil
 }
 
-// ApplyPlatformUpdateToNodePoolCR applies an update request to an existing CR.
+// ApplyPlatformUpdateToNodePoolCR merges an update request into an existing CR.
+// Fields present in the request overwrite existing values; omitted fields
+// (zero/nil with omitempty) are preserved, keeping all service-set fields intact.
 func ApplyPlatformUpdateToNodePoolCR(cr *hyperfleetv1alpha1.NodePool, req *types.NodePoolUpdateRequest) error {
 	if req.Spec == nil {
 		return nil
 	}
-	cr.Spec = *req.Spec
-	return nil
+	return mergeSpec(&cr.Spec, req.Spec)
+}
+
+// mergeSpec JSON-merges patch into dst. Fields present in patch overwrite dst;
+// fields omitted from patch (zero-value with omitempty) are preserved in dst.
+func mergeSpec(dst, patch any) error {
+	data, err := json.Marshal(patch)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, dst)
 }
 
 // NodePoolStatusFromCR builds the status response from a NodePool CR.

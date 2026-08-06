@@ -228,21 +228,10 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapshot := cr.Spec
-
 	if err := hyperfleetdb.ApplyPlatformUpdateToClusterCR(cr, &req); err != nil {
 		h.logger.Error("failed to merge cluster spec", "error", err)
 		h.writeError(w, http.StatusBadRequest, "CLUSTERS-MGMT-UPDATE-002", "Invalid cluster spec")
 		return
-	}
-
-	// Restore service-set fields wiped by the full spec replacement.
-	cr.Spec.AccountID = snapshot.AccountID
-	cr.Spec.InternalID = snapshot.InternalID
-	cr.Spec.CreatorARN = snapshot.CreatorARN
-	cr.Spec.HostedCluster.IssuerURL = snapshot.HostedCluster.IssuerURL
-	if cr.Spec.ExpirationTimestamp == nil {
-		cr.Spec.ExpirationTimestamp = snapshot.ExpirationTimestamp
 	}
 
 	if err := h.db.UpdateCluster(ctx, cr); err != nil {
