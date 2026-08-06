@@ -62,9 +62,11 @@ The top-level Makefile exposes the following targets for running the codegen pip
 |--------|-------------|
 | `codegen-passthrough` | Generate passthrough types from HyperShift into `api/v1alpha1/` |
 | `codegen-registry` | Generate field metadata registry from `+hyperfleet:` markers |
-| `codegen-verify` | Verify codegen outputs compile (`api` + `platform-api/internal/codegen/`) |
+| `codegen-conversion` | Generate REST types and Project/Unproject conversion functions |
+| `codegen-verify` | Verify codegen outputs compile (`api` + `platform-api`) |
 | `codegen` | Run full pipeline: passthrough + registry + verify |
 | `verify-codegen` | Fail if codegen outputs are out of date (git diff check) |
+| `verify-conversion` | Fail if conversion outputs are out of date |
 
 ### Dependency chain
 
@@ -73,8 +75,19 @@ codegen
   └─ codegen-verify
        └─ codegen-registry
             ├─ generate          (controller-gen deepcopy on api/...)
-            └─ build-api-codegen (builds marker-scanner + other tools)
-                 └─ marker-scanner scans api/v1alpha1 → platform-api/internal/codegen/registry/field_metadata.go
+            └─ build-api-codegen (builds marker-scanner + conversion-gen + other tools)
+                 └─ marker-scanner scans api/v1alpha1 → hack/api-codegen/pkg/registry/field_metadata.go
+
+codegen-conversion
+  └─ codegen-registry  (needs field metadata to determine hidden/visible fields)
+  └─ build-api-codegen (builds conversion-gen)
+       └─ conversion-gen outputs:
+            api/v1alpha1/public/         (REST types, visible fields only, package "public")
+            platform-api/pkg/conversion/
+            ├─ types.go                  (ServiceSetFields)
+            └─ v1alpha1/
+                ├─ cluster.go            (ProjectCluster, UnprojectCluster)
+                └─ nodepool.go           (ProjectNodePool, UnprojectNodePool)
 ```
 
 `codegen-passthrough` is intentionally **not** in the `codegen` chain yet — it needs to be run manually since `passthrough-gen` rewrites `api/v1alpha1/` files that are currently hand-curated (`hostedclusterspec.passthrough.go`). Once the passthrough codegen is fully wired in a future PR, it can be chained in.

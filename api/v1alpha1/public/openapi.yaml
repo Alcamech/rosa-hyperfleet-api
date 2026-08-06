@@ -2257,7 +2257,10 @@ components:
 
     # Cluster Schemas
     ClusterSpec:
-      description: ClusterSpec defines the desired state of a ROSA HCP cluster.
+      description: |-
+          ClusterSpec defines the desired state of a ROSA HCP cluster.
+          metadata.Name is the human-readable cluster name; metadata.Namespace is the cluster UUID.
+          The owning AWS account is stored as the label hyperfleet.io/account-id.
       properties:
           deleteProtection:
               description: DeleteProtection prevents accidental deletion when enabled.
@@ -2276,20 +2279,24 @@ components:
               additionalProperties:
                   type: string
               description: Properties are arbitrary key-value pairs for customer metadata.
+              maxProperties: 100
               type: object
           tags:
               additionalProperties:
                   type: string
               description: Tags are customer-defined labels for organizational purposes.
+              maxProperties: 100
               type: object
       required:
           - hostedCluster
       type: object
     NodePoolSpec:
-      description: NodePoolSpec defines the desired state of a NodePool.
+      description: |-
+          NodePoolSpec defines the desired state of a NodePool.
+          The parent Cluster is identified by the shared metadata.Namespace (cluster UUID).
       properties:
           autoRepair:
-              description: AutoRepair enables automatic repair of unhealthy nodes.
+              description: AutoRepair controls whether unhealthy nodes are automatically replaced.
               type: boolean
           displayName:
               description: DisplayName is a human-readable name for the node pool.
@@ -2298,7 +2305,8 @@ components:
           labels:
               additionalProperties:
                   type: string
-              description: Labels are customer-defined labels applied to nodes.
+              description: Labels are customer-defined labels applied to nodes in this pool.
+              maxProperties: 100
               type: object
           nodePool:
               $ref: '#/components/schemas/NodePoolSpecPassthrough'
@@ -2967,6 +2975,14 @@ components:
               type: string
           configuration:
               $ref: '#/components/schemas/ClusterConfiguration'
+          etcd:
+              description: etcd specifies configuration for the control plane etcd cluster. The
+              type: object
+              x-kubernetes-validations:
+                  - message: Only managed configuration must be set when managementType is Managed
+                    rule: 'self.managementType == ''Managed'' ? has(self.managed) : !has(self.managed)'
+                  - message: Only unmanaged configuration must be set when managementType is Unmanaged
+                    rule: 'self.managementType == ''Unmanaged'' ? has(self.unmanaged) : !has(self.unmanaged)'
           fips:
               description: fips indicates whether this cluster's nodes will be running in FIPS mode.
               type: boolean
@@ -2996,16 +3012,34 @@ components:
                   required:
                       - source
                   type: object
+              maxItems: 50
               type: array
+          networking:
+              description: networking specifies network configuration for the hosted cluster.
+              type: object
+              x-kubernetes-validations:
+                  - message: CIDR ranges in machineNetwork, clusterNetwork, and serviceNetwork must be unique and non-overlapping
+                    rule: (!has(self.machineNetwork) && self.clusterNetwork.all(c, self.serviceNetwork.all(s, c.cidr != s.cidr)) || (has(self.machineNetwork) && (self.machineNetwork.all(m, self.clusterNetwork.all(c, m.cidr != c.cidr)) && self.machineNetwork.all(m, self.serviceNetwork.all(s, m.cidr != s.cidr)) && self.clusterNetwork.all(c, self.serviceNetwork.all(s, c.cidr != s.cidr)))))
+                  - message: allocateNodeCIDRs can only be set to Enabled when networkType is 'Other'
+                    rule: 'has(self.allocateNodeCIDRs) && self.allocateNodeCIDRs == ''Enabled'' ? self.networkType == ''Other'' : true'
           operatorConfiguration:
               description: operatorConfiguration specifies configuration for individual OCP operators in the cluster.
               type: object
           pausedUntil:
               description: pausedUntil is a field that can be used to pause reconciliation on the HostedCluster controller, resulting in any change to the HostedCluster being ignored.
               type: string
+          platform:
+              description: platform specifies the underlying infrastructure provider for the cluster
+              type: object
+          release:
+              description: release specifies the desired OCP release payload for all the hosted cluster components.
+              type: object
       required:
-          - autoNode
+          - etcd
           - fips
+          - networking
+          - platform
+          - release
       type: object
     NodePoolSpecPassthrough:
       additionalProperties: true

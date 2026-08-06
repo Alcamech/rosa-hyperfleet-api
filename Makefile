@@ -7,6 +7,7 @@
 	fmt vet verify deps \
 	manifests generate generate-clientset verify-clientset setup-envtest \
 	codegen-passthrough codegen-registry codegen-verify codegen verify-codegen \
+	codegen-conversion verify-conversion \
 	generate-openapi verify-openapi swagger-ui \
 	image-api image-operator image-push-api image-push-operator
 
@@ -121,6 +122,8 @@ help:
 	@echo "  codegen-verify       Verify codegen outputs compile"
 	@echo "  codegen              Run full codegen pipeline (passthrough + registry + verify)"
 	@echo "  verify-codegen       Fail if codegen outputs are out of date"
+	@echo "  codegen-conversion   Generate REST types and conversion functions from CRD types"
+	@echo "  verify-conversion    Fail if conversion outputs are out of date"
 	@echo "  generate-openapi     Generate and merge typed schemas into OpenAPI spec"
 	@echo "  verify-openapi       Fail if OpenAPI spec is out of date with codegen"
 	@echo "  swagger-ui           Run Swagger UI locally (default port 8282)"
@@ -353,6 +356,27 @@ codegen: codegen-verify
 verify-codegen: codegen
 	git diff --exit-code api/v1alpha1/zz_generated.deepcopy.go
 	git diff --exit-code hack/api-codegen/pkg/registry/
+
+CONVERSION_OUTPUT_DIR   ?= platform-api/pkg/conversion/v1alpha1
+CONVERSION_OUTPUT_PKG   ?= github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/conversion
+CONVERSION_CRD_PKG      ?= github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1
+CONVERSION_REST_DIR     ?= api/v1alpha1/public
+CONVERSION_REST_PKG     ?= github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public
+
+codegen-conversion: codegen-registry build-api-codegen
+	./bin/conversion-gen \
+		--api-version=v1alpha1 \
+		--crd-package=$(CONVERSION_CRD_PKG) \
+		--input-dirs=./api/v1alpha1 \
+		--output-dir=$(CONVERSION_OUTPUT_DIR) \
+		--output-package=$(CONVERSION_OUTPUT_PKG) \
+		--rest-output-dir=$(CONVERSION_REST_DIR) \
+		--rest-package=$(CONVERSION_REST_PKG)
+
+verify-conversion: codegen-conversion
+	cd api && go build ./...
+	cd platform-api && go build ./...
+	git diff --exit-code $(CONVERSION_REST_DIR)/ $(CONVERSION_OUTPUT_DIR)/ platform-api/pkg/conversion/types.go
 
 generate-openapi: codegen-registry
 	cd hack/api-codegen && go build -o ../../bin/openapi-gen ./cmd/openapi-gen
