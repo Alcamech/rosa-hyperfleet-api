@@ -527,6 +527,7 @@ spec:
                           allowedUnsafeSysctls:
                             items:
                               type: string
+                            maxItems: 256
                             type: array
                           containerLogMaxFiles:
                             format: int32
@@ -538,20 +539,24 @@ spec:
                           cpuManagerPolicyOptions:
                             additionalProperties:
                               type: string
+                            maxProperties: 32
                             type: object
                           cpuManagerReconcilePeriod:
                             type: string
                           evictionHard:
                             additionalProperties:
                               type: string
+                            maxProperties: 32
                             type: object
                           evictionSoft:
                             additionalProperties:
                               type: string
+                            maxProperties: 32
                             type: object
                           evictionSoftGracePeriod:
                             additionalProperties:
                               type: string
+                            maxProperties: 32
                             type: object
                           imageGCHighThresholdPercent:
                             format: int32
@@ -564,6 +569,7 @@ spec:
                           kubeReserved:
                             additionalProperties:
                               type: string
+                            maxProperties: 32
                             type: object
                           maxPods:
                             format: int32
@@ -586,6 +592,7 @@ spec:
                           systemReserved:
                             additionalProperties:
                               type: string
+                            maxProperties: 32
                             type: object
                           topologyManagerPolicy:
                             type: string
@@ -599,15 +606,18 @@ spec:
                           allowedKernelArguments:
                             items:
                               type: string
+                            maxItems: 128
                             type: array
                           extensions:
                             items:
                               type: string
+                            maxItems: 64
                             type: array
                           files:
                             items:
                               properties:
                                 contents:
+                                  maxLength: 262144
                                   type: string
                                 group:
                                   type: string
@@ -623,12 +633,12 @@ spec:
                               required:
                               - path
                               type: object
+                            maxItems: 256
                             type: array
-                          fips:
-                            type: boolean
                           kernelArguments:
                             items:
                               type: string
+                            maxItems: 128
                             type: array
                           kernelType:
                             type: string
@@ -636,17 +646,20 @@ spec:
                             items:
                               properties:
                                 contents:
+                                  maxLength: 65536
                                   type: string
                                 dropins:
                                   items:
                                     properties:
                                       contents:
+                                        maxLength: 32768
                                         type: string
                                       name:
                                         type: string
                                     required:
                                     - name
                                     type: object
+                                  maxItems: 16
                                   type: array
                                 enabled:
                                   type: boolean
@@ -655,6 +668,7 @@ spec:
                               required:
                               - name
                               type: object
+                            maxItems: 64
                             type: array
                         type: object
                       network:

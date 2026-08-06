@@ -13,8 +13,10 @@ type KubeletConfig struct {
 	// +hyperfleet:write-mode=mutable
 	PodPidsLimit *int64 `json:"podPidsLimit,omitempty"`
 	// +hyperfleet:write-mode=immutable
+	// +kubebuilder:validation:MaxProperties=32
 	SystemReserved map[string]string `json:"systemReserved,omitempty"`
 	// +hyperfleet:write-mode=immutable
+	// +kubebuilder:validation:MaxProperties=32
 	KubeReserved map[string]string `json:"kubeReserved,omitempty"`
 	// +hyperfleet:write-mode=mutable
 	ImageGCHighThresholdPercent *int32 `json:"imageGCHighThresholdPercent,omitempty"`

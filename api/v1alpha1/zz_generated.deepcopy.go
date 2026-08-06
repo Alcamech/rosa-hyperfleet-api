@@ -590,11 +590,6 @@ func (in *MachineConfigSpec) DeepCopyInto(out *MachineConfigSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	if in.FIPS != nil {
-		in, out := &in.FIPS, &out.FIPS
-		*out = new(bool)
-		**out = **in
-	}
 	if in.KernelType != nil {
 		in, out := &in.KernelType, &out.KernelType
 		*out = new(string)

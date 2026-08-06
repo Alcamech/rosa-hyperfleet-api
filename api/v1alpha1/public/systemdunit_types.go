@@ -4,8 +4,10 @@ package public
 
 // SystemdUnit is the REST representation of SystemdUnit (visible fields only)
 type SystemdUnit struct {
-	Name     string          `json:"name"`
-	Enabled  *bool           `json:"enabled,omitempty"`
-	Contents string          `json:"contents,omitempty"`
-	Dropins  []SystemdDropin `json:"dropins,omitempty"`
+	Name    string `json:"name"`
+	Enabled *bool  `json:"enabled,omitempty"`
+	// +kubebuilder:validation:MaxLength=65536
+	Contents string `json:"contents,omitempty"`
+	// +kubebuilder:validation:MaxItems=16
+	Dropins []SystemdDropin `json:"dropins,omitempty"`
 }

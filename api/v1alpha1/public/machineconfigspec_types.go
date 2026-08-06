@@ -6,22 +6,25 @@ package public
 type MachineConfigSpec struct {
 	// +openshift:enable:FeatureGate=HyperFleetMachineConfig
 	// +hyperfleet:write-mode=immutable
+	// +kubebuilder:validation:MaxItems=128
 	AllowedKernelArguments []string `json:"allowedKernelArguments,omitempty"`
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
+	// +kubebuilder:validation:MaxItems=128
 	KernelArguments []string `json:"kernelArguments,omitempty"`
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
+	// +kubebuilder:validation:MaxItems=64
 	SystemdUnits []SystemdUnit `json:"systemdUnits,omitempty"`
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
+	// +kubebuilder:validation:MaxItems=256
 	Files []FileSpec `json:"files,omitempty"`
-	// +hyperfleet:write-mode=immutable
-	FIPS *bool `json:"fips,omitempty"`
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
 	KernelType *string `json:"kernelType,omitempty"`
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
+	// +kubebuilder:validation:MaxItems=64
 	Extensions []string `json:"extensions,omitempty"`
 }

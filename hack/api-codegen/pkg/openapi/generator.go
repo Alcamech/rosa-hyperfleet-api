@@ -46,7 +46,9 @@ func (g *Generator) Generate() error {
 	}
 
 	// Filter hidden fields using the registry
-	filterHiddenFields(definitions)
+	if err := filterHiddenFields(definitions); err != nil {
+		return fmt.Errorf("filtering hidden fields: %w", err)
+	}
 
 	// Collapse deeply-nested passthrough types into opaque objects.
 	// The public API exposes the top-level wrapper fields but treats the
@@ -167,7 +169,11 @@ var typeToRegistryPrefix = map[string]string{
 // filterHiddenFields removes fields marked as hidden in the registry from
 // all schema definitions. A field is hidden when its FieldRegistry entry has
 // Hidden == true (i.e., +k8s:openapi-gen=false).
-func filterHiddenFields(definitions map[string]apiextensionsv1.JSONSchemaProps) {
+//
+// Every definition that carries hidden fields must have an entry in
+// typeToRegistryPrefix; an unmapped definition whose properties match
+// hidden registry entries is an error (the mapping was forgotten).
+func filterHiddenFields(definitions map[string]apiextensionsv1.JSONSchemaProps) error {
 	hiddenPaths := make(map[string]bool)
 	for path, meta := range registry.FieldRegistry {
 		if meta.Hidden {
@@ -176,17 +182,35 @@ func filterHiddenFields(definitions map[string]apiextensionsv1.JSONSchemaProps) 
 	}
 
 	if len(hiddenPaths) == 0 {
-		return
+		return nil
 	}
 
 	for typeName, schema := range definitions {
 		prefix, ok := typeToRegistryPrefix[typeName]
 		if !ok {
+			if leaked := leakedHiddenProps(schema, hiddenPaths); len(leaked) > 0 {
+				return fmt.Errorf("definition %q has hidden fields %v but no entry in typeToRegistryPrefix", typeName, leaked)
+			}
 			continue
 		}
 		pruned := pruneHiddenProperties(&schema, prefix, hiddenPaths)
 		definitions[typeName] = *pruned
 	}
+	return nil
+}
+
+// leakedHiddenProps returns property names from schema whose bare name
+// matches a hidden entry in the registry. This catches definitions that
+// should be mapped but aren't.
+func leakedHiddenProps(schema apiextensionsv1.JSONSchemaProps, hidden map[string]bool) []string {
+	var leaked []string
+	for propName := range schema.Properties {
+		if hidden[propName] {
+			leaked = append(leaked, propName)
+		}
+	}
+	sort.Strings(leaked)
+	return leaked
 }
 
 // pruneHiddenProperties recursively removes properties whose registry path

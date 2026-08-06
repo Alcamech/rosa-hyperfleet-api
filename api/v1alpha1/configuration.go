@@ -71,21 +71,26 @@ type KubeletConfig struct {
 	PodPidsLimit *int64 `json:"podPidsLimit,omitempty"`
 
 	// +hyperfleet:write-mode=immutable
+	// +kubebuilder:validation:MaxProperties=32
 	SystemReserved map[string]string `json:"systemReserved,omitempty"`
 
 	// +hyperfleet:write-mode=immutable
+	// +kubebuilder:validation:MaxProperties=32
 	KubeReserved map[string]string `json:"kubeReserved,omitempty"`
 
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
+	// +kubebuilder:validation:MaxProperties=32
 	EvictionHard map[string]string `json:"evictionHard,omitempty"`
 
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
+	// +kubebuilder:validation:MaxProperties=32
 	EvictionSoft map[string]string `json:"evictionSoft,omitempty"`
 
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
+	// +kubebuilder:validation:MaxProperties=32
 	EvictionSoftGracePeriod map[string]string `json:"evictionSoftGracePeriod,omitempty"`
 
 	// +hyperfleet:write-mode=mutable
@@ -115,6 +120,7 @@ type KubeletConfig struct {
 
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
+	// +kubebuilder:validation:MaxProperties=32
 	CPUManagerPolicyOptions map[string]string `json:"cpuManagerPolicyOptions,omitempty"`
 
 	// +k8s:openapi-gen=false
@@ -131,6 +137,7 @@ type KubeletConfig struct {
 
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
+	// +kubebuilder:validation:MaxItems=256
 	AllowedUnsafeSysctls []string `json:"allowedUnsafeSysctls,omitempty"`
 
 	// +hyperfleet:write-mode=mutable
@@ -171,22 +178,23 @@ type ProxyConfiguration struct{}
 type MachineConfigSpec struct {
 	// +openshift:enable:FeatureGate=HyperFleetMachineConfig
 	// +hyperfleet:write-mode=immutable
+	// +kubebuilder:validation:MaxItems=128
 	AllowedKernelArguments []string `json:"allowedKernelArguments,omitempty"`
 
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
+	// +kubebuilder:validation:MaxItems=128
 	KernelArguments []string `json:"kernelArguments,omitempty"`
 
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
+	// +kubebuilder:validation:MaxItems=64
 	SystemdUnits []SystemdUnit `json:"systemdUnits,omitempty"`
 
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
+	// +kubebuilder:validation:MaxItems=256
 	Files []FileSpec `json:"files,omitempty"`
-
-	// +hyperfleet:write-mode=immutable
-	FIPS *bool `json:"fips,omitempty"`
 
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
@@ -194,26 +202,31 @@ type MachineConfigSpec struct {
 
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
+	// +kubebuilder:validation:MaxItems=64
 	Extensions []string `json:"extensions,omitempty"`
 }
 
 type SystemdUnit struct {
-	Name     string          `json:"name"`
-	Enabled  *bool           `json:"enabled,omitempty"`
-	Contents string          `json:"contents,omitempty"`
-	Dropins  []SystemdDropin `json:"dropins,omitempty"`
+	Name string `json:"name"`
+	Enabled  *bool `json:"enabled,omitempty"`
+	// +kubebuilder:validation:MaxLength=65536
+	Contents string `json:"contents,omitempty"`
+	// +kubebuilder:validation:MaxItems=16
+	Dropins []SystemdDropin `json:"dropins,omitempty"`
 }
 
 type SystemdDropin struct {
-	Name     string `json:"name"`
+	Name string `json:"name"`
+	// +kubebuilder:validation:MaxLength=32768
 	Contents string `json:"contents,omitempty"`
 }
 
 type FileSpec struct {
-	Path      string `json:"path"`
-	Contents  string `json:"contents,omitempty"`
-	Mode      *int32 `json:"mode,omitempty"`
+	Path string `json:"path"`
+	// +kubebuilder:validation:MaxLength=262144
+	Contents  string  `json:"contents,omitempty"`
+	Mode      *int32  `json:"mode,omitempty"`
 	User      *string `json:"user,omitempty"`
 	Group     *string `json:"group,omitempty"`
-	Overwrite *bool  `json:"overwrite,omitempty"`
+	Overwrite *bool   `json:"overwrite,omitempty"`
 }

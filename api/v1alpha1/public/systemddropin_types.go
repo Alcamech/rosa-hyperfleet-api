@@ -4,6 +4,7 @@ package public
 
 // SystemdDropin is the REST representation of SystemdDropin (visible fields only)
 type SystemdDropin struct {
-	Name     string `json:"name"`
+	Name string `json:"name"`
+	// +kubebuilder:validation:MaxLength=32768
 	Contents string `json:"contents,omitempty"`
 }

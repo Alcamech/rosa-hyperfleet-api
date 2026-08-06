@@ -212,10 +212,6 @@
     "hidden": true
   },
   {
-    "fieldPath": "machineConfig.fips",
-    "writeMode": "immutable"
-  },
-  {
     "fieldPath": "machineConfig.kernelArguments",
     "writeMode": "service-set",
     "hidden": true
@@ -493,10 +489,6 @@
     "fieldPath": "spec.hostedCluster.configuration.machineConfig.files",
     "writeMode": "service-set",
     "hidden": true
-  },
-  {
-    "fieldPath": "spec.hostedCluster.configuration.machineConfig.fips",
-    "writeMode": "immutable"
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.machineConfig.kernelArguments",

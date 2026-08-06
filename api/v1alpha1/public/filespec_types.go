@@ -4,7 +4,8 @@ package public
 
 // FileSpec is the REST representation of FileSpec (visible fields only)
 type FileSpec struct {
-	Path      string  `json:"path"`
+	Path string `json:"path"`
+	// +kubebuilder:validation:MaxLength=262144
 	Contents  string  `json:"contents,omitempty"`
 	Mode      *int32  `json:"mode,omitempty"`
 	User      *string `json:"user,omitempty"`

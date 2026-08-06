@@ -232,10 +232,6 @@ var FieldRegistry = map[string]FieldMeta{
 		WriteMode: ServiceSet,
 		Hidden:    true,
 	},
-	"machineConfig.fips": {
-		FieldPath: "machineConfig.fips",
-		WriteMode: Immutable,
-	},
 	"machineConfig.kernelArguments": {
 		FieldPath: "machineConfig.kernelArguments",
 		WriteMode: ServiceSet,
@@ -514,10 +510,6 @@ var FieldRegistry = map[string]FieldMeta{
 		FieldPath: "spec.hostedCluster.configuration.machineConfig.files",
 		WriteMode: ServiceSet,
 		Hidden:    true,
-	},
-	"spec.hostedCluster.configuration.machineConfig.fips": {
-		FieldPath: "spec.hostedCluster.configuration.machineConfig.fips",
-		WriteMode: Immutable,
 	},
 	"spec.hostedCluster.configuration.machineConfig.kernelArguments": {
 		FieldPath: "spec.hostedCluster.configuration.machineConfig.kernelArguments",
