@@ -10,8 +10,8 @@ The v2 SDK will be validated by running existing FVT/e2e tests against both the 
 
 Requires:
 
-* Clone/duplication of API tests pointing both to v1 and v2, and covering the same functionality (the test is AWARE of the SDK v1 vs v2 differences).
-* Clone/duplication of Client tests, pointing both to ROSA v1 and v2, and covering the same functionality (the test is NOT AWARE of the SDK v1 vs v2 differences).
+- Clone/duplication of API tests pointing both to v1 and v2, and covering the same functionality (the test is AWARE of the SDK v1 vs v2 differences).
+- Clone/duplication of Client tests, pointing both to ROSA v1 and v2, and covering the same functionality (the test is NOT AWARE of the SDK v1 vs v2 differences).
 
 **Out of scope for this initiative**: CI/prow integration. Manual test execution is sufficient, but all identified tests must pass.
 
@@ -64,6 +64,7 @@ Generated output: clients, builders, types, JSON serialization, OpenAPI specs
 ```
 
 Key facts:
+
 - **Model source**: `github.com/openshift-online/ocm-api-model/model` (proprietary DSL, not OpenAPI)
 - **Generator**: `github.com/openshift-online/ocm-api-metamodel/cmd/metamodel`
 - **Output**: ~1600 generated files in `clustersmgmt/v1/` alone
@@ -99,35 +100,35 @@ created := response.Body()  // typed *Cluster
 
 The minimum surface the v2 SDK must cover:
 
-| Operation | V1 SDK call | HTTP |
-|-----------|-------------|------|
-| Create cluster | `Clusters().Add().Body(c)` | `POST /api/clusters_mgmt/v1/clusters` |
-| Get cluster | `Clusters().Cluster(id).Get()` | `GET /api/clusters_mgmt/v1/clusters/{id}` |
-| List clusters | `Clusters().List()` | `GET /api/clusters_mgmt/v1/clusters` |
-| Update cluster | `Clusters().Cluster(id).Update().Body(c)` | `PATCH /api/clusters_mgmt/v1/clusters/{id}` |
-| Delete cluster | `Clusters().Cluster(id).Delete()` | `DELETE /api/clusters_mgmt/v1/clusters/{id}` |
-| Create node pool | `Cluster(id).NodePools().Add().Body(np)` | `POST .../clusters/{id}/node_pools` |
-| Get node pool | `Cluster(id).NodePools().NodePool(npId).Get()` | `GET .../node_pools/{id}` |
-| List node pools | `Cluster(id).NodePools().List()` | `GET .../clusters/{id}/node_pools` |
-| Update node pool | `Cluster(id).NodePools().NodePool(npId).Update().Body(np)` | `PATCH .../node_pools/{id}` |
-| Delete node pool | `Cluster(id).NodePools().NodePool(npId).Delete()` | `DELETE .../node_pools/{id}` |
-| Delete protection | `Cluster(id).DeleteProtection()` | `POST .../delete_protection` |
-| Hibernate | `Cluster(id).Hibernate()` | `POST .../hibernate` |
-| Resume | `Cluster(id).Resume()` | `POST .../resume` |
+| Operation         | V1 SDK call                                                | HTTP                                         |
+| ----------------- | ---------------------------------------------------------- | -------------------------------------------- |
+| Create cluster    | `Clusters().Add().Body(c)`                                 | `POST /api/clusters_mgmt/v1/clusters`        |
+| Get cluster       | `Clusters().Cluster(id).Get()`                             | `GET /api/clusters_mgmt/v1/clusters/{id}`    |
+| List clusters     | `Clusters().List()`                                        | `GET /api/clusters_mgmt/v1/clusters`         |
+| Update cluster    | `Clusters().Cluster(id).Update().Body(c)`                  | `PATCH /api/clusters_mgmt/v1/clusters/{id}`  |
+| Delete cluster    | `Clusters().Cluster(id).Delete()`                          | `DELETE /api/clusters_mgmt/v1/clusters/{id}` |
+| Create node pool  | `Cluster(id).NodePools().Add().Body(np)`                   | `POST .../clusters/{id}/node_pools`          |
+| Get node pool     | `Cluster(id).NodePools().NodePool(npId).Get()`             | `GET .../node_pools/{id}`                    |
+| List node pools   | `Cluster(id).NodePools().List()`                           | `GET .../clusters/{id}/node_pools`           |
+| Update node pool  | `Cluster(id).NodePools().NodePool(npId).Update().Body(np)` | `PATCH .../node_pools/{id}`                  |
+| Delete node pool  | `Cluster(id).NodePools().NodePool(npId).Delete()`          | `DELETE .../node_pools/{id}`                 |
+| Delete protection | `Cluster(id).DeleteProtection()`                           | `POST .../delete_protection`                 |
+| Hibernate         | `Cluster(id).Hibernate()`                                  | `POST .../hibernate`                         |
+| Resume            | `Cluster(id).Resume()`                                     | `POST .../resume`                            |
 
 ## HyperFleet Platform API Surface
 
-The v1 SDK exposes 12 service areas through the OCM API. The HyperFleet Platform API replaces a subset of these with a smaller, focused surface. 
+The v1 SDK exposes 12 service areas through the OCM API. The HyperFleet Platform API replaces a subset of these with a smaller, focused surface.
 The v2 SDK only needs to cover the HyperFleet equivalents.
 
-| V1 OCM Service | V1 Path | V2 HyperFleet Equivalent | Phase |
-|---|---|---|---|
-| ClustersMgmt (clusters) | `/api/clusters_mgmt` | **Cluster** CRD | Immediate |
-| ClustersMgmt (node pools) | `/api/clusters_mgmt` | **NodePool** CRD | Immediate |
-| AccountsMgmt | `/api/accounts_mgmt` | Authz: accounts, policies, attachments (see [authz.md](../authz.md)) | Future |
-| Authorizations | `/api/authorizations` | Authz: check endpoint (see [authz.md](../authz.md)) | Future |
-| AccessTransparency | `/api/access_transparency` | TBD — likely needed - SRE flows | Future |
-| ServiceLogs | `/api/service_logs` | Per-cluster logs — mechanism TBD | Future |
+| V1 OCM Service            | V1 Path                    | V2 HyperFleet Equivalent                                             | Phase     |
+| ------------------------- | -------------------------- | -------------------------------------------------------------------- | --------- |
+| ClustersMgmt (clusters)   | `/api/clusters_mgmt`       | **Cluster** CRD                                                      | Immediate |
+| ClustersMgmt (node pools) | `/api/clusters_mgmt`       | **NodePool** CRD                                                     | Immediate |
+| AccountsMgmt              | `/api/accounts_mgmt`       | Authz: accounts, policies, attachments (see [authz.md](../authz.md)) | Future    |
+| Authorizations            | `/api/authorizations`      | Authz: check endpoint (see [authz.md](../authz.md))                  | Future    |
+| AccessTransparency        | `/api/access_transparency` | TBD — likely needed - SRE flows                                      | Future    |
+| ServiceLogs               | `/api/service_logs`        | Per-cluster logs — mechanism TBD                                     | Future    |
 
 The v2 SDK architecture must accommodate adding new resource types (authz, logs, etc.) as the Platform API grows, but the initial implementation covers only Cluster and NodePool.
 
@@ -139,7 +140,7 @@ The v1 SDK is generated from a proprietary metamodel DSL (`ocm-api-model`). The 
 
 The v2 SDK exposes its generated interface directly — there is no v1-compatibility adapter. Consumers migrate to the new interface (see [Interface Decision](#interface-decision)).
 
-**Generated core**: Auto-generated from the HyperFleet CRD types (`hyperfleet-operator/api/v1alpha1/`) using `client-gen` (from `k8s.io/code-generator`), the same tool that generates typed clientsets for any Kubernetes operator. This produces typed verb clients (`Create`, `Get`, `List`, `Update`, `Delete`) that match the CRD types exactly. A custom `wire-gen` tool extends the generated clients with platform-specific behavior (watch suppression, `WaitUntil` polling).
+**Generated core**: Auto-generated from the HyperFleet CRD types (`api/v1alpha1/`) using `client-gen` (from `k8s.io/code-generator`), the same tool that generates typed clientsets for any Kubernetes operator. This produces typed verb clients (`Create`, `Get`, `List`, `Update`, `Delete`) that match the CRD types exactly. A custom `wire-gen` tool extends the generated clients with platform-specific behavior (watch suppression, `WaitUntil` polling).
 
 ### SDK Release Cadence and Strategy
 
@@ -173,6 +174,7 @@ Go types (api/v1alpha1/*.go)
 ```
 
 Markers in the CRD type comments drive `wire-gen` output:
+
 - `+wire:field=<wire>,meta=<meta>` — field name mapping (transport layer)
 - `+wire:watch=disabled` — suppress Watch; generate an override returning `ErrWatchNotSupported`
 - `+wire:wait` — generate `WaitUntil(ctx, id, condition func(*T) bool, interval, timeout)`
@@ -226,11 +228,11 @@ Because the generated core already produces the typed `Spec`/`Status` models fro
 
 ### Target Clients
 
-| Client | Priority | Rationale |
-|--------|----------|-----------|
-| **rosa CLI** (`rosa-hyperfleet-cli` / `rosactl`) | P0 | Primary user-facing tool, exercises full lifecycle |
-| **terraform-provider-rhcs** | P1 | Key IaC consumer, many enterprise customers depend on it |
-| **CAPA** (Cluster API Provider AWS) | P2 | Lower priority for initial initiative; evaluate after rosa + terraform |
+| Client                                           | Priority | Rationale                                                              |
+| ------------------------------------------------ | -------- | ---------------------------------------------------------------------- |
+| **rosa CLI** (`rosa-hyperfleet-cli` / `rosactl`) | P0       | Primary user-facing tool, exercises full lifecycle                     |
+| **terraform-provider-rhcs**                      | P1       | Key IaC consumer, many enterprise customers depend on it               |
+| **CAPA** (Cluster API Provider AWS)              | P2       | Lower priority for initial initiative; evaluate after rosa + terraform |
 
 ### In Scope
 
@@ -256,47 +258,47 @@ Because the generated core already produces the typed `Spec`/`Status` models fro
 
 These tests in `rosa/tests/e2e/` exercise HCP cluster lifecycle through the CLI, which uses `ocm-sdk-go` under the hood:
 
-| Test file | What it exercises | Labels |
-|-----------|-------------------|--------|
-| `hcp_cluster_test.go` | HCP cluster create/describe/edit/delete, log forwarders | `Feature.Cluster`, `Runtime.Day2` |
-| `hcp_machine_pool_test.go` | HCP node pool (machine pool) CRUD | `Feature.MachinePool` |
-| `test_rosacli_idp.go` | External auth configuration | |
-| `hcp_tuning_config_test.go` | Tuning configs on HCP clusters | `Feature.TuningConfig` |
-| `e2e_setup_test.go` | Cluster provisioning (precondition) | setup |
-| `e2e_tear_down_test.go` | Cluster deletion (cleanup) | cleanup |
+| Test file                   | What it exercises                                       | Labels                            |
+| --------------------------- | ------------------------------------------------------- | --------------------------------- |
+| `hcp_cluster_test.go`       | HCP cluster create/describe/edit/delete, log forwarders | `Feature.Cluster`, `Runtime.Day2` |
+| `hcp_machine_pool_test.go`  | HCP node pool (machine pool) CRUD                       | `Feature.MachinePool`             |
+| `test_rosacli_idp.go`       | External auth configuration                             |                                   |
+| `hcp_tuning_config_test.go` | Tuning configs on HCP clusters                          | `Feature.TuningConfig`            |
+| `e2e_setup_test.go`         | Cluster provisioning (precondition)                     | setup                             |
+| `e2e_tear_down_test.go`     | Cluster deletion (cleanup)                              | cleanup                           |
 
 ### HyperFleet CLI E2E Tests (this repo)
 
 These tests in `test/e2e-cli/` exercise the full lifecycle through `rosactl`:
 
-| Test area | Labels | What it exercises |
-|-----------|--------|-------------------|
-| VPC setup | `vpc-create`, `vpc-list` | AWS VPC creation for cluster |
-| IAM setup | `iam-create`, `iam-list` | IAM roles and OIDC |
-| Cluster create | `hcp-create` | `rosactl cluster create` |
-| Cluster status | `cluster-status` | Poll until cluster is ready |
-| Node pools | `nodepools-wait` | Node pool readiness |
-| Cluster update | `hcp-patch` | `rosactl cluster patch` |
-| Cleanup | `bundles-delete`, `oidc-delete`, `iam-delete`, `vpc-delete` | Full teardown |
+| Test area      | Labels                                                      | What it exercises            |
+| -------------- | ----------------------------------------------------------- | ---------------------------- |
+| VPC setup      | `vpc-create`, `vpc-list`                                    | AWS VPC creation for cluster |
+| IAM setup      | `iam-create`, `iam-list`                                    | IAM roles and OIDC           |
+| Cluster create | `hcp-create`                                                | `rosactl cluster create`     |
+| Cluster status | `cluster-status`                                            | Poll until cluster is ready  |
+| Node pools     | `nodepools-wait`                                            | Node pool readiness          |
+| Cluster update | `hcp-patch`                                                 | `rosactl cluster patch`      |
+| Cleanup        | `bundles-delete`, `oidc-delete`, `iam-delete`, `vpc-delete` | Full teardown                |
 
 ### HyperFleet Platform API E2E Tests (this repo)
 
 The `test/e2e-api/` tests exercise the Platform API directly:
 
-| Test file | What it exercises |
-|-----------|-------------------|
-| `e2e_test.go` | Basic API connectivity |
+| Test file           | What it exercises      |
+| ------------------- | ---------------------- |
+| `e2e_test.go`       | Basic API connectivity |
 | `authz_e2e_test.go` | Authorization policies |
 
 ### Acceptance Criteria for V2 SDK
 
 Each test suite below must pass against **both** the v1 SDK (ocm-sdk-go, baseline) and the v2 SDK (`clientset/`). The v1 run establishes the expected baseline; the v2 run proves parity. The initiative is not complete until both columns are green and behavioral parity is validated.
 
-| # | Test suite | v1 SDK (baseline) | v2 SDK |
-|---|-----------|-------------------|--------|
-| 1 | **Rosa CLI HCP tests** (`hcp_cluster_test.go`, `hcp_machine_pool_test.go`): create HCP cluster, CRUD node pools, delete cluster | Must pass against ocm-sdk-go to establish baseline behavior | Must pass against `clientset/` with identical observable outcomes |
-| 2 | **HyperFleet CLI lifecycle** (`test/e2e-cli/cluster_test.go` labels: `setup`, `create`, `monitor`, `cleanup`): full VPC → IAM → cluster → node pool → teardown cycle through rosactl | Must pass against ocm-sdk-go to establish baseline behavior | Must pass against `clientset/` with identical observable outcomes |
-| 3 | **Terraform basic lifecycle**: `terraform apply` + `terraform destroy` of an HCP cluster with node pools | Must pass with provider backed by ocm-sdk-go to establish baseline behavior | Must pass with provider backed by `clientset/` with identical observable outcomes |
+| #   | Test suite                                                                                                                                                                           | v1 SDK (baseline)                                                           | v2 SDK                                                                            |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| 1   | **Rosa CLI HCP tests** (`hcp_cluster_test.go`, `hcp_machine_pool_test.go`): create HCP cluster, CRUD node pools, delete cluster                                                      | Must pass against ocm-sdk-go to establish baseline behavior                 | Must pass against `clientset/` with identical observable outcomes                 |
+| 2   | **HyperFleet CLI lifecycle** (`test/e2e-cli/cluster_test.go` labels: `setup`, `create`, `monitor`, `cleanup`): full VPC → IAM → cluster → node pool → teardown cycle through rosactl | Must pass against ocm-sdk-go to establish baseline behavior                 | Must pass against `clientset/` with identical observable outcomes                 |
+| 3   | **Terraform basic lifecycle**: `terraform apply` + `terraform destroy` of an HCP cluster with node pools                                                                             | Must pass with provider backed by ocm-sdk-go to establish baseline behavior | Must pass with provider backed by `clientset/` with identical observable outcomes |
 
 **Behavioral-parity validation**: For each test suite, the v1 and v2 runs must produce the same observable outcomes — identical resource states, API response codes, and CLI/Terraform output (excluding endpoint URLs and auth-mechanism differences). Any behavioral divergence must be documented and justified before the initiative is declared complete.
 
@@ -307,6 +309,7 @@ Each test suite below must pass against **both** the v1 SDK (ocm-sdk-go, baselin
 #### Story 1: V2 SDK Skeleton and Authentication
 
 Set up the `clientset/` module with:
+
 - Connection builder with AWS SigV4 authentication (the HyperFleet API uses IAM auth, not OCM SSO tokens)
 - Regional Platform API endpoint (required; each region has its own endpoint, e.g. `https://hyperfleet.us-east-1.api.example.com`)
 - AWS signing region (required; must match the region of the Platform API endpoint, e.g. `us-east-1`)
@@ -317,6 +320,7 @@ Set up the `clientset/` module with:
 - Basic HTTP round-tripper that talks to the HyperFleet Platform API
 
 **Acceptance**:
+
 1. SDK requires a regional Platform API endpoint and rejects initialization when it is missing
 2. SDK requires a signing region and rejects initialization when it is missing
 3. SigV4 signatures use `execute-api` as the signing service name
@@ -327,7 +331,8 @@ Set up the `clientset/` module with:
 #### Story 2: Generated Core from CRD Types
 
 Set up the generation pipeline:
-- Use `client-gen` to generate typed clientsets from `hyperfleet-operator/api/v1alpha1/` CRD types
+
+- Use `client-gen` to generate typed clientsets from `api/v1alpha1/` CRD types
 - Use `wire-gen --mode=mappings` to generate wire↔metadata field name mappings from `+wire:field` markers
 - Use `wire-gen --mode=wrappers` to generate Watch overrides and `WaitUntil` polling helpers from `+wire:watch=disabled` / `+wire:wait` markers
 - Wire the generated client into the SDK's transport layer (`clientset/transport`)
@@ -385,8 +390,8 @@ methods — see [Interface Decision](#interface-decision)), not a **dynamic** on
 (a generic client that fetches the schema at runtime and operates on
 `unstructured` / `map[string]any`, the way `kubectl` does).
 
-The rationale: a typed client suits consumers whose *own code names individual
-fields*. `rosa` CLI (each flag maps to a field), terraform-provider-rhcs (each
+The rationale: a typed client suits consumers whose _own code names individual
+fields_. `rosa` CLI (each flag maps to a field), terraform-provider-rhcs (each
 HCL attribute maps to a field), and CAPA (reconcile logic maps field to field)
 are all in this category — they hand-write field names in source, so compile-time
 type safety is a direct benefit and the "new field ⇒ regenerate" cost is
