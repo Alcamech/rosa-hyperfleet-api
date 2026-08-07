@@ -2,11 +2,11 @@
 
 ## Testing Layers
 
-| Layer | Backend | Files | Validates |
-|---|---|---|---|
-| **Unit — middleware** | miniredis | `pkg/ratelimit/middleware_test.go` | HTTP middleware behavior with Redis adapter |
-| **Unit — GCRA algorithm** | in-memory GCRA | `pkg/ratelimit/local_test.go` | GCRA math used by CLI test mode |
-| **E2E** | real Valkey (ElastiCache) | `test/e2e-api/ratelimit_e2e_test.go` | Full path: API Gateway -> middleware -> Valkey -> response |
+| Layer                     | Backend                   | Files                                           | Validates                                                  |
+| ------------------------- | ------------------------- | ----------------------------------------------- | ---------------------------------------------------------- |
+| **Unit — middleware**     | miniredis                 | `platform-api/pkg/ratelimit/middleware_test.go` | HTTP middleware behavior with Redis adapter                |
+| **Unit — GCRA algorithm** | in-memory GCRA            | `platform-api/pkg/ratelimit/local_test.go`      | GCRA math used by CLI test mode                            |
+| **E2E**                   | real Valkey (ElastiCache) | `test/e2e-api/ratelimit_e2e_test.go`            | Full path: API Gateway -> middleware -> Valkey -> response |
 
 ## Unit Tests — Middleware (`middleware_test.go`)
 
@@ -14,27 +14,28 @@ Uses [miniredis](https://github.com/alicebob/miniredis) as an in-process Redis m
 
 ### Scenarios covered
 
-| Test | What it validates |
-|---|---|
-| `SetsRateLimitHeadersOnAllowedRequests` | `X-RateLimit-Limit`, `Remaining`, `Reset` headers present |
-| `AllowsRequestsUnderLimit` | Requests within burst all return 200 |
-| `DeniesRequestsOverLimit` | Request over burst returns 429 + `Retry-After` |
-| `IsolatesRateLimitsByAccount` | Different accounts have independent GCRA buckets |
-| `SkipsWhenNoAccountID` | No account ID -> no rate limiting, no headers |
-| `SkipsExemptAccounts` | Exempt accounts bypass rate limiting; non-exempt accounts are limited |
-| `AppliesRouteOverrides` | Route-specific rate/burst override default; other methods unaffected |
-| `DifferentiatesHTTPMethods` | GET and POST have separate limit buckets |
-| `FailOpenWhenRedisDown` | Returns 200 when Redis is unreachable (fail-open) |
-| `RecoverAfterWindow` | Requests allowed again after the GCRA window resets |
-| `DisabledConfig` | `enabled: false` disables all rate limiting |
-| `429ResponseFormat` | 429 body: `kind=Error`, `code=429`, reason with method/path |
-| `KeyStructure` | Redis key format is `rate:rl:{account}:{method}:{path}` |
-| `ConcurrentRequests` | Thread-safe under concurrent access |
-| `PrometheusMetrics_*` | `ratelimit_requests_total` counter with `ok`/`over_limit`/`failure_mode_allowed` labels |
+| Test                                    | What it validates                                                                       |
+| --------------------------------------- | --------------------------------------------------------------------------------------- |
+| `SetsRateLimitHeadersOnAllowedRequests` | `X-RateLimit-Limit`, `Remaining`, `Reset` headers present                               |
+| `AllowsRequestsUnderLimit`              | Requests within burst all return 200                                                    |
+| `DeniesRequestsOverLimit`               | Request over burst returns 429 + `Retry-After`                                          |
+| `IsolatesRateLimitsByAccount`           | Different accounts have independent GCRA buckets                                        |
+| `SkipsWhenNoAccountID`                  | No account ID -> no rate limiting, no headers                                           |
+| `SkipsExemptAccounts`                   | Exempt accounts bypass rate limiting; non-exempt accounts are limited                   |
+| `AppliesRouteOverrides`                 | Route-specific rate/burst override default; other methods unaffected                    |
+| `DifferentiatesHTTPMethods`             | GET and POST have separate limit buckets                                                |
+| `FailOpenWhenRedisDown`                 | Returns 200 when Redis is unreachable (fail-open)                                       |
+| `RecoverAfterWindow`                    | Requests allowed again after the GCRA window resets                                     |
+| `DisabledConfig`                        | `enabled: false` disables all rate limiting                                             |
+| `429ResponseFormat`                     | 429 body: `kind=Error`, `code=429`, reason with method/path                             |
+| `KeyStructure`                          | Redis key format is `rate:rl:{account}:{method}:{path}`                                 |
+| `ConcurrentRequests`                    | Thread-safe under concurrent access                                                     |
+| `PrometheusMetrics_*`                   | `ratelimit_requests_total` counter with `ok`/`over_limit`/`failure_mode_allowed` labels |
 
 ### Running
 
 ```bash
+cd platform-api
 go test -race -count=1 -v ./pkg/ratelimit/...
 ```
 
@@ -44,20 +45,21 @@ Tests the in-memory GCRA implementation directly via the `RateLimiter.Allow()` i
 
 ### Scenarios covered
 
-| Test | What it validates |
-|---|---|
-| `AllowsWithinBurst` | Requests within burst all return `Allowed=1` |
-| `DeniesOverBurst` | Request over burst returns `Allowed=0` with positive `RetryAfter` |
-| `RemainingDecreases` | `Remaining` count decreases with each allowed request |
-| `IsolatesKeys` | Different keys have independent GCRA state |
-| `ResetAfterIsPositive` | `ResetAfter` is positive on allowed requests |
-| `DeniedResultHasZeroRemaining` | Denied requests have `Remaining=0` |
-| `ConcurrentAccess` | Thread-safe under goroutine contention |
-| `NeverReturnsError` | In-memory limiter never returns an error (no fail-open needed) |
+| Test                           | What it validates                                                 |
+| ------------------------------ | ----------------------------------------------------------------- |
+| `AllowsWithinBurst`            | Requests within burst all return `Allowed=1`                      |
+| `DeniesOverBurst`              | Request over burst returns `Allowed=0` with positive `RetryAfter` |
+| `RemainingDecreases`           | `Remaining` count decreases with each allowed request             |
+| `IsolatesKeys`                 | Different keys have independent GCRA state                        |
+| `ResetAfterIsPositive`         | `ResetAfter` is positive on allowed requests                      |
+| `DeniedResultHasZeroRemaining` | Denied requests have `Remaining=0`                                |
+| `ConcurrentAccess`             | Thread-safe under goroutine contention                            |
+| `NeverReturnsError`            | In-memory limiter never returns an error (no fail-open needed)    |
 
 ### Running
 
 ```bash
+cd platform-api
 go test -race -count=1 -v -run TestLocalLimiter ./pkg/ratelimit/...
 ```
 
@@ -66,10 +68,12 @@ go test -race -count=1 -v -run TestLocalLimiter ./pkg/ratelimit/...
 Start the API locally with rate limiting in test mode — no Redis or Valkey required:
 
 ```bash
-RATE_LIMIT_TEST_MODE=true go run ./cmd/rosa-regional-platform-api serve
+cd platform-api
+RATE_LIMIT_TEST_MODE=true go run ./cmd/... serve
 ```
 
 This uses the in-memory GCRA with low defaults:
+
 - **rate**: 3 requests per second
 - **burst**: 6 (auto-derived: `rate * 2`)
 - **window**: 1 second
@@ -94,23 +98,23 @@ Tests use concurrent goroutines with a start-gate channel pattern to fire reques
 
 ### Environment variables
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `E2E_BASE_URL` | Yes | — | Deployed API URL |
-| `E2E_ACCOUNT_ID` | No | AWS STS caller identity | Account ID for rate-limited requests |
-| `RATE_LIMIT_TEST_MODE` | No | — | If `true`, assumes rate=3; otherwise auto-discovers from `X-RateLimit-Limit` header |
-| `E2E_EXEMPT_ACCOUNT_ID` | No | — | Exempt account to test; test skipped if unset |
+| Variable                | Required | Default                 | Description                                                                         |
+| ----------------------- | -------- | ----------------------- | ----------------------------------------------------------------------------------- |
+| `E2E_BASE_URL`          | Yes      | —                       | Deployed API URL                                                                    |
+| `E2E_ACCOUNT_ID`        | No       | AWS STS caller identity | Account ID for rate-limited requests                                                |
+| `RATE_LIMIT_TEST_MODE`  | No       | —                       | If `true`, assumes rate=3; otherwise auto-discovers from `X-RateLimit-Limit` header |
+| `E2E_EXEMPT_ACCOUNT_ID` | No       | —                       | Exempt account to test; test skipped if unset                                       |
 
 ### Scenarios covered
 
-| Test | What it validates |
-|---|---|
-| Headers on allowed requests | `X-RateLimit-Limit`, `Remaining`, `Reset` present with valid values |
-| 429 when over limit | Concurrent requests exceed burst, at least one gets 429 |
-| 429 response body + Retry-After | `kind=Error`, `code=429`, `reason` contains "Too Many Requests" |
+| Test                                 | What it validates                                                        |
+| ------------------------------------ | ------------------------------------------------------------------------ |
+| Headers on allowed requests          | `X-RateLimit-Limit`, `Remaining`, `Reset` present with valid values      |
+| 429 when over limit                  | Concurrent requests exceed burst, at least one gets 429                  |
+| 429 response body + Retry-After      | `kind=Error`, `code=429`, `reason` contains "Too Many Requests"          |
 | Exempt accounts bypass rate limiting | Exempt account never gets 429 (skipped if `E2E_EXEMPT_ACCOUNT_ID` unset) |
-| Per-account isolation | Exhausting one account's limit doesn't affect a different account |
-| Rate limit resets after window | After 429, waiting for reset window allows requests again |
+| Per-account isolation                | Exhausting one account's limit doesn't affect a different account        |
+| Rate limit resets after window       | After 429, waiting for reset window allows requests again                |
 
 ### Running
 
@@ -129,33 +133,33 @@ RATE_LIMIT_TEST_MODE=true make test-e2e-api E2E_LABEL_FILTER=ratelimit
 
 `RATE_LIMIT_TEST_MODE=true` sets low rate limit defaults for testability. The backend depends on whether `REDIS_ENDPOINT` is also set:
 
-| `RATE_LIMIT_TEST_MODE` | `REDIS_ENDPOINT` | Backend | Use case |
-|---|---|---|---|
-| `true` | unset | In-memory GCRA | CLI / local development |
-| `true` | set | In-memory GCRA | Test mode always forces in-memory regardless of `REDIS_ENDPOINT` |
-| `false` | set | Real Valkey | Production |
+| `RATE_LIMIT_TEST_MODE` | `REDIS_ENDPOINT` | Backend        | Use case                                                         |
+| ---------------------- | ---------------- | -------------- | ---------------------------------------------------------------- |
+| `true`                 | unset            | In-memory GCRA | CLI / local development                                          |
+| `true`                 | set              | In-memory GCRA | Test mode always forces in-memory regardless of `REDIS_ENDPOINT` |
+| `false`                | set              | Real Valkey    | Production                                                       |
 
 Test mode defaults: `rate=3`, `burst=6`, `window=1s`.
 
 ## Scenario Coverage Matrix
 
-| Scenario | Unit (middleware) | Unit (GCRA) | E2E |
-|---|---|---|---|
-| Requests under limit allowed | x | x | x |
-| Requests over limit denied (429) | x | x | x |
-| Rate limit headers present | x | | x |
-| 429 response body format | x | | x |
-| Retry-After header | x | x | x |
-| No account ID skips rate limiting | x | | |
-| Exempt accounts bypass | x | | x |
-| Per-account isolation | x | x | x |
-| Rate limit resets after window | x | | x |
-| Fail-open on backend error | x | | |
-| Concurrent request safety | x | x | x |
-| Route-specific overrides | x | | |
-| HTTP method differentiation | x | | |
-| Prometheus metrics | x | | |
-| Redis key structure | x | | |
-| Disabled config | x | | |
-| Remaining decreases | | x | |
-| Never returns error | | x | |
+| Scenario                          | Unit (middleware) | Unit (GCRA) | E2E |
+| --------------------------------- | ----------------- | ----------- | --- |
+| Requests under limit allowed      | x                 | x           | x   |
+| Requests over limit denied (429)  | x                 | x           | x   |
+| Rate limit headers present        | x                 |             | x   |
+| 429 response body format          | x                 |             | x   |
+| Retry-After header                | x                 | x           | x   |
+| No account ID skips rate limiting | x                 |             |     |
+| Exempt accounts bypass            | x                 |             | x   |
+| Per-account isolation             | x                 | x           | x   |
+| Rate limit resets after window    | x                 |             | x   |
+| Fail-open on backend error        | x                 |             |     |
+| Concurrent request safety         | x                 | x           | x   |
+| Route-specific overrides          | x                 |             |     |
+| HTTP method differentiation       | x                 |             |     |
+| Prometheus metrics                | x                 |             |     |
+| Redis key structure               | x                 |             |     |
+| Disabled config                   | x                 |             |     |
+| Remaining decreases               |                   | x           |     |
+| Never returns error               |                   | x           |     |
