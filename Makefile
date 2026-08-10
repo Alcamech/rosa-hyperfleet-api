@@ -275,8 +275,9 @@ lint: $(GOLANGCI_LINT)
 	cd clientset && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
 	cd hack/clientset/cmd/wire-gen && $(GOLANGCI_LINT) run --config $(abspath .golangci.yml) --timeout 5m ./...
 
-# All Go modules in the repo (used by verify and MintMaker/Renovate post-update).
-MOD_TIDY_DIRS := hyperfleet-db api hyperfleet-operator platform-api test clientset hack/tools hack/api-codegen
+# All Go modules in the repo (used by verify and MintMaker/Renovate post-upgrade).
+override MOD_TIDY_DIRS := hyperfleet-db api hyperfleet-operator platform-api test clientset hack/tools hack/api-codegen
+MOD_TIDY_FILES := $(foreach d,$(MOD_TIDY_DIRS),$(d)/go.mod $(d)/go.sum)
 
 mod-tidy:
 	@set -e; for d in $(MOD_TIDY_DIRS); do \
@@ -285,15 +286,7 @@ mod-tidy:
 	done
 
 verify: mod-tidy
-	git diff --exit-code \
-		hyperfleet-db/go.mod hyperfleet-db/go.sum \
-		api/go.mod api/go.sum \
-		hyperfleet-operator/go.mod hyperfleet-operator/go.sum \
-		platform-api/go.mod platform-api/go.sum \
-		test/go.mod test/go.sum \
-		clientset/go.mod clientset/go.sum \
-		hack/tools/go.mod hack/tools/go.sum \
-		hack/api-codegen/go.mod hack/api-codegen/go.sum
+	git diff --exit-code $(MOD_TIDY_FILES)
 
 deps:
 	@set -e; for d in $(MOD_TIDY_DIRS); do \
