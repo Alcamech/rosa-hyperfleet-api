@@ -14,6 +14,7 @@ import (
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:subresource:status
 // +genclient
+// +genclient:nonNamespaced
 // +wire:field=name,meta=name
 // +wire:field=id,meta=uid
 // +wire:field=resource_version,meta=resourceVersion

@@ -37,8 +37,8 @@ type V1alpha1PublicClient struct {
 	restClient rest.Interface
 }
 
-func (c *V1alpha1PublicClient) Clusters(namespace string) ClusterInterface {
-	return newClusters(c, namespace)
+func (c *V1alpha1PublicClient) Clusters() ClusterInterface {
+	return newClusters(c)
 }
 
 func (c *V1alpha1PublicClient) NodePools(namespace string) NodePoolInterface {
