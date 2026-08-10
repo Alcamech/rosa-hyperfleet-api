@@ -98,5 +98,11 @@
     }
   ],
   "rebaseWhen": "behind-base-branch",
-  "ignoreTests": false
+  "ignoreTests": false,
+  "postUpdateTasks": [
+    {
+      "commands": ["make mod-tidy"],
+      "description": "Sync go.mod/go.sum in all modules after dependency bumps (ci/prow/verify)"
+    }
+  ]
 }
