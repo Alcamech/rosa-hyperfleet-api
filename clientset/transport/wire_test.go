@@ -107,6 +107,17 @@ type errReader struct{ err error }
 
 func (e errReader) Read([]byte) (int, error) { return 0, e.err }
 
+// partialErrReader returns data and err in a single Read call, simulating a
+// reader that delivers bytes and a read error simultaneously.
+type partialErrReader struct {
+	data []byte
+	err  error
+}
+
+func (r partialErrReader) Read(p []byte) (int, error) {
+	return copy(p, r.data), r.err
+}
+
 // errCloser wraps a reader and returns the given error on Close.
 type errCloser struct {
 	io.Reader
@@ -304,7 +315,10 @@ func errorResponse(statusCode int, body string) *http.Response {
 
 func readMetav1Status(t *testing.T, resp *http.Response) map[string]json.RawMessage {
 	t.Helper()
-	b, _ := io.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading response body: %v", err)
+	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(b, &m); err != nil {
 		t.Fatalf("body is not JSON: %v — body: %s", err, b)
@@ -322,7 +336,10 @@ func TestAdaptResponse_NonPlatformAPIErrorPassesThrough(t *testing.T) {
 	}
 
 	out := mustAdaptResponse(t, a, resp)
-	b, _ := io.ReadAll(out.Body)
+	b, err := io.ReadAll(out.Body)
+	if err != nil {
+		t.Fatalf("reading response body: %v", err)
+	}
 	if string(b) != original {
 		t.Errorf("body changed on non-platform-api error response: %s", b)
 	}
@@ -365,7 +382,10 @@ func TestAdaptErrorResponse_NonJSONBodyPassesThrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	b, _ := io.ReadAll(out.Body)
+	b, err := io.ReadAll(out.Body)
+	if err != nil {
+		t.Fatalf("reading response body: %v", err)
+	}
 	if string(b) != original {
 		t.Errorf("body changed: %s", b)
 	}
@@ -378,7 +398,10 @@ func TestAdaptErrorResponse_JSONWithoutKindErrorPassesThrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	b, _ := io.ReadAll(out.Body)
+	b, err := io.ReadAll(out.Body)
+	if err != nil {
+		t.Fatalf("reading response body: %v", err)
+	}
 	if string(b) != original {
 		t.Errorf("body changed: %s", b)
 	}
@@ -409,9 +432,32 @@ func TestAdaptErrorResponse_HTTPStatusMappedToReason(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			m := readMetav1Status(t, out)
-			want, _ := json.Marshal(tc.reason)
-			assertField(t, m, "reason", string(want))
+			assertField(t, m, "reason", string(mustMarshal(t, tc.reason)))
 		})
+	}
+}
+
+func TestAdaptErrorResponse_PartialReadErrorPropagated(t *testing.T) {
+	// partialErrReader delivers bytes and an error in the same Read call.
+	// Previously the code restored the partial body and returned nil; it must now propagate the error.
+	resp := &http.Response{
+		StatusCode: 403,
+		Body:       io.NopCloser(partialErrReader{data: []byte(`{"kind":"Error"`), err: errors.New("network interrupted")}),
+		Header:     make(http.Header),
+	}
+	if _, err := adaptErrorResponse(resp); err == nil {
+		t.Error("expected error when body read fails partway through")
+	}
+}
+
+func TestAdaptErrorResponse_CloseErrorPropagated(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: 403,
+		Body:       errCloser{Reader: strings.NewReader(`{"kind":"Error","code":"X","reason":"Y"}`), err: errors.New("close failure")},
+		Header:     make(http.Header),
+	}
+	if _, err := adaptErrorResponse(resp); err == nil {
+		t.Error("expected error when body close fails")
 	}
 }
 

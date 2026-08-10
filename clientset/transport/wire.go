@@ -207,15 +207,16 @@ func (a *Adapter) adaptResponse(resp *http.Response) (*http.Response, error) {
 // Platform-api error format: {"kind":"Error","code":"...","reason":"..."}
 // metav1.Status format:      {"apiVersion":"v1","kind":"Status","status":"Failure",...}
 //
-// If the body cannot be read or is not a platform-api error envelope the original
-// response is returned unchanged.
+// If the body cannot be read the error is returned to the caller. If the body
+// is not a platform-api error envelope the original response is returned unchanged.
 func adaptErrorResponse(resp *http.Response) (*http.Response, error) {
 	body, readErr := io.ReadAll(resp.Body)
 	closeErr := resp.Body.Close()
-	if readErr != nil || closeErr != nil {
-		// Restore whatever we managed to read and pass through.
-		resp.Body = io.NopCloser(bytes.NewReader(body))
-		return resp, nil
+	if readErr != nil {
+		return nil, fmt.Errorf("reading error response body: %w", readErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("closing error response body: %w", closeErr)
 	}
 
 	var apiErr struct {

@@ -5,7 +5,7 @@
 The SDK provides a typed Go client for the Hyperfleet platform API, using the same interface style as `client-go`:
 
 ```go
-cs.HyperfleetV1alpha1().Clusters("123456789012").Get(ctx, "my-cluster", wrappers.GetOptions{})
+cs.HyperfleetV1alpha1().Clusters().Get(ctx, "my-cluster", wrappers.GetOptions{})
 ```
 
 It is built in two parts:
@@ -132,7 +132,7 @@ Every outbound request goes through `SigV4RoundTripper.RoundTrip`:
 
 ### `transport/wire.go` — request/response adapter
 
-The `Adapter` RoundTripper handles three transformations:
+The `Adapter` RoundTripper handles four transformations:
 
 **Response rewriting** — platform API returns flat JSON objects:
 
@@ -155,6 +155,22 @@ Both single-object and list (`{"items": [...]}`) responses are handled.
 **Request rewriting** — the Kubernetes serializer produces nested metadata. The adapter flattens it back to the platform wire format before sending. For namespaced POST requests (e.g. nodepool create), the namespace segment encodes the parent cluster ID; the adapter injects it as `"cluster_id"` in the body before the SigV4 transport strips the namespace from the URL.
 
 **Pagination rewrite** — `wrappers.ListOptions.Offset` is bridged by encoding the integer as a numeric string in `metav1.ListOptions.Continue`. The adapter detects this encoding and rewrites `?continue=N` to `?offset=N` so the platform API receives the parameter it expects.
+
+**Error response translation** — platform API errors use a different envelope from `metav1.Status`:
+
+```json
+{"kind": "Error", "code": "CLUSTERS-MGMT-001", "reason": "account not authorized"}
+```
+
+client-go's `transformResponse` cannot parse this format and falls back to `StatusReasonUnknown`, silently discarding the server's error message. The adapter intercepts any non-2xx response that matches the platform envelope and rewrites it to a minimal `metav1.Status` JSON body before client-go sees it:
+
+```json
+{"apiVersion": "v1", "kind": "Status", "status": "Failure",
+ "message": "CLUSTERS-MGMT-001: account not authorized",
+ "reason": "Forbidden", "code": 403}
+```
+
+This ensures `k8s.io/apimachinery/pkg/api/errors` helpers (`IsNotFound`, `IsForbidden`, etc.) classify errors correctly and that callers receive the full server message rather than a generic unknown error.
 
 ### `wrappers/options.go` — platform-scoped option types
 
@@ -273,7 +289,7 @@ func (c *clusterClient) WaitUntil(
 **Example — wait for deletion**
 
 ```go
-err := cs.HyperfleetV1alpha1().Clusters(accountID).WaitUntil(
+err := cs.HyperfleetV1alpha1().Clusters().WaitUntil(
     ctx, clusterID,
     func(c *v1alpha1.Cluster) bool { return c == nil },
     10*time.Second, 5*time.Minute,
@@ -283,7 +299,7 @@ err := cs.HyperfleetV1alpha1().Clusters(accountID).WaitUntil(
 **Example — wait for Ready phase**
 
 ```go
-err := cs.HyperfleetV1alpha1().Clusters(accountID).WaitUntil(
+err := cs.HyperfleetV1alpha1().Clusters().WaitUntil(
     ctx, clusterID,
     func(c *v1alpha1.Cluster) bool {
         return c != nil && c.Status.Phase == v1alpha1.ClusterPhaseReady
