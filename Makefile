@@ -4,7 +4,7 @@
 	coverage-api-codegen \
 	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz test-e2e-sdk \
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
-	fmt vet verify deps \
+	fmt vet verify deps mod-tidy \
 	manifests generate generate-clientset verify-clientset setup-envtest \
 	codegen-passthrough codegen-registry codegen-verify codegen verify-codegen \
 	codegen-conversion verify-conversion \
@@ -275,30 +275,23 @@ lint: $(GOLANGCI_LINT)
 	cd clientset && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
 	cd hack/clientset/cmd/wire-gen && $(GOLANGCI_LINT) run --config $(abspath .golangci.yml) --timeout 5m ./...
 
-verify:
-	cd hyperfleet-db && go mod tidy
-	cd api && go mod tidy
-	cd hyperfleet-operator && go mod tidy
-	cd platform-api && go mod tidy
-	cd test && go mod tidy
-	cd hack/tools && go mod tidy
-	cd hack/api-codegen && go mod tidy
-	git diff --exit-code \
-		hyperfleet-db/go.mod hyperfleet-db/go.sum \
-		api/go.mod api/go.sum \
-		hyperfleet-operator/go.mod hyperfleet-operator/go.sum \
-		platform-api/go.mod platform-api/go.sum \
-		test/go.mod test/go.sum \
-		hack/tools/go.mod hack/tools/go.sum \
-		hack/api-codegen/go.mod hack/api-codegen/go.sum
+# All Go modules in the repo (used by verify and MintMaker/Renovate post-upgrade).
+override MOD_TIDY_DIRS := hyperfleet-db api hyperfleet-operator platform-api test clientset hack/tools hack/api-codegen
+MOD_TIDY_FILES := $(foreach d,$(MOD_TIDY_DIRS),$(d)/go.mod $(d)/go.sum)
+
+mod-tidy:
+	@set -e; for d in $(MOD_TIDY_DIRS); do \
+		echo "go mod tidy: $$d"; \
+		(cd "$$d" && go mod tidy); \
+	done
+
+verify: mod-tidy
+	git diff --exit-code $(MOD_TIDY_FILES)
 
 deps:
-	cd hyperfleet-db && go mod download && go mod tidy
-	cd api && go mod download && go mod tidy
-	cd hyperfleet-operator && go mod download && go mod tidy
-	cd platform-api && go mod download && go mod tidy
-	cd test && go mod download && go mod tidy
-	cd hack/api-codegen && go mod download && go mod tidy
+	@set -e; for d in $(MOD_TIDY_DIRS); do \
+		(cd "$$d" && go mod download && go mod tidy); \
+	done
 
 # ── Code Generation ──────────────────────────────────────────────────────
 
