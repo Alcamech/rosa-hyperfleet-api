@@ -89,6 +89,7 @@ type NodePoolStatus struct {
 }
 
 // +genclient
+// +bridge:field=cluster_id,meta=namespace
 // +bridge:field=name,meta=name
 // +bridge:field=id,meta=uid
 // +bridge:field=resource_version,meta=resourceVersion

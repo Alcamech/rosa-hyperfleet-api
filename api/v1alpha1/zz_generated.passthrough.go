@@ -12,8 +12,8 @@ import (
 // HostedClusterSpecPassthrough mirrors HostedClusterSpec from upstream HyperShift
 type HostedClusterSpecPassthrough struct {
 	// release specifies the desired OCP release payload for all the hosted cluster components.
-	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=mutable
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
 	Release hypershiftv1beta1.Release `json:"release"`
 	// controlPlaneRelease is like spec.release but only for the components running on the management cluster.
 	// +k8s:openapi-gen=false
@@ -36,8 +36,8 @@ type HostedClusterSpecPassthrough struct {
 	// +hyperfleet:write-mode=service-set
 	Channel string `json:"channel,omitempty"`
 	// platform specifies the underlying infrastructure provider for the cluster
-	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=mutable
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
 	Platform hypershiftv1beta1.PlatformSpec `json:"platform"`
 	// kubeAPIServerDNSName specifies a desired DNS name to resolve to the KAS.
 	// +k8s:openapi-gen=false
@@ -56,8 +56,8 @@ type HostedClusterSpecPassthrough struct {
 	// +hyperfleet:write-mode=service-set
 	DNS hypershiftv1beta1.DNSSpec `json:"dns,omitempty"`
 	// networking specifies network configuration for the hosted cluster.
-	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=mutable
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
 	Networking hypershiftv1beta1.ClusterNetworking `json:"networking"`
 	// autoscaling specifies auto-scaling behavior that applies to all NodePools
 	// +k8s:openapi-gen=false
@@ -66,16 +66,14 @@ type HostedClusterSpecPassthrough struct {
 	// autoNode specifies the configuration for automatic node provisioning and lifecycle management.
 	// +k8s:openapi-gen=true
 	// +hyperfleet:write-mode=service-set
-	// +optional
 	AutoNode hypershiftv1beta1.AutoNode `json:"autoNode,omitzero"`
 	// etcd specifies configuration for the control plane etcd cluster. The
-	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=mutable
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
 	Etcd hypershiftv1beta1.EtcdSpec `json:"etcd"`
 	// services specifies how individual control plane services endpoints are published for consumption.
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
-	// +kubebuilder:validation:MaxItems=10
 	Services []hypershiftv1beta1.ServicePublishingStrategyMapping `json:"services"`
 	// pullSecret is a local reference to a Secret that must have a ".dockerconfigjson" key whose content must be a valid Openshift pull secret JSON.
 	// +k8s:openapi-gen=false
@@ -86,8 +84,8 @@ type HostedClusterSpecPassthrough struct {
 	// +hyperfleet:write-mode=service-set
 	SSHKey corev1.LocalObjectReference `json:"sshKey"`
 	// issuerURL is an OIDC issuer URL which will be used as the issuer in all
-	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=mutable
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
 	IssuerURL string `json:"issuerURL,omitempty"`
 	// serviceAccountSigningKey is a local reference to a secret that must have a "key" key whose content must be the private key
 	// +k8s:openapi-gen=false
@@ -96,7 +94,7 @@ type HostedClusterSpecPassthrough struct {
 	// configuration specifies configuration for individual OCP components in the
 	// +k8s:openapi-gen=true
 	// +hyperfleet:write-mode=service-set
-	Configuration *ClusterConfiguration `json:"configuration,omitempty"`
+	Configuration *hypershiftv1beta1.ClusterConfiguration `json:"configuration,omitempty"`
 	// operatorConfiguration specifies configuration for individual OCP operators in the cluster.
 	// +k8s:openapi-gen=true
 	// +hyperfleet:write-mode=service-set
@@ -106,9 +104,8 @@ type HostedClusterSpecPassthrough struct {
 	// +hyperfleet:write-mode=service-set
 	AuditWebhook *corev1.LocalObjectReference `json:"auditWebhook,omitempty"`
 	// imageContentSources specifies image mirrors that can be used by cluster
-	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=mutable
-	// +kubebuilder:validation:MaxItems=50
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
 	ImageContentSources []hypershiftv1beta1.ImageContentSource `json:"imageContentSources,omitempty"`
 	// additionalTrustBundle is a local reference to a ConfigMap that must have a "ca-bundle.crt" key
 	// +k8s:openapi-gen=false
@@ -133,17 +130,14 @@ type HostedClusterSpecPassthrough struct {
 	// nodeSelector when specified, is propagated to all control plane Deployments and Stateful sets running management side.
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
-	// +kubebuilder:validation:MaxProperties=100
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 	// tolerations when specified, define what custom tolerations are added to the hcp pods.
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
-	// +kubebuilder:validation:MaxItems=50
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 	// labels when specified, define what custom labels are added to the hcp pods.
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
-	// +kubebuilder:validation:MaxProperties=100
 	Labels map[string]string `json:"labels,omitempty"`
 	// capabilities allows for disabling optional components at cluster install time.
 	// +k8s:openapi-gen=false
@@ -154,20 +148,20 @@ type HostedClusterSpecPassthrough struct {
 // NodePoolSpecPassthrough mirrors NodePoolSpec from upstream HyperShift
 type NodePoolSpecPassthrough struct {
 	// clusterName is the name of the HostedCluster this NodePool belongs to.
-	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=mutable
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
 	ClusterName string `json:"clusterName"`
 	// release specifies the OCP release used for this NodePool. It drives the machine ignition configuration (including
-	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=mutable
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
 	Release hypershiftv1beta1.Release `json:"release"`
 	// platform specifies the underlying infrastructure provider for the NodePool
-	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=mutable
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
 	Platform hypershiftv1beta1.NodePoolPlatform `json:"platform"`
 	// replicas is the desired number of nodes the pool should maintain. If unset, the controller default value is 0.
-	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=mutable
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
 	Replicas *int32 `json:"replicas,omitempty"`
 	// management specifies behavior for managing nodes in the pool, such as
 	// +k8s:openapi-gen=false
@@ -192,12 +186,10 @@ type NodePoolSpecPassthrough struct {
 	// nodeLabels propagates a list of labels to Nodes, only once on creation.
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
-	// +kubebuilder:validation:MaxProperties=100
 	NodeLabels map[string]string `json:"nodeLabels,omitempty"`
 	// taints if specified, propagates a list of taints to Nodes, only once on creation.
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
-	// +kubebuilder:validation:MaxItems=50
 	Taints []hypershiftv1beta1.Taint `json:"taints,omitempty"`
 	// pausedUntil is a field that can be used to pause reconciliation on the NodePool controller. Resulting in any change to the NodePool being ignored.
 	// +k8s:openapi-gen=false
@@ -214,6 +206,5 @@ type NodePoolSpecPassthrough struct {
 	// osImageStream specifies an OS stream to be used for nodes in this pool.
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
-	// +optional
 	OSImageStream hypershiftv1beta1.OSImageStreamReference `json:"osImageStream,omitzero"`
 }

@@ -13,9 +13,9 @@ import (
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:subresource:status
 // +genclient
+// +bridge:field=cluster_id,meta=namespace
 // +bridge:field=name,meta=name
 // +bridge:field=id,meta=uid
-// +bridge:field=cluster_id,meta=namespace
 // +bridge:field=resource_version,meta=resourceVersion
 // +bridge:field=generation,meta=generation
 // +bridge:watch=disabled

@@ -277,7 +277,6 @@ spec:
                       type: string
                     description: nodeLabels propagates a list of labels to Nodes,
                       only once on creation.
-                    maxProperties: 100
                     type: object
                   nodeVolumeDetachTimeout:
                     description: nodeVolumeDetachTimeout is the maximum amount of
@@ -1859,7 +1858,6 @@ spec:
                       - effect
                       - key
                       type: object
-                    maxItems: 50
                     type: array
                   tuningConfig:
                     description: tuningConfig is a list of references to ConfigMaps
@@ -1884,6 +1882,7 @@ spec:
                 required:
                 - clusterName
                 - management
+                - osImageStream
                 - platform
                 - release
                 type: object
