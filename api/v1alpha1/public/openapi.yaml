@@ -3329,15 +3329,12 @@ components:
               description: updateService may be used to specify the preferred upstream update service.
               type: string
       required:
-          - autoNode
           - etcd
-          - fips
           - networking
           - platform
           - pullSecret
           - release
           - services
-          - sshKey
       type: object
     NodePoolSpecPassthrough:
       additionalProperties: true
@@ -3468,7 +3465,6 @@ components:
       required:
           - clusterName
           - management
-          - osImageStream
           - platform
           - release
       type: object
