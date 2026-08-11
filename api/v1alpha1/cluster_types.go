@@ -89,12 +89,16 @@ type ClusterSpec struct {
 	// passthrough types with per-field visibility and write-mode markers.
 	// +kubebuilder:validation:Required
 	HostedCluster HostedClusterSpecPassthrough `json:"hostedCluster"`
+
+	// ControlPlaneUpgradePolicy is the control plane upgrade policy defined by the user.
+	// +optional
+	ControlPlaneUpgradePolicy *ControlPlaneUpgradePolicySpec `json:"controlPlaneUpgradePolicy,omitempty"`
 }
 
 // ClusterStatus defines the observed state of a Cluster.
 type ClusterStatus struct {
 	// Conditions represent the latest observations of the cluster's state.
-	// Known condition types: Synced, Available, Degraded.
+	// Known condition types: Synced, Available, Degraded, ControlPlaneUpgradeState.
 	// +listType=map
 	// +listMapKey=type
 	// +optional
@@ -119,6 +123,10 @@ type ClusterStatus struct {
 	// ObservedGeneration is the most recent generation observed by the controller.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// ControlPlaneUpgradePolicy summarizes the control plane upgrade policy status.
+	// +optional
+	ControlPlaneUpgradePolicy *ControlPlaneUpgradePolicyStatus `json:"controlPlaneUpgradePolicy,omitempty"`
 }
 
 // PlacementReference identifies the management cluster assignment.

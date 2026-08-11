@@ -69,6 +69,81 @@ spec:
               accountId:
                 description: AccountID is the AWS account that owns this cluster.
                 type: string
+              controlPlaneUpgradePolicy:
+                description: ControlPlaneUpgradePolicy is the control plane upgrade
+                  policy defined by the user.
+                properties:
+                  nextRun:
+                    description: NextRun is the time the upgrade should run for "manual"
+                      upgrade policies
+                    format: date-time
+                    type: string
+                  schedule:
+                    description: |-
+                      Schedule defines a cron expression that calculates the next automatic upgrade scheduling.
+                      The cron expression must follow the standard 5-field format:
+                      ┌───────────── minute (0 - 59)
+                      │ ┌───────────── hour (0 - 23)
+                      │ │ ┌───────────── day of month (1 - 31)
+                      │ │ │ ┌───────────── month (1 - 12)
+                      │ │ │ │ ┌───────────── day of week (0 - 6) (Sunday to Saturday)
+                      │ │ │ │ │
+                      * * * * *
+                    maxLength: 256
+                    pattern: ^(\*|([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])|([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])-([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])|\*/([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])|([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])(,([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9]))*)
+                      (\*|([0-9]|1[0-9]|2[0-3])|([0-9]|1[0-9]|2[0-3])-([0-9]|1[0-9]|2[0-3])|\*/([0-9]|1[0-9]|2[0-3])|([0-9]|1[0-9]|2[0-3])(,([0-9]|1[0-9]|2[0-3]))*)
+                      (\*|([1-9]|1[0-9]|2[0-9]|3[0-1])|([1-9]|1[0-9]|2[0-9]|3[0-1])-([1-9]|1[0-9]|2[0-9]|3[0-1])|\*/([1-9]|1[0-9]|2[0-9]|3[0-1])|([1-9]|1[0-9]|2[0-9]|3[0-1])(,([1-9]|1[0-9]|2[0-9]|3[0-1]))*)
+                      (\*|([1-9]|1[0-2])|([1-9]|1[0-2])-([1-9]|1[0-2])|\*/([1-9]|1[0-2])|([1-9]|1[0-2])(,([1-9]|1[0-2]))*)
+                      (\*|[0-6]|[0-6]-[0-6]|\*/[0-6]|[0-6](,[0-6])*)$
+                    type: string
+                  scheduleType:
+                    description: |-
+                      ScheduleType indicates if the control plane upgrade policy is "manual" and it's executed only one time or
+                      whether it is "automatic" where an expression will calculate recurrent upgrades.
+                    enum:
+                    - Manual
+                    - Automatic
+                    type: string
+                  updateType:
+                    description: |-
+                      UpdateType indicates if it is a control plane upgrade policy defined by the user or
+                      triggered by Red Hat for addressing critical CVEs.
+                    enum:
+                    - ControlPlane
+                    - ControlPlaneCVE
+                    type: string
+                  upgradeScope:
+                    description: |-
+                      UpgradeScope indicates if minor version upgrades are allowed for automatic upgrades.
+                      Manual upgrades always allow it.
+                    enum:
+                    - PatchOnly
+                    - PatchAndMinor
+                    type: string
+                  version:
+                    description: Version is the desired upgrade version on "manual"
+                      upgrade policies.
+                    maxLength: 64
+                    type: string
+                required:
+                - scheduleType
+                - updateType
+                type: object
+                x-kubernetes-validations:
+                - message: version and nextRun are required when scheduleType is Manual
+                  rule: self.scheduleType != 'Manual' || (has(self.version) && has(self.nextRun))
+                - message: schedule must not be set when scheduleType is Manual
+                  rule: self.scheduleType != 'Manual' || !has(self.schedule)
+                - message: schedule is required when scheduleType is Automatic
+                  rule: self.scheduleType != 'Automatic' || has(self.schedule)
+                - message: version and nextRun must not be set when scheduleType is
+                    Automatic
+                  rule: self.scheduleType != 'Automatic' || (!has(self.version) &&
+                    !has(self.nextRun))
+                - message: upgradeScope must not be set when scheduleType is Manual
+                  rule: self.scheduleType != 'Manual' || !has(self.upgradeScope)
+                - message: upgradeScope is required when scheduleType is Automatic
+                  rule: self.scheduleType != 'Automatic' || has(self.upgradeScope)
               creatorARN:
                 description: CreatorARN is the IAM ARN of the user who created this
                   cluster.
@@ -5880,7 +5955,7 @@ spec:
               conditions:
                 description: |-
                   Conditions represent the latest observations of the cluster's state.
-                  Known condition types: Synced, Available, Degraded.
+                  Known condition types: Synced, Available, Degraded, ControlPlaneUpgradeState.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -5954,6 +6029,18 @@ spec:
                 required:
                 - host
                 - port
+                type: object
+              controlPlaneUpgradePolicy:
+                description: ControlPlaneUpgradePolicy summarizes the control plane
+                  upgrade policy status.
+                properties:
+                  nextRun:
+                    description: |-
+                      NextRun is the time when the control plane will upgrade.
+                      When the ScheduleType is "manual" it will match with the NextRun defined by the user.
+                      When the ScheduleType is "automatic" it will be calculated from the Schedule cron expression.
+                    format: date-time
+                    type: string
                 type: object
               observedGeneration:
                 description: ObservedGeneration is the most recent generation observed
