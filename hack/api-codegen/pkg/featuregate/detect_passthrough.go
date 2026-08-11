@@ -31,11 +31,9 @@ type PassthroughTarget struct {
 // (e.g. Cluster → clusters → *_clusters.yaml).
 func DetectPassthroughTargets(apiDir, crdDir string) ([]PassthroughTarget, error) {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, apiDir, func(fi os.FileInfo) bool {
-		return !strings.HasSuffix(fi.Name(), "_test.go")
-	}, parser.ParseComments)
+	parsedFiles, err := parseGoFilesInDir(fset, apiDir)
 	if err != nil {
-		return nil, fmt.Errorf("parsing %s: %w", apiDir, err)
+		return nil, err
 	}
 
 	// Collect all struct types by name and their position in the file.
@@ -50,44 +48,42 @@ func DetectPassthroughTargets(apiDir, crdDir string) ([]PassthroughTarget, error
 	// them to the nearest following type declaration in the same file.
 	rootTypes := make(map[string]bool)
 
-	for _, pkg := range pkgs {
-		for _, file := range pkg.Files {
-			// Build a sorted list of (commentGroupEndPos, markerPresent) for this file.
-			// We only care about comment groups that contain the root marker.
-			var markerGroupEnds []token.Pos
-			for _, cg := range file.Comments {
-				if hasMarker(cg, "+kubebuilder:object:root=true") {
-					markerGroupEnds = append(markerGroupEnds, cg.End())
-				}
+	for _, file := range parsedFiles {
+		// Build a sorted list of (commentGroupEndPos, markerPresent) for this file.
+		// We only care about comment groups that contain the root marker.
+		var markerGroupEnds []token.Pos
+		for _, cg := range file.Comments {
+			if hasMarker(cg, "+kubebuilder:object:root=true") {
+				markerGroupEnds = append(markerGroupEnds, cg.End())
 			}
+		}
 
-			for _, decl := range file.Decls {
-				gd, ok := decl.(*ast.GenDecl)
-				if !ok || gd.Tok != token.TYPE {
+		for _, decl := range file.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				ts, ok := spec.(*ast.TypeSpec)
+				if !ok {
 					continue
 				}
-				for _, spec := range gd.Specs {
-					ts, ok := spec.(*ast.TypeSpec)
-					if !ok {
-						continue
-					}
-					st, ok := ts.Type.(*ast.StructType)
-					if !ok {
-						continue
-					}
-					structs[ts.Name.Name] = structEntry{st: st, pos: gd.Pos()}
+				st, ok := ts.Type.(*ast.StructType)
+				if !ok {
+					continue
+				}
+				structs[ts.Name.Name] = structEntry{st: st, pos: gd.Pos()}
 
-					// A type is a root type if any marker comment group in the
-					// same file ends before this declaration starts. We use a
-					// generous window: any marker group that ends within 50 lines
-					// before the type declaration is considered associated with it.
-					declLine := fset.Position(gd.Pos()).Line
-					for _, end := range markerGroupEnds {
-						endLine := fset.Position(end).Line
-						if endLine < declLine && declLine-endLine <= 50 {
-							rootTypes[ts.Name.Name] = true
-							break
-						}
+				// A type is a root type if any marker comment group in the
+				// same file ends before this declaration starts. We use a
+				// generous window: any marker group that ends within 50 lines
+				// before the type declaration is considered associated with it.
+				declLine := fset.Position(gd.Pos()).Line
+				for _, end := range markerGroupEnds {
+					endLine := fset.Position(end).Line
+					if endLine < declLine && declLine-endLine <= 50 {
+						rootTypes[ts.Name.Name] = true
+						break
 					}
 				}
 			}
@@ -159,6 +155,27 @@ func DetectPassthroughTargets(apiDir, crdDir string) ([]PassthroughTarget, error
 		targets = append(targets, PassthroughTarget{CRDFile: file, Paths: paths})
 	}
 	return targets, nil
+}
+
+// parseGoFilesInDir parses all non-test Go source files in dir.
+func parseGoFilesInDir(fset *token.FileSet, dir string) ([]*ast.File, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", dir, err)
+	}
+	var files []*ast.File
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.ParseComments)
+		if err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", name, err)
+		}
+		files = append(files, f)
+	}
+	return files, nil
 }
 
 // hasMarker reports whether the comment group contains the given marker text.

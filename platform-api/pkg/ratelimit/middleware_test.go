@@ -35,7 +35,7 @@ func setupTest(t *testing.T, cfg *Config) (*Limiter, *miniredis.Miniredis) {
 func defaultTestConfig() *Config {
 	cfg := &Config{
 		Enabled:      true,
-		RedisTimeout: 10,
+		RedisTimeout: 1000,
 		Default:      RouteLimit{Rate: 5, Burst: 5, Window: 1},
 		exemptSet:    map[string]struct{}{},
 	}

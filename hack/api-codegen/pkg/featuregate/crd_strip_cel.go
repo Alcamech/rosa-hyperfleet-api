@@ -25,9 +25,7 @@ func StripCELFromSubtrees(crdPath string, fieldPaths []string) error {
 
 	for _, path := range fieldPaths {
 		segments := strings.Split(path, ".")
-		if err := stripCELAtPath(&doc, segments); err != nil {
-			return fmt.Errorf("stripping path %q: %w", path, err)
-		}
+		stripCELAtPath(&doc, segments)
 	}
 
 	tmp, err := os.CreateTemp(filepath.Dir(crdPath), ".strip-cel-*.yaml")
@@ -64,7 +62,7 @@ func StripCELFromSubtrees(crdPath string, fieldPaths []string) error {
 // (relative to openAPIV3Schema) and recursively removes x-kubernetes-validations.
 // It handles both single-version and multi-version CRDs by traversing the
 // spec.versions[*].schema.openAPIV3Schema prefix automatically.
-func stripCELAtPath(doc *yaml.Node, segments []string) error {
+func stripCELAtPath(doc *yaml.Node, segments []string) {
 	// Walk every version's schema — the generator produces one version but
 	// the function handles multiple to be safe.
 	versions := findSchemaNodes(doc)
@@ -74,7 +72,6 @@ func stripCELAtPath(doc *yaml.Node, segments []string) error {
 			stripCELRecursive(target)
 		}
 	}
-	return nil
 }
 
 // findSchemaNodes returns the openAPIV3Schema mapping node for each version.
