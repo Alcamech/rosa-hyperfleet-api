@@ -140,7 +140,7 @@ The v1 SDK is generated from a proprietary metamodel DSL (`ocm-api-model`). The 
 
 The v2 SDK exposes its generated interface directly — there is no v1-compatibility adapter. Consumers migrate to the new interface (see [Interface Decision](#interface-decision)).
 
-**Generated core**: Auto-generated from the HyperFleet CRD types (`api/v1alpha1/`) using `client-gen` (from `k8s.io/code-generator`), the same tool that generates typed clientsets for any Kubernetes operator. This produces typed verb clients (`Create`, `Get`, `List`, `Update`, `Delete`) that match the CRD types exactly. A custom `wire-gen` tool extends the generated clients with platform-specific behavior (watch suppression, `WaitUntil` polling).
+**Generated core**: Auto-generated from the HyperFleet CRD types (`api/v1alpha1/`) using `client-gen` (from `k8s.io/code-generator`), the same tool that generates typed clientsets for any Kubernetes operator. This produces typed verb clients (`Create`, `Get`, `List`, `Update`, `Delete`) that match the CRD types exactly. A custom `bridge-gen` tool extends the generated clients with platform-specific behavior (watch suppression, `WaitUntil` polling).
 
 ### SDK Release Cadence and Strategy
 
@@ -152,7 +152,7 @@ In v1, the SDK was released separately from the backend. The v2 api will support
 ├────────────────────────────────────────────┤
 │  Generated Core (from CRD types)           │
 │  Typed clients, models (client-gen)        │
-│  Platform wrappers (wire-gen)              │
+│  Platform wrappers (bridge-gen)              │
 ├────────────────────────────────────────────┤
 │  Connection / Auth / Transport             │
 │  AWS SigV4 auth, retry, logging            │
@@ -168,16 +168,16 @@ Go types (api/v1alpha1/*.go)
     ↓ client-gen (k8s.io/code-generator)
     ↓ Typed clientset: Create/Get/List/Update/Delete per resource
     ↓
-    ↓ wire-gen --mode=mappings   → wire field name → metadata field name mappings
-    ↓ wire-gen --mode=wrappers   → Watch override (ErrWatchNotSupported)
+    ↓ bridge-gen --mode=bridge   → wire field name → metadata field name mappings
+    ↓ bridge-gen --mode=platform   → Watch override (ErrWatchNotSupported)
                                    WaitUntil polling helper
 ```
 
-Markers in the CRD type comments drive `wire-gen` output:
+Markers in the CRD type comments drive `bridge-gen` output:
 
-- `+wire:field=<wire>,meta=<meta>` — field name mapping (transport layer)
-- `+wire:watch=disabled` — suppress Watch; generate an override returning `ErrWatchNotSupported`
-- `+wire:wait` — generate `WaitUntil(ctx, id, condition func(*T) bool, interval, timeout)`
+- `+bridge:field=<wire>,meta=<meta>` — field name mapping (transport layer)
+- `+bridge:watch=disabled` — suppress Watch; generate an override returning `ErrWatchNotSupported`
+- `+bridge:wait` — generate `WaitUntil(ctx, id, condition func(*T) bool, interval, timeout)`
 
 The entire pipeline runs as `make generate-clientset`.
 
@@ -333,8 +333,8 @@ Set up the `clientset/` module with:
 Set up the generation pipeline:
 
 - Use `client-gen` to generate typed clientsets from `api/v1alpha1/` CRD types
-- Use `wire-gen --mode=mappings` to generate wire↔metadata field name mappings from `+wire:field` markers
-- Use `wire-gen --mode=wrappers` to generate Watch overrides and `WaitUntil` polling helpers from `+wire:watch=disabled` / `+wire:wait` markers
+- Use `bridge-gen --mode=bridge` to generate wire↔metadata field name mappings from `+bridge:field` markers
+- Use `bridge-gen --mode=platform` to generate Watch overrides and `WaitUntil` polling helpers from `+bridge:watch=disabled` / `+bridge:wait` markers
 - Wire the generated client into the SDK's transport layer (`clientset/transport`)
 - Expose the wrapped clientset through `clientset/hyperfleet.go`
 
@@ -378,7 +378,7 @@ The rosa CLI supports **both** SDKs side by side — v1 (`ocm-sdk-go`) remains t
 
 ## Decisions Made
 
-1. **Generation approach**: CRD-types-first. Drop the proprietary OCM metamodel DSL. Generate the v2 SDK directly from the CRD type definitions using `client-gen` (standard Kubernetes tooling) plus a custom `wire-gen` for platform-specific extensions (watch suppression, `WaitUntil` polling). This avoids the OpenAPI intermediary step and keeps generation aligned with the operator's type definitions as the single source of truth.
+1. **Generation approach**: CRD-types-first. Drop the proprietary OCM metamodel DSL. Generate the v2 SDK directly from the CRD type definitions using `client-gen` (standard Kubernetes tooling) plus a custom `bridge-gen` for platform-specific extensions (watch suppression, `WaitUntil` polling). This avoids the OpenAPI intermediary step and keeps generation aligned with the operator's type definitions as the single source of truth.
 2. **Auth model**: AWS SigV4 (IAM auth), not OCM SSO tokens. The HyperFleet API authenticates all requests via AWS IAM credentials.
 3. **Initial surface**: Cluster + NodePool only. Tenancy and authz (account linking, policies, attachments, authorization check) are deferred to a future iteration, along with access transparency, service logs, etc.
 4. **Interface style**: Kubernetes-style, modeled on `client-go` — typed resource structs (`ObjectMeta`/`Spec`/`Status`) constructed as struct literals, and a typed client exposing `Create`/`Get`/`List`/`Update`/`Patch`/`Delete` verbs. No fluent builders.

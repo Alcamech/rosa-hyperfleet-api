@@ -4,8 +4,8 @@
 	coverage-api-codegen \
 	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz test-e2e-sdk \
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
-	fmt vet verify deps mod-tidy \
-	manifests generate generate-clientset verify-clientset setup-envtest \
+	fmt vet verify verify-mod deps mod-tidy \
+	manifests generate generate-deepcopy generate-clientset verify-clientset setup-envtest \
 	codegen-passthrough codegen-registry codegen-verify codegen verify-codegen \
 	codegen-conversion verify-conversion \
 	generate-openapi verify-openapi swagger-ui \
@@ -37,7 +37,7 @@ TOOLS_BIN_DIR    := $(TOOLS_DIR)/bin
 GOLANGCI_LINT    := $(abspath $(TOOLS_BIN_DIR)/golangci-lint)
 CONTROLLER_GEN   := $(abspath $(TOOLS_BIN_DIR)/controller-gen)
 CLIENT_GEN       := $(abspath $(TOOLS_BIN_DIR)/client-gen)
-WIRE_GEN         := $(abspath $(TOOLS_BIN_DIR)/wire-gen)
+BRIDGE_GEN         := $(abspath $(TOOLS_BIN_DIR)/bridge-gen)
 SETUP_ENVTEST    := $(abspath $(TOOLS_BIN_DIR)/setup-envtest)
 GINKGO           := $(abspath $(TOOLS_BIN_DIR)/ginkgo)
 
@@ -48,11 +48,11 @@ SDK_INPUT         ?= v1alpha1/public
 SDK_CLIENTSET     ?= generated
 SDK_OUTPUT_DIR    ?= $(abspath clientset)
 SDK_OUTPUT_PKG    ?= $(SDK_MODULE)/clientset
-WIRE_INPUT_DIR        ?= $(abspath api/v1alpha1/public)
-WIRE_OUTPUT_DIR       ?= $(abspath clientset/transport)
-WIRE_OUTPUT_PKG       ?= transport
-WRAPPERS_OUTPUT_DIR   ?= $(abspath clientset/wrappers)
-WRAPPERS_OUTPUT_PKG   ?= wrappers
+BRIDGE_INPUT_DIR        ?= $(abspath api/v1alpha1/public)
+BRIDGE_OUTPUT_DIR       ?= $(abspath clientset/transport)
+BRIDGE_OUTPUT_PKG       ?= transport
+PLATFORM_OUTPUT_DIR   ?= $(abspath clientset/platform)
+PLATFORM_OUTPUT_PKG   ?= platform
 TYPED_PKG_IMPORT      ?= $(SDK_MODULE)/clientset/generated/typed/v1alpha1/public
 API_PKG_IMPORT        ?= $(SDK_MODULE)/api/v1alpha1/public
 SDK_HEADER_FILE       ?= $(abspath hack/clientset/license-boilerplate.go.txt)
@@ -74,8 +74,8 @@ $(SETUP_ENVTEST): $(TOOLS_DIR)/go.mod
 $(CLIENT_GEN): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/client-gen k8s.io/code-generator/cmd/client-gen
 
-$(WIRE_GEN): hack/clientset/cmd/wire-gen/main.go
-	cd hack/clientset/cmd/wire-gen && go build -o $(WIRE_GEN) .
+$(BRIDGE_GEN): hack/clientset/cmd/bridge-gen/main.go
+	cd hack/clientset/cmd/bridge-gen && go build -o $(BRIDGE_GEN) .
 
 $(GINKGO): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/ginkgo github.com/onsi/ginkgo/v2/ginkgo
@@ -95,7 +95,7 @@ help:
 	@echo "Test:"
 	@echo "  test                 All tests (unit + integration)"
 	@echo "  test-unit            Unit tests: API + operator + codegen + clientset (no external services)"
-	@echo "  test-clientset       Clientset unit tests (transport, wrappers)"
+	@echo "  test-clientset       Clientset unit tests (transport, platform)"
 	@echo "  test-integration     Integration tests: FleetDB + operator (podman)"
 	@echo "  test-e2e-authz       E2E authz (starts local infra)"
 	@echo "  test-e2e-api         E2E API"
@@ -110,13 +110,15 @@ help:
 	@echo "  lint                 golangci-lint on all modules"
 	@echo "  fmt                  Format Go source"
 	@echo "  vet                  go vet on all modules"
-	@echo "  verify               Verify go.mod tidiness"
+	@echo "  verify-mod           Verify go.mod tidiness"
 	@echo ""
 	@echo "Code Generation:"
-	@echo "  manifests            Generate CRD manifests"
-	@echo "  generate             Generate deepcopy methods"
-	@echo "  generate-clientset         Generate typed client SDK from CRD types"
-	@echo "  verify-clientset           Fail if generated clientset is out of date"
+	@echo "  manifests            Generate CRD manifests (controller-gen + CEL strip)"
+	@echo "  generate             Run all code generators in one pass"
+	@echo "  generate-deepcopy    Generate deepcopy methods only"
+	@echo "  verify               Fail if any generated output is out of date"
+	@echo "  generate-clientset   Generate typed client SDK from CRD types"
+	@echo "  verify-clientset     Fail if generated clientset is out of date"
 	@echo "  codegen-passthrough  Generate passthrough types from HyperShift"
 	@echo "  codegen-registry     Generate field metadata registry from markers"
 	@echo "  codegen-verify       Verify codegen outputs compile"
@@ -222,7 +224,7 @@ test-e2e-zoa: $(GINKGO)
 		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-zoa
 
 test-e2e-sdk: $(GINKGO)
-	BASE_URL="$${BASE_URL}" \
+	E2E_BASE_URL="$${BASE_URL}" \
 	E2E_ACCOUNT_ID="$${E2E_ACCOUNT_ID}" \
 	E2E_CUSTOMER_ACCOUNT_ID="$${E2E_CUSTOMER_ACCOUNT_ID}" \
 	CUSTOMER_AWS_PROFILE="$${CUSTOMER_AWS_PROFILE}" \
@@ -257,7 +259,7 @@ fmt:
 	cd platform-api && go fmt ./...
 	cd hack/api-codegen && go fmt ./...
 	cd clientset && go fmt ./...
-	cd hack/clientset/cmd/wire-gen && go fmt ./...
+	cd hack/clientset/cmd/bridge-gen && go fmt ./...
 
 vet:
 	cd hyperfleet-db && go vet ./...
@@ -265,7 +267,7 @@ vet:
 	cd platform-api && go vet ./...
 	cd hack/api-codegen && go vet ./...
 	cd clientset && go vet ./...
-	cd hack/clientset/cmd/wire-gen && go vet ./...
+	cd hack/clientset/cmd/bridge-gen && go vet ./...
 
 lint: $(GOLANGCI_LINT)
 	cd hyperfleet-db && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
@@ -273,7 +275,7 @@ lint: $(GOLANGCI_LINT)
 	cd platform-api && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
 	cd hack/api-codegen && $(GOLANGCI_LINT) run --config ../../.golangci.yml --timeout 5m ./...
 	cd clientset && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
-	cd hack/clientset/cmd/wire-gen && $(GOLANGCI_LINT) run --config $(abspath .golangci.yml) --timeout 5m ./...
+	cd hack/clientset/cmd/bridge-gen && $(GOLANGCI_LINT) run --config $(abspath .golangci.yml) --timeout 5m ./...
 
 # All Go modules in the repo (used by verify and MintMaker/Renovate post-upgrade).
 override MOD_TIDY_DIRS := hyperfleet-db api hyperfleet-operator platform-api test clientset hack/tools hack/api-codegen
@@ -285,7 +287,7 @@ mod-tidy:
 		(cd "$$d" && go mod tidy); \
 	done
 
-verify: mod-tidy
+verify-mod: mod-tidy
 	git diff --exit-code $(MOD_TIDY_FILES)
 
 deps:
@@ -295,13 +297,17 @@ deps:
 
 # ── Code Generation ──────────────────────────────────────────────────────
 
-manifests: $(CONTROLLER_GEN)
-	cd hyperfleet-operator && $(CONTROLLER_GEN) crd:allowDangerousTypes=true paths="../api/v1alpha1" output:crd:dir=config/crd/bases
+CRD_VARIANTS     := $(abspath bin/crd-variants)
+CRD_BASES_DIR    := hyperfleet-operator/config/crd/bases
 
-generate: $(CONTROLLER_GEN)
+manifests: $(CONTROLLER_GEN) build-api-codegen
+	cd hyperfleet-operator && $(CONTROLLER_GEN) crd:allowDangerousTypes=true paths="../api/v1alpha1" output:crd:dir=config/crd/bases
+	$(CRD_VARIANTS) --strip-passthrough-cel --api-dir api/v1alpha1 --crd-dir $(CRD_BASES_DIR)
+
+generate-deepcopy: $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) object paths="./api/..."
 
-generate-clientset: $(CLIENT_GEN) $(WIRE_GEN)
+generate-clientset: codegen-conversion $(CLIENT_GEN) $(BRIDGE_GEN)
 	cd api && $(CLIENT_GEN) \
 		--input-base "$(SDK_API_PKG)" \
 		--input "$(SDK_INPUT)" \
@@ -309,17 +315,17 @@ generate-clientset: $(CLIENT_GEN) $(WIRE_GEN)
 		--output-dir "$(SDK_OUTPUT_DIR)" \
 		--output-pkg "$(SDK_OUTPUT_PKG)" \
 		--go-header-file "$(SDK_HEADER_FILE)"
-	$(WIRE_GEN) \
-		--mode mappings \
-		--input-dir "$(WIRE_INPUT_DIR)" \
-		--output-dir "$(WIRE_OUTPUT_DIR)" \
-		--output-pkg "$(WIRE_OUTPUT_PKG)" \
+	$(BRIDGE_GEN) \
+		--mode bridge \
+		--input-dir "$(BRIDGE_INPUT_DIR)" \
+		--output-dir "$(BRIDGE_OUTPUT_DIR)" \
+		--output-pkg "$(BRIDGE_OUTPUT_PKG)" \
 		--go-header-file "$(SDK_HEADER_FILE)"
-	$(WIRE_GEN) \
-		--mode wrappers \
-		--input-dir "$(WIRE_INPUT_DIR)" \
-		--output-dir "$(WRAPPERS_OUTPUT_DIR)" \
-		--output-pkg "$(WRAPPERS_OUTPUT_PKG)" \
+	$(BRIDGE_GEN) \
+		--mode platform \
+		--input-dir "$(BRIDGE_INPUT_DIR)" \
+		--output-dir "$(PLATFORM_OUTPUT_DIR)" \
+		--output-pkg "$(PLATFORM_OUTPUT_PKG)" \
 		--typed-pkg-import "$(TYPED_PKG_IMPORT)" \
 		--typed-client-prefix "V1alpha1Public" \
 		--api-pkg-import "$(API_PKG_IMPORT)" \
@@ -335,7 +341,7 @@ codegen-passthrough: build-api-codegen
 		-output-dir v1alpha1 \
 		-package v1alpha1
 
-codegen-registry: generate build-api-codegen
+codegen-registry: codegen-passthrough generate-deepcopy build-api-codegen
 	./bin/marker-scanner \
 		-input-dirs api/v1alpha1 \
 		-output-file hack/api-codegen/pkg/registry/field_metadata.go \
@@ -350,6 +356,13 @@ codegen: codegen-verify
 verify-codegen: codegen
 	git diff --exit-code api/v1alpha1/zz_generated.deepcopy.go
 	git diff --exit-code hack/api-codegen/pkg/registry/
+
+# generate runs all code generators in dependency order.
+# codegen-registry already depends on codegen-passthrough and generate-deepcopy,
+# so those are transitively covered; they are listed explicitly here for clarity.
+generate: codegen-registry manifests codegen-conversion generate-clientset generate-openapi
+
+verify: verify-codegen verify-conversion verify-clientset verify-openapi verify-mod
 
 CONVERSION_OUTPUT_DIR   ?= platform-api/pkg/conversion/v1alpha1
 CONVERSION_OUTPUT_PKG   ?= github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/conversion
@@ -372,7 +385,7 @@ verify-conversion: codegen-conversion
 	cd platform-api && go build ./...
 	git diff --exit-code $(CONVERSION_REST_DIR)/ $(CONVERSION_OUTPUT_DIR)/ platform-api/pkg/conversion/types.go
 
-generate-openapi: codegen-registry
+generate-openapi: codegen-conversion
 	cd hack/api-codegen && go build -o ../../bin/openapi-gen ./cmd/openapi-gen
 	./bin/openapi-gen \
 		-input-dirs ./api/v1alpha1 \

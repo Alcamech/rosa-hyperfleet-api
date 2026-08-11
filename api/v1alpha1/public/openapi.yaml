@@ -3033,14 +3033,49 @@ components:
       additionalProperties: true
       description: HostedClusterSpecPassthrough mirrors HostedClusterSpec from upstream HyperShift
       properties:
+          additionalTrustBundle:
+              description: additionalTrustBundle is a local reference to a ConfigMap that must have a "ca-bundle.crt" key
+              type: object
+              x-kubernetes-map-type: atomic
+          auditWebhook:
+              description: auditWebhook contains metadata for configuring an audit webhook endpoint
+              type: object
+              x-kubernetes-map-type: atomic
           autoNode:
               description: autoNode specifies the configuration for automatic node provisioning and lifecycle management.
               type: object
+          autoscaling:
+              description: autoscaling specifies auto-scaling behavior that applies to all NodePools
+              type: object
+              x-kubernetes-validations:
+                  - message: scaleDown can only be set when scaling is ScaleUpAndScaleDown
+                    rule: 'self.scaling == ''ScaleUpAndScaleDown'' ? true : !has(self.scaleDown)'
+          capabilities:
+              description: capabilities allows for disabling optional components at cluster install time.
+              type: object
+              x-kubernetes-validations:
+                  - message: Capabilities can not be both enabled and disabled at once.
+                    rule: 'has(self.enabled) && has(self.disabled) ? self.enabled.all(e, !(e in self.disabled)) : true'
           channel:
               description: channel is an identifier for explicitly requesting that a non-default set of updates be applied to this cluster.
               type: string
+          clusterID:
+              description: clusterID uniquely identifies this cluster. This is expected to be an RFC4122 UUID value (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx in hexadecimal digits).
+              type: string
           configuration:
               $ref: '#/components/schemas/ClusterConfiguration'
+          controlPlaneRelease:
+              description: controlPlaneRelease is like spec.release but only for the components running on the management cluster.
+              type: object
+          controllerAvailabilityPolicy:
+              description: controllerAvailabilityPolicy specifies the availability policy applied to critical control plane components like the Kube API Server.
+              enum:
+                  - HighlyAvailable
+                  - SingleReplica
+              type: string
+          dns:
+              description: dns specifies the DNS configuration for the hosted cluster ingress.
+              type: object
           etcd:
               description: etcd specifies configuration for the control plane etcd cluster. The
               type: object
@@ -3078,11 +3113,27 @@ components:
                   required:
                       - source
                   type: object
-              maxItems: 50
               type: array
+          infraID:
+              description: infraID is a globally unique identifier for the cluster.
+              type: string
+          infrastructureAvailabilityPolicy:
+              description: infrastructureAvailabilityPolicy specifies the availability policy applied to infrastructure services which run on the hosted cluster data plane like the ingress controller and image registry controller.
+              enum:
+                  - HighlyAvailable
+                  - SingleReplica
+              type: string
           issuerURL:
               description: issuerURL is an OIDC issuer URL which will be used as the issuer in all
               type: string
+          kubeAPIServerDNSName:
+              description: kubeAPIServerDNSName specifies a desired DNS name to resolve to the KAS.
+              type: string
+          labels:
+              additionalProperties:
+                  type: string
+              description: labels when specified, define what custom labels are added to the hcp pods.
+              type: object
           networking:
               description: networking specifies network configuration for the hosted cluster.
               type: object
@@ -3091,6 +3142,17 @@ components:
                     rule: (!has(self.machineNetwork) && self.clusterNetwork.all(c, self.serviceNetwork.all(s, c.cidr != s.cidr)) || (has(self.machineNetwork) && (self.machineNetwork.all(m, self.clusterNetwork.all(c, m.cidr != c.cidr)) && self.machineNetwork.all(m, self.serviceNetwork.all(s, m.cidr != s.cidr)) && self.clusterNetwork.all(c, self.serviceNetwork.all(s, c.cidr != s.cidr)))))
                   - message: allocateNodeCIDRs can only be set to Enabled when networkType is 'Other'
                     rule: 'has(self.allocateNodeCIDRs) && self.allocateNodeCIDRs == ''Enabled'' ? self.networkType == ''Other'' : true'
+          nodeSelector:
+              additionalProperties:
+                  type: string
+              description: nodeSelector when specified, is propagated to all control plane Deployments and Stateful sets running management side.
+              type: object
+          olmCatalogPlacement:
+              description: olmCatalogPlacement specifies the placement of OLM catalog components. By default,
+              enum:
+                  - management
+                  - guest
+              type: string
           operatorConfiguration:
               description: operatorConfiguration specifies configuration for individual OCP operators in the cluster.
               type: object
@@ -3100,22 +3162,237 @@ components:
           platform:
               description: platform specifies the underlying infrastructure provider for the cluster
               type: object
+          pullSecret:
+              description: pullSecret is a local reference to a Secret that must have a ".dockerconfigjson" key whose content must be a valid Openshift pull secret JSON.
+              type: object
+              x-kubernetes-map-type: atomic
           release:
               description: release specifies the desired OCP release payload for all the hosted cluster components.
               type: object
+          secretEncryption:
+              description: secretEncryption specifies a Kubernetes secret encryption strategy for the
+              type: object
+          serviceAccountSigningKey:
+              description: serviceAccountSigningKey is a local reference to a secret that must have a "key" key whose content must be the private key
+              type: object
+              x-kubernetes-map-type: atomic
+          services:
+              description: services specifies how individual control plane services endpoints are published for consumption.
+              items:
+                  description: |-
+                      ServicePublishingStrategyMapping specifies how individual control plane services endpoints are published for consumption.
+                      This includes APIServer;OAuthServer;Konnectivity;Ignition.
+                      If a given service is not present in this list, it will be exposed publicly by default.
+                  properties:
+                      service:
+                          description: |-
+                              service identifies the type of service being published.
+                              It can be APIServer;OAuthServer;Konnectivity;Ignition
+                              OVNSbDb;OIDC are no-op and kept for backward compatibility.
+                              This field is immutable.
+                          enum:
+                              - APIServer
+                              - OAuthServer
+                              - OIDC
+                              - Konnectivity
+                              - Ignition
+                              - OVNSbDb
+                          type: string
+                      servicePublishingStrategy:
+                          description: servicePublishingStrategy specifies how to publish a service endpoint.
+                          properties:
+                              loadBalancer:
+                                  description: loadBalancer configures exposing a service using a dedicated LoadBalancer.
+                                  properties:
+                                      hostname:
+                                          description: |-
+                                              hostname is the name of the DNS record that will be created pointing to the LoadBalancer and passed through to consumers of the service.
+                                              If omitted, the value will be inferred from the corev1.Service Load balancer type .status.
+                                          maxLength: 253
+                                          minLength: 1
+                                          type: string
+                                          x-kubernetes-validations:
+                                              - message: hostname must be a valid domain name (e.g., example.com)
+                                                rule: self.matches('^(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,}$')
+                                  type: object
+                              nodePort:
+                                  description: nodePort configures exposing a service using a NodePort.
+                                  properties:
+                                      address:
+                                          description: address is the host/ip that the NodePort service is exposed over.
+                                          maxLength: 253
+                                          minLength: 1
+                                          type: string
+                                          x-kubernetes-validations:
+                                              - message: address must be a valid hostname, IPv4, or IPv6 address
+                                                rule: self.matches('^(([a-zA-Z0-9][-a-zA-Z0-9]*\\.)+[a-zA-Z]{2,}|localhost)$') || self.matches('^((\\d{1,3}\\.){3}\\d{1,3})$') || self.matches('^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$')
+                                      port:
+                                          description: |-
+                                              port is the port of the NodePort service. If <=0, the port is dynamically
+                                              assigned when the service is created.
+                                          format: int32
+                                          type: integer
+                                  required:
+                                      - address
+                                  type: object
+                              route:
+                                  description: |-
+                                      route configures exposing a service using a Route through and an ingress controller behind a cloud Load Balancer.
+                                      The specifics of the setup are platform dependent.
+                                  properties:
+                                      hostname:
+                                          description: |-
+                                              hostname is the name of the DNS record that will be created pointing to the Route and passed through to consumers of the service.
+                                              If omitted, the value will be inferred from management ingress.Spec.Domain.
+                                          maxLength: 253
+                                          minLength: 1
+                                          type: string
+                                          x-kubernetes-validations:
+                                              - message: hostname must be a valid domain name (e.g., example.com)
+                                                rule: self.matches('^(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,}$')
+                                  type: object
+                              type:
+                                  description: |-
+                                      type is the publishing strategy used for the service.
+                                      It can be LoadBalancer;NodePort;Route;None;S3
+                                  enum:
+                                      - LoadBalancer
+                                      - NodePort
+                                      - Route
+                                      - None
+                                      - S3
+                                  type: string
+                          required:
+                              - type
+                          type: object
+                          x-kubernetes-validations:
+                              - message: nodePort is required when type is NodePort, and forbidden otherwise
+                                rule: 'self.type == ''NodePort'' ? has(self.nodePort) : !has(self.nodePort)'
+                              - message: only route is allowed when type is Route, and forbidden otherwise
+                                rule: 'self.type == ''Route'' ? !has(self.nodePort) && !has(self.loadBalancer) : !has(self.route)'
+                              - message: only loadBalancer is required when type is LoadBalancer, and forbidden otherwise
+                                rule: 'self.type == ''LoadBalancer'' ? !has(self.nodePort) && !has(self.route) : !has(self.loadBalancer)'
+                              - message: None does not allowed any configuration for loadBalancer, nodePort, or route
+                                rule: 'self.type == ''None'' ? !has(self.nodePort) && !has(self.route) && !has(self.loadBalancer) : true'
+                              - message: S3 does not allowed any configuration for loadBalancer, nodePort, or route
+                                rule: 'self.type == ''S3'' ? !has(self.nodePort) && !has(self.route) && !has(self.loadBalancer) : true'
+                  required:
+                      - service
+                      - servicePublishingStrategy
+                  type: object
+              type: array
+          sshKey:
+              description: sshKey is a local reference to a Secret that must have a "id_rsa.pub" key whose content must be the public part of 1..N SSH keys.
+              type: object
+              x-kubernetes-map-type: atomic
+          tolerations:
+              description: tolerations when specified, define what custom tolerations are added to the hcp pods.
+              items:
+                  description: |-
+                      The pod this Toleration is attached to tolerates any taint that matches
+                      the triple <key,value,effect> using the matching operator <operator>.
+                  properties:
+                      effect:
+                          description: |-
+                              Effect indicates the taint effect to match. Empty means match all taint effects.
+                              When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+                          type: string
+                      key:
+                          description: |-
+                              Key is the taint key that the toleration applies to. Empty means match all taint keys.
+                              If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                          type: string
+                      operator:
+                          description: |-
+                              Operator represents a key's relationship to the value.
+                              Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+                              Exists is equivalent to wildcard for value, so that a pod can
+                              tolerate all taints of a particular category.
+                              Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+                          type: string
+                      tolerationSeconds:
+                          description: |-
+                              TolerationSeconds represents the period of time the toleration (which must be
+                              of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+                              it is not set, which means tolerate the taint forever (do not evict). Zero and
+                              negative values will be treated as 0 (evict immediately) by the system.
+                          format: int64
+                          type: integer
+                      value:
+                          description: |-
+                              Value is the taint value the toleration matches to.
+                              If the operator is Exists, the value should be empty, otherwise just a regular string.
+                          type: string
+                  type: object
+              type: array
+          updateService:
+              description: updateService may be used to specify the preferred upstream update service.
+              type: string
       required:
           - etcd
-          - fips
           - networking
           - platform
+          - pullSecret
           - release
+          - services
       type: object
     NodePoolSpecPassthrough:
       additionalProperties: true
       description: NodePoolSpecPassthrough mirrors NodePoolSpec from upstream HyperShift
       properties:
+          arch:
+              description: arch is the preferred processor architecture for the NodePool. Different platforms might have different supported architectures.
+              type: string
+          autoScaling:
+              description: autoScaling specifies auto-scaling behavior for the NodePool.
+              type: object
+              x-kubernetes-validations:
+                  - message: max must be equal or greater than min
+                    rule: self.max >= self.min
           clusterName:
               description: clusterName is the name of the HostedCluster this NodePool belongs to.
+              type: string
+          config:
+              description: config is a list of references to ConfigMaps containing serialized
+              items:
+                  description: |-
+                      LocalObjectReference contains enough information to let you locate the
+                      referenced object inside the same namespace.
+                  properties:
+                      name:
+                          default: ""
+                          description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          type: string
+                  type: object
+                  x-kubernetes-map-type: atomic
+              type: array
+          management:
+              description: management specifies behavior for managing nodes in the pool, such as
+              type: object
+              x-kubernetes-validations:
+                  - message: The 'inPlace' field can only be set when 'upgradeType' is 'InPlace'
+                    rule: '!has(self.inPlace) || self.upgradeType == ''InPlace'''
+          nodeDrainTimeout:
+              description: nodeDrainTimeout is the maximum amount of time that the controller will spend on retrying to drain a node until it succeeds.
+              type: string
+          nodeLabels:
+              additionalProperties:
+                  type: string
+              description: nodeLabels propagates a list of labels to Nodes, only once on creation.
+              type: object
+          nodeVolumeDetachTimeout:
+              description: nodeVolumeDetachTimeout is the maximum amount of time that the controller will spend on detaching volumes from a node.
+              type: string
+          osImageStream:
+              description: osImageStream specifies an OS stream to be used for nodes in this pool.
+              type: object
+          pausedUntil:
+              description: pausedUntil is a field that can be used to pause reconciliation on the NodePool controller. Resulting in any change to the NodePool being ignored.
               type: string
           platform:
               description: platform specifies the underlying infrastructure provider for the NodePool
@@ -3127,8 +3404,67 @@ components:
               description: replicas is the desired number of nodes the pool should maintain. If unset, the controller default value is 0.
               format: int32
               type: integer
+          taints:
+              description: taints if specified, propagates a list of taints to Nodes, only once on creation.
+              items:
+                  description: |-
+                      taint is as v1 Core but without TimeAdded.
+                      https://github.com/kubernetes/kubernetes/blob/ed8cad1e80d096257921908a52ac69cf1f41a098/staging/src/k8s.io/api/core/v1/types.go#L3037-L3053
+                      Validation replicates the same validation as the upstream https://github.com/kubernetes/kubernetes/blob/9a2a7537f035969a68e432b4cc276dbce8ce1735/pkg/util/taints/taints.go#L273.
+                      See also https://kubernetes.io/docs/concepts/overview/working-with-objects/names/.
+                  properties:
+                      effect:
+                          description: |-
+                              effect is the effect of the taint on pods
+                              that do not tolerate the taint.
+                              Valid effects are NoSchedule, PreferNoSchedule and NoExecute.
+                          enum:
+                              - NoSchedule
+                              - PreferNoSchedule
+                              - NoExecute
+                          type: string
+                      key:
+                          description: key is the taint key to be applied to a node.
+                          maxLength: 253
+                          minLength: 1
+                          type: string
+                          x-kubernetes-validations:
+                              - message: key must be a qualified name with an optional subdomain prefix e.g. example.com/MyName
+                                rule: self.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*\\/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$')
+                      value:
+                          description: value is the taint value corresponding to the taint key.
+                          maxLength: 253
+                          type: string
+                          x-kubernetes-validations:
+                              - message: Value must start and end with alphanumeric characters and can only contain '-', '_', '.' in the middle
+                                rule: self.matches('^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$')
+                  required:
+                      - effect
+                      - key
+                  type: object
+              type: array
+          tuningConfig:
+              description: tuningConfig is a list of references to ConfigMaps containing serialized
+              items:
+                  description: |-
+                      LocalObjectReference contains enough information to let you locate the
+                      referenced object inside the same namespace.
+                  properties:
+                      name:
+                          default: ""
+                          description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          type: string
+                  type: object
+                  x-kubernetes-map-type: atomic
+              type: array
       required:
           - clusterName
+          - management
           - platform
           - release
       type: object

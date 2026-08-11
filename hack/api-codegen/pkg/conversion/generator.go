@@ -18,7 +18,7 @@ import (
 	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/registry"
 )
 
-var clientgenMarkerRE = regexp.MustCompile(`\+genclient\b|\+wire:`)
+var clientgenMarkerRE = regexp.MustCompile(`\+genclient\b|\+bridge:`)
 
 // Generator generates REST types and conversion functions from CRD types.
 type Generator struct {
@@ -240,10 +240,10 @@ func (g *Generator) parseTypes() error {
 }
 
 // extractClientMarkers scans all comment groups in a file for +genclient and
-// +wire:* markers that appear in floating comment blocks (separated by a blank
+// +bridge:* markers that appear in floating comment blocks (separated by a blank
 // line from the type's doc comment). It associates each marker set with the
 // nearest following type declaration, mirroring the convention used by
-// client-gen and wire-gen.
+// client-gen and bridge-gen.
 func (g *Generator) extractClientMarkers(file *ast.File) {
 	type typePos struct {
 		name string

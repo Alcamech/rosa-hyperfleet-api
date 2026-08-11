@@ -5,19 +5,48 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/featuregate"
 )
 
 func main() {
 	var (
-		inputFile  = flag.String("input", "", "Input CRD YAML file")
-		outputDir  = flag.String("output-dir", "config/crd/variants", "Output directory for CRD variants")
-		baseName   = flag.String("base-name", "", "Base name for output files (e.g., 'cluster' produces cluster_default.yaml)")
-		featureSet = flag.String("feature-set", "", "Generate only one feature set variant (default, techpreview, devpreview)")
+		inputFile           = flag.String("input", "", "Input CRD YAML file")
+		outputDir           = flag.String("output-dir", "config/crd/variants", "Output directory for CRD variants")
+		baseName            = flag.String("base-name", "", "Base name for output files (e.g., 'cluster' produces cluster_default.yaml)")
+		featureSet          = flag.String("feature-set", "", "Generate only one feature set variant (default, techpreview, devpreview)")
+		stripPassthroughCEL = flag.Bool("strip-passthrough-cel", false, "Strip x-kubernetes-validations from passthrough subtrees detected in --api-dir")
+		apiDir              = flag.String("api-dir", "", "Go source directory to scan for passthrough types (used with --strip-passthrough-cel)")
+		crdDir              = flag.String("crd-dir", "", "Directory containing CRD YAML files (used with --strip-passthrough-cel)")
 	)
 
 	flag.Parse()
+
+	// --strip-passthrough-cel: auto-detect passthrough fields and strip in-place.
+	if *stripPassthroughCEL {
+		if *apiDir == "" || *crdDir == "" {
+			fmt.Fprintln(os.Stderr, "Error: --api-dir and --crd-dir are required with --strip-passthrough-cel")
+			flag.Usage()
+			os.Exit(1)
+		}
+		targets, err := featuregate.DetectPassthroughTargets(*apiDir, *crdDir)
+		if err != nil {
+			log.Fatalf("Detecting passthrough targets: %v", err)
+		}
+		if len(targets) == 0 {
+			fmt.Println("No passthrough fields detected — nothing to strip.")
+			return
+		}
+		for _, t := range targets {
+			if err := featuregate.StripCELFromSubtrees(t.CRDFile, t.Paths); err != nil {
+				log.Fatalf("Stripping CEL from %s: %v", t.CRDFile, err)
+			}
+			fmt.Printf("Stripped x-kubernetes-validations from %s in %s\n",
+				strings.Join(t.Paths, ", "), t.CRDFile)
+		}
+		return
+	}
 
 	if *inputFile == "" {
 		fmt.Fprintln(os.Stderr, "Error: --input is required")

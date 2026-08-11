@@ -109,6 +109,13 @@ func (g *Generator) GenerateTypeDef(typeName string) (*TypeDef, error) {
 	return typeDef, nil
 }
 
+// upstreamForwardedMarkerPrefixes lists the Go marker prefixes from upstream
+// source comments that should be propagated into the generated passthrough type.
+var upstreamForwardedMarkerPrefixes = []string{
+	"+optional",
+	"+required",
+}
+
 // createFieldDef creates a field definition with appropriate markers
 func (g *Generator) createFieldDef(fieldName string, field *ast.Field) FieldDef {
 	fieldDef := FieldDef{
@@ -124,13 +131,18 @@ func (g *Generator) createFieldDef(fieldName string, field *ast.Field) FieldDef 
 		}
 	}
 
-	// Extract documentation (first line only, collapsed to single line)
+	// Extract documentation and forwarded upstream Go markers.
+	// Only marker lines matching upstreamForwardedMarkerPrefixes are kept;
+	// the first non-marker, non-empty line becomes the field description.
+	var upstreamMarkers []string
 	if field.Doc != nil {
-		doc := strings.TrimSpace(field.Doc.Text())
-		// Take only first line and collapse to single line
-		lines := strings.Split(doc, "\n")
-		if len(lines) > 0 {
-			fieldDef.Doc = strings.TrimSpace(lines[0])
+		for _, comment := range field.Doc.List {
+			text := strings.TrimSpace(strings.TrimPrefix(comment.Text, "//"))
+			if isForwardedMarker(text) {
+				upstreamMarkers = append(upstreamMarkers, text)
+			} else if fieldDef.Doc == "" && text != "" && !strings.HasPrefix(text, "+") {
+				fieldDef.Doc = text
+			}
 		}
 	}
 
@@ -143,9 +155,20 @@ func (g *Generator) createFieldDef(fieldName string, field *ast.Field) FieldDef 
 	if lookupName == "" {
 		lookupName = fieldName
 	}
-	fieldDef.Markers = g.getMarkersForField(lookupName)
+	fieldDef.Markers = append(g.getMarkersForField(lookupName), upstreamMarkers...)
 
 	return fieldDef
+}
+
+// isForwardedMarker reports whether an upstream marker should be propagated
+// into the generated passthrough type.
+func isForwardedMarker(marker string) bool {
+	for _, prefix := range upstreamForwardedMarkerPrefixes {
+		if strings.HasPrefix(marker, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // typeToString converts an AST type expression to a string

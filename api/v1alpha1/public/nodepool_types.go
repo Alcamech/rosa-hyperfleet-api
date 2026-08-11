@@ -13,12 +13,13 @@ import (
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:subresource:status
 // +genclient
-// +wire:field=name,meta=name
-// +wire:field=id,meta=uid
-// +wire:field=resource_version,meta=resourceVersion
-// +wire:field=generation,meta=generation
-// +wire:watch=disabled
-// +wire:wait
+// +bridge:field=cluster_id,meta=namespace
+// +bridge:field=name,meta=name
+// +bridge:field=id,meta=uid
+// +bridge:field=resource_version,meta=resourceVersion
+// +bridge:field=generation,meta=generation
+// +bridge:watch=disabled
+// +bridge:wait
 type NodePool struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
