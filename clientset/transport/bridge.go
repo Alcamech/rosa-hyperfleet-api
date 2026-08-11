@@ -30,7 +30,7 @@ import (
 // field name and a Kubernetes metadata field name.
 type FieldMapping struct {
 	Bridge string // flat field name in the platform-api response/request body
-	Meta string // field name inside the Kubernetes metadata object
+	Meta   string // field name inside the Kubernetes metadata object
 }
 
 // Adapter wraps an inner RoundTripper and rewrites platform-api wire format

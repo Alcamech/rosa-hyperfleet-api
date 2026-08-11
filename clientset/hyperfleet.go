@@ -33,9 +33,9 @@ import (
 
 	generatedclientset "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated"
 	"github.com/openshift-online/rosa-hyperfleet-api/clientset/generated/scheme"
+	"github.com/openshift-online/rosa-hyperfleet-api/clientset/platform"
 	hfrest "github.com/openshift-online/rosa-hyperfleet-api/clientset/rest"
 	"github.com/openshift-online/rosa-hyperfleet-api/clientset/transport"
-	"github.com/openshift-online/rosa-hyperfleet-api/clientset/platform"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8srest "k8s.io/client-go/rest"

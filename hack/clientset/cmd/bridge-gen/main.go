@@ -44,7 +44,7 @@ import (
 )
 
 var (
-	bridgeMarkerRE    = regexp.MustCompile(`\+bridge:field=([^,\s]+),meta=([^\s]+)`)
+	bridgeMarkerRE  = regexp.MustCompile(`\+bridge:field=([^,\s]+),meta=([^\s]+)`)
 	watchDisabledRE = regexp.MustCompile(`\+bridge:watch=disabled`)
 	waitRE          = regexp.MustCompile(`\+bridge:wait\b`)
 	nonNamespacedRE = regexp.MustCompile(`\+genclient:nonNamespaced\b`)
@@ -53,15 +53,15 @@ var (
 // fieldMapping holds a single wire→metadata field translation.
 type fieldMapping struct {
 	Bridge string
-	Meta string
+	Meta   string
 }
 
 // resourceType describes a CRD type annotated with +bridge:watch or +bridge:wait.
 type resourceType struct {
-	Name          string         // e.g. "Cluster"
-	PluralName    string         // e.g. "Clusters"
-	PluralLower   string         // e.g. "clusters" — URL path segment key
-	LowerName     string         // e.g. "cluster"
+	Name          string // e.g. "Cluster"
+	PluralName    string // e.g. "Clusters"
+	PluralLower   string // e.g. "clusters" — URL path segment key
+	LowerName     string // e.g. "cluster"
 	WatchDisabled bool
 	Wait          bool
 	NonNamespaced bool           // set when +genclient:nonNamespaced is present
