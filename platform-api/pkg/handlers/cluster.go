@@ -27,6 +27,7 @@ type ClusterHandler struct {
 	defaultClusterExpiration time.Duration
 	validator                *validation.FieldValidator
 	logger                   *slog.Logger
+	generateID               func() string
 }
 
 // NewClusterHandler creates a new cluster handler
@@ -37,6 +38,7 @@ func NewClusterHandler(db *hyperfleetdb.Client, oidcIssuerBaseURL string, defaul
 		defaultClusterExpiration: defaultClusterExpiration,
 		validator:                validation.NewFieldValidator(),
 		logger:                   logger,
+		generateID:               func() string { return uuid.New().String() },
 	}
 }
 
@@ -136,38 +138,46 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		req.Spec.CreatorARN = callerARN
 	}
 
-	clusterID := uuid.New().String()
+	clusterID := h.generateID()
 
-	h.logger.Info("creating cluster", "account_id", accountID, "cluster_name", req.Name, "cluster_id", clusterID)
+	const maxHash4Retries = 5
+	for attempt := 0; attempt < maxHash4Retries; attempt++ {
+		h.logger.Info("creating cluster", "account_id", accountID, "cluster_name", req.Name, "cluster_id", clusterID)
 
-	cr, err := hyperfleetdb.PlatformCreateToClusterCR(clusterID, accountID, &req)
-	if err != nil {
-		h.logger.Error("failed to convert cluster spec", "error", err, "account_id", accountID)
-		h.writeError(w, http.StatusBadRequest, "CLUSTERS-MGMT-CREATE-002", "Invalid cluster spec")
-		return
-	}
-
-	if h.defaultClusterExpiration > 0 && cr.Spec.ExpirationTimestamp == nil {
-		expiry := metav1.NewTime(time.Now().Add(h.defaultClusterExpiration))
-		cr.Spec.ExpirationTimestamp = &expiry
-	}
-
-	if h.oidcIssuerBaseURL != "" {
-		cr.Spec.HostedCluster.IssuerURL = h.oidcIssuerBaseURL + "/" + clusterID
-	}
-
-	if err := h.db.CreateCluster(ctx, accountID, cr); err != nil {
-		h.logger.Error("failed to create cluster", "error", err, "account_id", accountID)
-		if hyperfleetdb.IsAlreadyExists(err) {
-			h.writeError(w, http.StatusConflict, "CLUSTERS-MGMT-CREATE-003", "Cluster already exists")
+		cr, err := hyperfleetdb.PlatformCreateToClusterCR(clusterID, accountID, &req)
+		if err != nil {
+			h.logger.Error("failed to convert cluster spec", "error", err, "account_id", accountID)
+			h.writeError(w, http.StatusBadRequest, "CLUSTERS-MGMT-CREATE-002", "Invalid cluster spec")
 			return
 		}
-		h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-CREATE-003", "Failed to create cluster")
+
+		if h.defaultClusterExpiration > 0 && cr.Spec.ExpirationTimestamp == nil {
+			expiry := metav1.NewTime(time.Now().Add(h.defaultClusterExpiration))
+			cr.Spec.ExpirationTimestamp = &expiry
+		}
+
+		if h.oidcIssuerBaseURL != "" {
+			cr.Spec.HostedCluster.IssuerURL = h.oidcIssuerBaseURL + "/" + clusterID
+		}
+
+		if err := h.db.CreateCluster(ctx, accountID, cr); err != nil {
+			if hyperfleetdb.IsAlreadyExists(err) && attempt < maxHash4Retries-1 {
+				clusterID = h.generateID()
+				continue
+			}
+			h.logger.Error("failed to create cluster", "error", err, "account_id", accountID)
+			if hyperfleetdb.IsAlreadyExists(err) {
+				h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-CREATE-007", "Unable to generate unique DNS identifier")
+				return
+			}
+			h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-CREATE-003", "Failed to create cluster")
+			return
+		}
+
+		cluster := hyperfleetdb.ClusterCRToPlatform(cr)
+		h.writeJSON(w, http.StatusCreated, cluster)
 		return
 	}
-
-	cluster := hyperfleetdb.ClusterCRToPlatform(cr)
-	h.writeJSON(w, http.StatusCreated, cluster)
 }
 
 // Get handles GET /api/v0/clusters/{id}

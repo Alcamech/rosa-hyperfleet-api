@@ -63,7 +63,7 @@ The controller generates 7 Kubernetes manifests, all scoped to namespace `cluste
 
 ### DNS and hash4
 
-The `hash4` value is the first 4 characters of the cluster ID (the CR name). It provides short, collision-resistant subdomains:
+The `hash4` value is the first 4 characters of the cluster ID (a UUID). It provides short, unique subdomains that disambiguate clusters sharing the same human-readable name:
 
 - API server: `api.{clusterName}.{hash4}.{baseDomain}`
 - OAuth: `oauth.{clusterName}.{hash4}.{baseDomain}`
@@ -71,6 +71,8 @@ The `hash4` value is the first 4 characters of the cluster ID (the CR name). It 
 - HostedCluster baseDomain: `{hash4}.{baseDomain}`
 
 For example, cluster ID `abc12345` with name `my-cluster` and baseDomain `rosa.example.com` produces `api.my-cluster.abc1.rosa.example.com`.
+
+**Uniqueness guarantee**: A PostgreSQL unique partial index (`idx_cluster_name_hash4`) enforces that no two live clusters with the same name share the same hash4 prefix. If a collision occurs during creation, the platform-api retries with a new UUID (up to 5 attempts). With 16^4 = 65,536 possible hex values per name, exhaustion is practically impossible.
 
 ## Deletion Flow
 
