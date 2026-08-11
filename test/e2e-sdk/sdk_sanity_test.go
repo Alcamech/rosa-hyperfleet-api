@@ -18,7 +18,7 @@ limitations under the License.
 //
 // Required environment variables:
 //
-//	BASE_URL                  — platform API base URL
+//	E2E_BASE_URL              — platform API base URL
 //	ROSACTL_BIN               — path to the rosactl binary
 //	CUSTOMER_AWS_PROFILE      — AWS profile for customer-account operations
 //
@@ -119,9 +119,9 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 	BeforeAll(func() {
 		ctx = context.Background()
 
-		baseURL = os.Getenv("BASE_URL")
+		baseURL = os.Getenv("E2E_BASE_URL")
 		if baseURL == "" {
-			Skip("BASE_URL is not set")
+			Skip("E2E_BASE_URL is not set")
 		}
 		rosactlBin = os.Getenv("ROSACTL_BIN")
 		if rosactlBin == "" {
