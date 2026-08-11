@@ -53,7 +53,7 @@ import (
 
 	hyperfleet "github.com/openshift-online/rosa-hyperfleet-api/clientset"
 	hfrest "github.com/openshift-online/rosa-hyperfleet-api/clientset/rest"
-	"github.com/openshift-online/rosa-hyperfleet-api/clientset/wrappers"
+	"github.com/openshift-online/rosa-hyperfleet-api/clientset/platform"
 	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
 	awstest "github.com/openshift-online/rosa-hyperfleet-api/test/helpers/aws"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
@@ -213,7 +213,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 			}
 			if nodepoolCreated && nodepoolID != "" && clusterID != "" {
 				GinkgoWriter.Printf("DeferCleanup: initiating nodepool %s deletion\n", nodepoolID)
-				if err := cs.HyperfleetV1alpha1().NodePools(clusterID).Delete(cleanupCtx, nodepoolID, wrappers.DeleteOptions{}); err != nil {
+				if err := cs.HyperfleetV1alpha1().NodePools(clusterID).Delete(cleanupCtx, nodepoolID, platform.DeleteOptions{}); err != nil {
 					GinkgoWriter.Printf("DeferCleanup WARNING: nodepool delete: %v\n", err)
 				} else {
 					nodepoolCreated = false
@@ -319,7 +319,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 					},
 				},
 			},
-		}, wrappers.CreateOptions{})
+		}, platform.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred(), "SDK cluster create")
 		clusterID = string(cluster.UID)
 		clusterCreated = true
@@ -390,7 +390,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 					Release: hypershiftv1beta1.Release{Image: version},
 				},
 			},
-		}, wrappers.CreateOptions{})
+		}, platform.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred(), "SDK nodepool create")
 		nodepoolID = string(np.UID)
 		nodepoolCreated = true
@@ -414,11 +414,11 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		GinkgoWriter.Printf("NodePool %s is Ready\n", npName)
 
 		By("patching nodepool replicas")
-		current, err := nodepools.Get(ctx, nodepoolID, wrappers.GetOptions{})
+		current, err := nodepools.Get(ctx, nodepoolID, platform.GetOptions{})
 		Expect(err).ToNot(HaveOccurred(), "getting nodepool for patch")
 		newReplicas := int32(3)
 		current.Spec.NodePool.Replicas = &newReplicas
-		updated, err := nodepools.Update(ctx, current, wrappers.UpdateOptions{})
+		updated, err := nodepools.Update(ctx, current, platform.UpdateOptions{})
 		Expect(err).ToNot(HaveOccurred(), "updating nodepool replicas")
 		Expect(*updated.Spec.NodePool.Replicas).To(Equal(newReplicas))
 		GinkgoWriter.Printf("NodePool replicas updated to %d\n", newReplicas)
@@ -444,7 +444,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 					Release: hypershiftv1beta1.Release{Image: version},
 				},
 			},
-		}, wrappers.CreateOptions{})
+		}, platform.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred(), "SDK extra nodepool create")
 		extraNodepoolID = string(extraNp.UID)
 		extraNodepoolCreated = true
@@ -469,7 +469,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		extraNodepoolCreated = false
 
 		By("initiating nodepool deletion")
-		Expect(cs.HyperfleetV1alpha1().NodePools(clusterID).Delete(ctx, nodepoolID, wrappers.DeleteOptions{})).To(Succeed())
+		Expect(cs.HyperfleetV1alpha1().NodePools(clusterID).Delete(ctx, nodepoolID, platform.DeleteOptions{})).To(Succeed())
 		nodepoolCreated = false
 		GinkgoWriter.Printf("NodePool %s deletion initiated\n", nodepoolID)
 
@@ -652,7 +652,7 @@ func verifyRolesTrustOIDCProvider(roles hypershiftv1beta1.AWSRolesRef, oidcProvi
 
 func deleteNodepool(ctx context.Context, cs *hyperfleet.Clientset, clusterID, nodepoolID string) error {
 	nodepools := cs.HyperfleetV1alpha1().NodePools(clusterID)
-	if err := nodepools.Delete(ctx, nodepoolID, wrappers.DeleteOptions{}); err != nil {
+	if err := nodepools.Delete(ctx, nodepoolID, platform.DeleteOptions{}); err != nil {
 		return fmt.Errorf("nodepool delete: %w", err)
 	}
 	return nodepools.WaitUntil(ctx, nodepoolID,
@@ -671,7 +671,7 @@ func deleteNodepool(ctx context.Context, cs *hyperfleet.Clientset, clusterID, no
 
 func deleteCluster(ctx context.Context, cs *hyperfleet.Clientset, customerAccountID, clusterID, clusterName string) error {
 	clusters := cs.HyperfleetV1alpha1().Clusters()
-	if err := clusters.Delete(ctx, clusterID, wrappers.DeleteOptions{}); err != nil {
+	if err := clusters.Delete(ctx, clusterID, platform.DeleteOptions{}); err != nil {
 		return fmt.Errorf("cluster delete: %w", err)
 	}
 	return clusters.WaitUntil(ctx, clusterID,

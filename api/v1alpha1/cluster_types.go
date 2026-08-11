@@ -140,12 +140,12 @@ type PlacementReference struct {
 
 // +genclient
 // +genclient:nonNamespaced
-// +wire:field=name,meta=name
-// +wire:field=id,meta=uid
-// +wire:field=resource_version,meta=resourceVersion
-// +wire:field=generation,meta=generation
-// +wire:watch=disabled
-// +wire:wait
+// +bridge:field=name,meta=name
+// +bridge:field=id,meta=uid
+// +bridge:field=resource_version,meta=resourceVersion
+// +bridge:field=generation,meta=generation
+// +bridge:watch=disabled
+// +bridge:wait
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,shortName=hfc

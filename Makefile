@@ -37,7 +37,7 @@ TOOLS_BIN_DIR    := $(TOOLS_DIR)/bin
 GOLANGCI_LINT    := $(abspath $(TOOLS_BIN_DIR)/golangci-lint)
 CONTROLLER_GEN   := $(abspath $(TOOLS_BIN_DIR)/controller-gen)
 CLIENT_GEN       := $(abspath $(TOOLS_BIN_DIR)/client-gen)
-WIRE_GEN         := $(abspath $(TOOLS_BIN_DIR)/wire-gen)
+BRIDGE_GEN         := $(abspath $(TOOLS_BIN_DIR)/bridge-gen)
 SETUP_ENVTEST    := $(abspath $(TOOLS_BIN_DIR)/setup-envtest)
 GINKGO           := $(abspath $(TOOLS_BIN_DIR)/ginkgo)
 
@@ -51,8 +51,8 @@ SDK_OUTPUT_PKG    ?= $(SDK_MODULE)/clientset
 WIRE_INPUT_DIR        ?= $(abspath api/v1alpha1/public)
 WIRE_OUTPUT_DIR       ?= $(abspath clientset/transport)
 WIRE_OUTPUT_PKG       ?= transport
-WRAPPERS_OUTPUT_DIR   ?= $(abspath clientset/wrappers)
-WRAPPERS_OUTPUT_PKG   ?= wrappers
+PLATFORM_OUTPUT_DIR   ?= $(abspath clientset/platform)
+PLATFORM_OUTPUT_PKG   ?= platform
 TYPED_PKG_IMPORT      ?= $(SDK_MODULE)/clientset/generated/typed/v1alpha1/public
 API_PKG_IMPORT        ?= $(SDK_MODULE)/api/v1alpha1/public
 SDK_HEADER_FILE       ?= $(abspath hack/clientset/license-boilerplate.go.txt)
@@ -74,8 +74,8 @@ $(SETUP_ENVTEST): $(TOOLS_DIR)/go.mod
 $(CLIENT_GEN): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/client-gen k8s.io/code-generator/cmd/client-gen
 
-$(WIRE_GEN): hack/clientset/cmd/wire-gen/main.go
-	cd hack/clientset/cmd/wire-gen && go build -o $(WIRE_GEN) .
+$(BRIDGE_GEN): hack/clientset/cmd/bridge-gen/main.go
+	cd hack/clientset/cmd/bridge-gen && go build -o $(BRIDGE_GEN) .
 
 $(GINKGO): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); go build -tags=tools -o $(abspath $(TOOLS_BIN_DIR))/ginkgo github.com/onsi/ginkgo/v2/ginkgo
@@ -95,7 +95,7 @@ help:
 	@echo "Test:"
 	@echo "  test                 All tests (unit + integration)"
 	@echo "  test-unit            Unit tests: API + operator + codegen + clientset (no external services)"
-	@echo "  test-clientset       Clientset unit tests (transport, wrappers)"
+	@echo "  test-clientset       Clientset unit tests (transport, platform)"
 	@echo "  test-integration     Integration tests: FleetDB + operator (podman)"
 	@echo "  test-e2e-authz       E2E authz (starts local infra)"
 	@echo "  test-e2e-api         E2E API"
@@ -257,7 +257,7 @@ fmt:
 	cd platform-api && go fmt ./...
 	cd hack/api-codegen && go fmt ./...
 	cd clientset && go fmt ./...
-	cd hack/clientset/cmd/wire-gen && go fmt ./...
+	cd hack/clientset/cmd/bridge-gen && go fmt ./...
 
 vet:
 	cd hyperfleet-db && go vet ./...
@@ -265,7 +265,7 @@ vet:
 	cd platform-api && go vet ./...
 	cd hack/api-codegen && go vet ./...
 	cd clientset && go vet ./...
-	cd hack/clientset/cmd/wire-gen && go vet ./...
+	cd hack/clientset/cmd/bridge-gen && go vet ./...
 
 lint: $(GOLANGCI_LINT)
 	cd hyperfleet-db && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
@@ -273,7 +273,7 @@ lint: $(GOLANGCI_LINT)
 	cd platform-api && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
 	cd hack/api-codegen && $(GOLANGCI_LINT) run --config ../../.golangci.yml --timeout 5m ./...
 	cd clientset && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
-	cd hack/clientset/cmd/wire-gen && $(GOLANGCI_LINT) run --config $(abspath .golangci.yml) --timeout 5m ./...
+	cd hack/clientset/cmd/bridge-gen && $(GOLANGCI_LINT) run --config $(abspath .golangci.yml) --timeout 5m ./...
 
 # All Go modules in the repo (used by verify and MintMaker/Renovate post-upgrade).
 override MOD_TIDY_DIRS := hyperfleet-db api hyperfleet-operator platform-api test clientset hack/tools hack/api-codegen
@@ -301,7 +301,7 @@ manifests: $(CONTROLLER_GEN)
 generate: $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) object paths="./api/..."
 
-generate-clientset: $(CLIENT_GEN) $(WIRE_GEN)
+generate-clientset: $(CLIENT_GEN) $(BRIDGE_GEN)
 	cd api && $(CLIENT_GEN) \
 		--input-base "$(SDK_API_PKG)" \
 		--input "$(SDK_INPUT)" \
@@ -309,17 +309,17 @@ generate-clientset: $(CLIENT_GEN) $(WIRE_GEN)
 		--output-dir "$(SDK_OUTPUT_DIR)" \
 		--output-pkg "$(SDK_OUTPUT_PKG)" \
 		--go-header-file "$(SDK_HEADER_FILE)"
-	$(WIRE_GEN) \
-		--mode mappings \
+	$(BRIDGE_GEN) \
+		--mode bridge \
 		--input-dir "$(WIRE_INPUT_DIR)" \
 		--output-dir "$(WIRE_OUTPUT_DIR)" \
 		--output-pkg "$(WIRE_OUTPUT_PKG)" \
 		--go-header-file "$(SDK_HEADER_FILE)"
-	$(WIRE_GEN) \
-		--mode wrappers \
+	$(BRIDGE_GEN) \
+		--mode platform \
 		--input-dir "$(WIRE_INPUT_DIR)" \
-		--output-dir "$(WRAPPERS_OUTPUT_DIR)" \
-		--output-pkg "$(WRAPPERS_OUTPUT_PKG)" \
+		--output-dir "$(PLATFORM_OUTPUT_DIR)" \
+		--output-pkg "$(PLATFORM_OUTPUT_PKG)" \
 		--typed-pkg-import "$(TYPED_PKG_IMPORT)" \
 		--typed-client-prefix "V1alpha1Public" \
 		--api-pkg-import "$(API_PKG_IMPORT)" \
