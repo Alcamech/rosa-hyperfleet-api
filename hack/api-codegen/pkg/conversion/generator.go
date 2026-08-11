@@ -48,6 +48,7 @@ type typeInfo struct {
 	Doc        *ast.CommentGroup
 	Fields     []*fieldInfo
 	Markers    []string
+	Embeds     []string
 }
 
 type namedTypeInfo struct {
@@ -172,6 +173,7 @@ func (g *Generator) parseTypes() error {
 
 								for _, field := range structType.Fields.List {
 									if len(field.Names) == 0 {
+										ti.Embeds = append(ti.Embeds, g.exprToString(field.Type))
 										continue
 									}
 									for _, name := range field.Names {
@@ -594,12 +596,10 @@ func (g *Generator) generateRESTTypes() error {
 	// Discover resource types dynamically: types with both Spec and Status subtypes
 	resourceTypes := g.discoverResourceTypes()
 
-	// Identify root resource types (have both Spec and Status, not a sub-type)
+	// Identify root resource types (CRDs with TypeMeta/ObjectMeta wrapper)
 	rootTypes := make(map[string]bool)
 	for typeName := range g.typeInfos {
-		_, hasSpec := g.typeInfos[typeName+"Spec"]
-		_, hasStatus := g.typeInfos[typeName+"Status"]
-		if hasSpec && hasStatus && !strings.Contains(typeName, "Passthrough") {
+		if g.isCRDResource(typeName) {
 			rootTypes[typeName] = true
 		}
 	}
@@ -752,20 +752,62 @@ func (g *Generator) generateRESTConstants(namedTypes []*namedTypeInfo) error {
 	return g.writeRESTFile("constants.go", buf.String())
 }
 
-// discoverResourceTypes finds types that form CRD resources (have matching
-// Spec and Status subtypes) plus any types referenced by their visible fields.
+// isCRDResource returns true if typeName is a top-level CRD resource. It
+// requires the wrapper struct to embed metav1.TypeMeta and metav1.ObjectMeta,
+// have sibling FooSpec/FooStatus types, AND declare Spec and Status fields
+// whose GoType values match those sibling types. Types that only have
+// Spec+Status sub-types but no wrapper (e.g. ControlPlaneUpgradePolicy) are
+// nested sub-types, not top-level CRDs.
+func (g *Generator) isCRDResource(typeName string) bool {
+	ti, exists := g.typeInfos[typeName]
+	if !exists {
+		return false
+	}
+	specType := typeName + "Spec"
+	statusType := typeName + "Status"
+	if _, ok := g.typeInfos[specType]; !ok {
+		return false
+	}
+	if _, ok := g.typeInfos[statusType]; !ok {
+		return false
+	}
+	hasTypeMeta := false
+	hasObjectMeta := false
+	for _, embed := range ti.Embeds {
+		if embed == "metav1.TypeMeta" {
+			hasTypeMeta = true
+		}
+		if embed == "metav1.ObjectMeta" {
+			hasObjectMeta = true
+		}
+	}
+	if !hasTypeMeta || !hasObjectMeta {
+		return false
+	}
+	hasSpecField := false
+	hasStatusField := false
+	for _, fi := range ti.Fields {
+		if fi.GoName == "Spec" && fi.GoType == specType {
+			hasSpecField = true
+		}
+		if fi.GoName == "Status" && fi.GoType == statusType {
+			hasStatusField = true
+		}
+	}
+	return hasSpecField && hasStatusField
+}
+
+// discoverResourceTypes finds types that form CRD resources (have a wrapper
+// struct with TypeMeta/ObjectMeta embeds and matching Spec and Status subtypes)
+// plus any types referenced by their visible fields.
 func (g *Generator) discoverResourceTypes() []string {
 	typeSet := make(map[string]bool)
 
 	for typeName := range g.typeInfos {
-		specName := typeName + "Spec"
-		statusName := typeName + "Status"
-		_, hasSpec := g.typeInfos[specName]
-		_, hasStatus := g.typeInfos[statusName]
-		if hasSpec && hasStatus {
+		if g.isCRDResource(typeName) {
 			typeSet[typeName] = true
-			typeSet[specName] = true
-			typeSet[statusName] = true
+			typeSet[typeName+"Spec"] = true
+			typeSet[typeName+"Status"] = true
 		}
 	}
 
@@ -1201,20 +1243,15 @@ func (g *Generator) generateConversionFunctions() error {
 	return nil
 }
 
-// discoverResources returns top-level resource names (types with Spec+Status).
+// discoverResources returns top-level CRD resource names — types that have a
+// wrapper struct with TypeMeta/ObjectMeta embeds and matching Spec+Status.
 func (g *Generator) discoverResources() []string {
 	var resources []string
 	seen := make(map[string]bool)
 	for typeName := range g.typeInfos {
-		if strings.HasSuffix(typeName, "Spec") {
-			resource := strings.TrimSuffix(typeName, "Spec")
-			if _, hasStatus := g.typeInfos[resource+"Status"]; hasStatus && !seen[resource] {
-				// Exclude passthrough types — they are sub-types, not top-level resources
-				if !strings.Contains(resource, "Passthrough") {
-					seen[resource] = true
-					resources = append(resources, resource)
-				}
-			}
+		if !seen[typeName] && g.isCRDResource(typeName) {
+			seen[typeName] = true
+			resources = append(resources, typeName)
 		}
 	}
 	sort.Strings(resources)

@@ -109,8 +109,8 @@ spec:
                       UpdateType indicates if it is a control plane upgrade policy defined by the user or
                       triggered by Red Hat for addressing critical CVEs.
                     enum:
-                    - ControlPlane
-                    - ControlPlaneCVE
+                    - UserInitiated
+                    - ServiceInitiated
                     type: string
                   upgradeScope:
                     description: |-
