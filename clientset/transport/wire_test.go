@@ -107,6 +107,17 @@ type errReader struct{ err error }
 
 func (e errReader) Read([]byte) (int, error) { return 0, e.err }
 
+// partialErrReader returns data and err in a single Read call, simulating a
+// reader that delivers bytes and a read error simultaneously.
+type partialErrReader struct {
+	data []byte
+	err  error
+}
+
+func (r partialErrReader) Read(p []byte) (int, error) {
+	return copy(p, r.data), r.err
+}
+
 // errCloser wraps a reader and returns the given error on Close.
 type errCloser struct {
 	io.Reader
@@ -294,7 +305,28 @@ func TestAdaptResponse_ListItemsAdapted(t *testing.T) {
 	}
 }
 
-func TestAdaptResponse_NonSuccessPassesThrough(t *testing.T) {
+func errorResponse(statusCode int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: statusCode,
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     make(http.Header),
+	}
+}
+
+func readMetav1Status(t *testing.T, resp *http.Response) map[string]json.RawMessage {
+	t.Helper()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading response body: %v", err)
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatalf("body is not JSON: %v — body: %s", err, b)
+	}
+	return m
+}
+
+func TestAdaptResponse_NonPlatformAPIErrorPassesThrough(t *testing.T) {
 	a := newAdapter()
 	original := `{"message":"not found"}`
 	resp := &http.Response{
@@ -304,10 +336,154 @@ func TestAdaptResponse_NonSuccessPassesThrough(t *testing.T) {
 	}
 
 	out := mustAdaptResponse(t, a, resp)
-	b, _ := io.ReadAll(out.Body)
-	if string(b) != original {
-		t.Errorf("body changed on non-success response: %s", b)
+	b, err := io.ReadAll(out.Body)
+	if err != nil {
+		t.Fatalf("reading response body: %v", err)
 	}
+	if string(b) != original {
+		t.Errorf("body changed on non-platform-api error response: %s", b)
+	}
+}
+
+// adaptErrorResponse tests
+
+func TestAdaptErrorResponse_PlatformAPIErrorTranslatedToMetav1Status(t *testing.T) {
+	resp := errorResponse(400, `{"kind":"Error","code":"CLUSTERS-MGMT-001","reason":"Invalid request body"}`)
+	out, err := adaptErrorResponse(resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m := readMetav1Status(t, out)
+	assertField(t, m, "apiVersion", `"v1"`)
+	assertField(t, m, "kind", `"Status"`)
+	assertField(t, m, "status", `"Failure"`)
+	assertField(t, m, "message", `"CLUSTERS-MGMT-001: Invalid request body"`)
+	assertField(t, m, "reason", `"BadRequest"`)
+	assertField(t, m, "code", `400`)
+	if out.ContentLength != int64(len(mustMarshal(t, m))) {
+		t.Errorf("ContentLength not updated")
+	}
+}
+
+func TestAdaptErrorResponse_EmptyCodeUsesReasonOnly(t *testing.T) {
+	resp := errorResponse(404, `{"kind":"Error","code":"","reason":"cluster not found"}`)
+	out, err := adaptErrorResponse(resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m := readMetav1Status(t, out)
+	assertField(t, m, "message", `"cluster not found"`)
+}
+
+func TestAdaptErrorResponse_NonJSONBodyPassesThrough(t *testing.T) {
+	original := `not json at all`
+	resp := errorResponse(500, original)
+	out, err := adaptErrorResponse(resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	b, err := io.ReadAll(out.Body)
+	if err != nil {
+		t.Fatalf("reading response body: %v", err)
+	}
+	if string(b) != original {
+		t.Errorf("body changed: %s", b)
+	}
+}
+
+func TestAdaptErrorResponse_JSONWithoutKindErrorPassesThrough(t *testing.T) {
+	original := `{"kind":"Cluster","name":"my-cluster"}`
+	resp := errorResponse(400, original)
+	out, err := adaptErrorResponse(resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	b, err := io.ReadAll(out.Body)
+	if err != nil {
+		t.Fatalf("reading response body: %v", err)
+	}
+	if string(b) != original {
+		t.Errorf("body changed: %s", b)
+	}
+}
+
+func TestAdaptErrorResponse_HTTPStatusMappedToReason(t *testing.T) {
+	cases := []struct {
+		code   int
+		reason string
+	}{
+		{http.StatusBadRequest, "BadRequest"},
+		{http.StatusUnauthorized, "Unauthorized"},
+		{http.StatusForbidden, "Forbidden"},
+		{http.StatusNotFound, "NotFound"},
+		{http.StatusConflict, "Conflict"},
+		{http.StatusUnprocessableEntity, "Invalid"},
+		{http.StatusTooManyRequests, "TooManyRequests"},
+		{http.StatusInternalServerError, "InternalError"},
+		{http.StatusServiceUnavailable, "ServiceUnavailable"},
+		{http.StatusGatewayTimeout, "Timeout"},
+		{http.StatusTeapot, "Unknown"},
+	}
+	for _, tc := range cases {
+		t.Run(http.StatusText(tc.code), func(t *testing.T) {
+			resp := errorResponse(tc.code, `{"kind":"Error","code":"X","reason":"Y"}`)
+			out, err := adaptErrorResponse(resp)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			m := readMetav1Status(t, out)
+			assertField(t, m, "reason", string(mustMarshal(t, tc.reason)))
+		})
+	}
+}
+
+func TestAdaptErrorResponse_PartialReadErrorPropagated(t *testing.T) {
+	// partialErrReader delivers bytes and an error in the same Read call.
+	// Previously the code restored the partial body and returned nil; it must now propagate the error.
+	resp := &http.Response{
+		StatusCode: 403,
+		Body:       io.NopCloser(partialErrReader{data: []byte(`{"kind":"Error"`), err: errors.New("network interrupted")}),
+		Header:     make(http.Header),
+	}
+	if _, err := adaptErrorResponse(resp); err == nil {
+		t.Error("expected error when body read fails partway through")
+	}
+}
+
+func TestAdaptErrorResponse_CloseErrorPropagated(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: 403,
+		Body:       errCloser{Reader: strings.NewReader(`{"kind":"Error","code":"X","reason":"Y"}`), err: errors.New("close failure")},
+		Header:     make(http.Header),
+	}
+	if _, err := adaptErrorResponse(resp); err == nil {
+		t.Error("expected error when body close fails")
+	}
+}
+
+func TestAdaptResponse_PlatformAPIErrorSurfacedAsMetav1Status(t *testing.T) {
+	a := newAdapter()
+	resp := &http.Response{
+		StatusCode: 409,
+		Body:       io.NopCloser(strings.NewReader(`{"kind":"Error","code":"CLUSTERS-MGMT-409","reason":"cluster already exists"}`)),
+		Header:     make(http.Header),
+	}
+
+	out := mustAdaptResponse(t, a, resp)
+	m := readMetav1Status(t, out)
+	assertField(t, m, "kind", `"Status"`)
+	assertField(t, m, "status", `"Failure"`)
+	assertField(t, m, "reason", `"Conflict"`)
+	assertField(t, m, "message", `"CLUSTERS-MGMT-409: cluster already exists"`)
+}
+
+func mustMarshal(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	return b
 }
 
 func TestAdaptResponse_NoWireFieldsPassesThrough(t *testing.T) {
