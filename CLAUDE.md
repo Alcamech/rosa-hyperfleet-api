@@ -16,7 +16,7 @@ Three components:
 make build              # All components
 make test               # All unit tests
 make lint               # golangci-lint v2 across all modules
-make verify             # go.mod tidiness
+make verify-mod         # go.mod tidiness
 make deps               # Download and tidy all modules
 
 make build-api          # Platform API
@@ -28,16 +28,19 @@ make test-operator      # Operator unit tests
 make test-hyperfleet-db       # FleetDB unit tests
 make test-operator-int  # Operator integration tests (Postgres + DynamoDB)
 
-make manifests          # Generate CRDs (controller-gen)
-make generate           # Generate deepcopy
+make generate           # Run all code generators (passthrough, deepcopy, registry, CRDs, conversion, clientset, openapi)
+make verify             # Fail if any generated output is out of date
 
-make codegen            # Full codegen pipeline (openapi, passthrough, conversion)
+make manifests          # Generate CRDs (controller-gen + CEL strip)
+make generate-deepcopy  # Generate deepcopy methods only
+make codegen            # Full codegen pipeline (passthrough + registry + verify compile)
 make generate-clientset # Regenerate typed clientset from CRD types
 make generate-openapi   # Regenerate OpenAPI spec from CRD types
 
 make verify-codegen     # Verify codegen output is up to date
 make verify-clientset   # Verify clientset matches committed files
 make verify-openapi     # Verify OpenAPI spec is up to date
+make verify-mod         # Verify go.mod tidiness
 
 make test-unit          # All unit tests (api, operator, codegen, clientset)
 make test-integration   # Integration tests (fleetdb, operator)
