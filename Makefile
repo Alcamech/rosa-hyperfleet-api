@@ -297,8 +297,12 @@ deps:
 
 # ── Code Generation ──────────────────────────────────────────────────────
 
-manifests: $(CONTROLLER_GEN)
+CRD_VARIANTS     := $(abspath bin/crd-variants)
+CRD_BASES_DIR    := hyperfleet-operator/config/crd/bases
+
+manifests: $(CONTROLLER_GEN) build-api-codegen
 	cd hyperfleet-operator && $(CONTROLLER_GEN) crd:allowDangerousTypes=true paths="../api/v1alpha1" output:crd:dir=config/crd/bases
+	$(CRD_VARIANTS) --strip-passthrough-cel --api-dir api/v1alpha1 --crd-dir $(CRD_BASES_DIR)
 
 generate: $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) object paths="./api/..."
@@ -337,7 +341,7 @@ codegen-passthrough: build-api-codegen
 		-output-dir v1alpha1 \
 		-package v1alpha1
 
-codegen-registry: generate build-api-codegen
+codegen-registry: codegen-passthrough generate build-api-codegen
 	./bin/marker-scanner \
 		-input-dirs api/v1alpha1 \
 		-output-file hack/api-codegen/pkg/registry/field_metadata.go \
@@ -353,7 +357,7 @@ verify-codegen: codegen
 	git diff --exit-code api/v1alpha1/zz_generated.deepcopy.go
 	git diff --exit-code hack/api-codegen/pkg/registry/
 
-generate-all: manifests generate codegen-passthrough codegen-conversion generate-clientset generate-openapi
+generate-all: codegen-passthrough generate codegen-registry manifests codegen-conversion generate-clientset generate-openapi
 
 verify-all: verify-codegen verify-conversion verify-clientset verify-openapi
 
