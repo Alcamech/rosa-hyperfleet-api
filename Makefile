@@ -5,7 +5,7 @@
 	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz test-e2e-sdk \
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
 	fmt vet verify deps mod-tidy \
-	manifests generate generate-clientset verify-clientset setup-envtest \
+	manifests generate generate-all generate-clientset verify-clientset verify-all setup-envtest \
 	codegen-passthrough codegen-registry codegen-verify codegen verify-codegen \
 	codegen-conversion verify-conversion \
 	generate-openapi verify-openapi swagger-ui \
@@ -115,8 +115,10 @@ help:
 	@echo "Code Generation:"
 	@echo "  manifests            Generate CRD manifests"
 	@echo "  generate             Generate deepcopy methods"
-	@echo "  generate-clientset         Generate typed client SDK from CRD types"
-	@echo "  verify-clientset           Fail if generated clientset is out of date"
+	@echo "  generate-all         Run all code generators in one pass"
+	@echo "  verify-all           Fail if any generated output is out of date"
+	@echo "  generate-clientset   Generate typed client SDK from CRD types"
+	@echo "  verify-clientset     Fail if generated clientset is out of date"
 	@echo "  codegen-passthrough  Generate passthrough types from HyperShift"
 	@echo "  codegen-registry     Generate field metadata registry from markers"
 	@echo "  codegen-verify       Verify codegen outputs compile"
@@ -350,6 +352,10 @@ codegen: codegen-verify
 verify-codegen: codegen
 	git diff --exit-code api/v1alpha1/zz_generated.deepcopy.go
 	git diff --exit-code hack/api-codegen/pkg/registry/
+
+generate-all: manifests generate codegen-passthrough codegen-conversion generate-clientset generate-openapi
+
+verify-all: verify-codegen verify-conversion verify-clientset verify-openapi
 
 CONVERSION_OUTPUT_DIR   ?= platform-api/pkg/conversion/v1alpha1
 CONVERSION_OUTPUT_PKG   ?= github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/conversion
