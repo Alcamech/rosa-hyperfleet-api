@@ -15,6 +15,7 @@ import (
 // +genclient
 // +wire:field=name,meta=name
 // +wire:field=id,meta=uid
+// +wire:field=cluster_id,meta=namespace
 // +wire:field=resource_version,meta=resourceVersion
 // +wire:field=generation,meta=generation
 // +wire:watch=disabled

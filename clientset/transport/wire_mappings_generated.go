@@ -20,6 +20,7 @@ package transport
 // defaultMappings maps platform-api wire-format field names to Kubernetes
 // metadata field names. Generated from +wire:field markers on CRD types.
 var defaultMappings = []FieldMapping{
+	{Wire: "cluster_id", Meta: "namespace"},
 	{Wire: "generation", Meta: "generation"},
 	{Wire: "id", Meta: "uid"},
 	{Wire: "name", Meta: "name"},

@@ -394,7 +394,9 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		Expect(err).ToNot(HaveOccurred(), "SDK nodepool create")
 		nodepoolID = string(np.UID)
 		nodepoolCreated = true
-		GinkgoWriter.Printf("NodePool %s created (id=%s)\n", npName, nodepoolID)
+		Expect(np.Namespace).To(Equal(clusterID),
+			"nodepool.metadata.namespace should be the parent cluster ID (from cluster_id wire field)")
+		GinkgoWriter.Printf("NodePool %s created (id=%s, cluster_id=%s)\n", npName, nodepoolID, np.Namespace)
 
 		By("waiting for nodepool Ready")
 		nodepools := cs.HyperfleetV1alpha1().NodePools(clusterID)
