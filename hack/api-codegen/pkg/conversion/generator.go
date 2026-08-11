@@ -752,18 +752,23 @@ func (g *Generator) generateRESTConstants(namedTypes []*namedTypeInfo) error {
 	return g.writeRESTFile("constants.go", buf.String())
 }
 
-// isCRDResource returns true if typeName has a wrapper struct that embeds
-// metav1.TypeMeta and metav1.ObjectMeta, plus matching Spec and Status
-// sub-types. Types that only have Spec+Status but no wrapper (e.g.
-// ControlPlaneUpgradePolicy) are nested sub-types, not top-level CRDs.
+// isCRDResource returns true if typeName is a top-level CRD resource. It
+// requires the wrapper struct to embed metav1.TypeMeta and metav1.ObjectMeta,
+// have sibling FooSpec/FooStatus types, AND declare Spec and Status fields
+// whose GoType values match those sibling types. Types that only have
+// Spec+Status sub-types but no wrapper (e.g. ControlPlaneUpgradePolicy) are
+// nested sub-types, not top-level CRDs.
 func (g *Generator) isCRDResource(typeName string) bool {
 	ti, exists := g.typeInfos[typeName]
 	if !exists {
 		return false
 	}
-	_, hasSpec := g.typeInfos[typeName+"Spec"]
-	_, hasStatus := g.typeInfos[typeName+"Status"]
-	if !hasSpec || !hasStatus {
+	specType := typeName + "Spec"
+	statusType := typeName + "Status"
+	if _, ok := g.typeInfos[specType]; !ok {
+		return false
+	}
+	if _, ok := g.typeInfos[statusType]; !ok {
 		return false
 	}
 	hasTypeMeta := false
@@ -776,7 +781,20 @@ func (g *Generator) isCRDResource(typeName string) bool {
 			hasObjectMeta = true
 		}
 	}
-	return hasTypeMeta && hasObjectMeta
+	if !hasTypeMeta || !hasObjectMeta {
+		return false
+	}
+	hasSpecField := false
+	hasStatusField := false
+	for _, fi := range ti.Fields {
+		if fi.GoName == "Spec" && fi.GoType == specType {
+			hasSpecField = true
+		}
+		if fi.GoName == "Status" && fi.GoType == statusType {
+			hasStatusField = true
+		}
+	}
+	return hasSpecField && hasStatusField
 }
 
 // discoverResourceTypes finds types that form CRD resources (have a wrapper
