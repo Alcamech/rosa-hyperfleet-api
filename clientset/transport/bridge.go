@@ -202,7 +202,11 @@ func (a *Adapter) adaptResponse(resp *http.Response, mappings []FieldMapping) (*
 
 	var adapted []byte
 	if itemsJSON, ok := raw["items"]; ok {
-		adapted = a.adaptList(raw, itemsJSON, mappings)
+		if len(mappings) == 0 {
+			adapted = body
+		} else {
+			adapted = a.adaptList(raw, itemsJSON, mappings)
+		}
 	} else if a.hasWireField(raw, mappings) {
 		adapted = a.adaptItem(raw, mappings)
 	} else {

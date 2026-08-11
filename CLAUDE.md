@@ -54,7 +54,7 @@ clientset/go.mod                        ← generated typed K8s client for Hyper
 hyperfleet-operator/go.mod              ← requires: fleetdb, api
 platform-api/go.mod                     ← requires: fleetdb, api
 hack/api-codegen/go.mod                 ← codegen tools (openapi-gen, crd-variants, conversion-gen)
-hack/clientset/cmd/bridge-gen/go.mod      ← wire generation for clientset
+hack/clientset/cmd/bridge-gen/go.mod      ← bridge and platform generation for clientset
 hack/tools/go.mod                       ← dev tooling dependencies
 ```
 

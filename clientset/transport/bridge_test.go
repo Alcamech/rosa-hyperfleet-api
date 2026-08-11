@@ -524,6 +524,32 @@ func TestAdaptResponse_MalformedListItemPassesThroughUnchanged(t *testing.T) {
 	}
 }
 
+func TestAdaptResponse_ListWithEmptyMappingsPassesThroughUnchanged(t *testing.T) {
+	a := newAdapter()
+	original := `{"items":[{"id":"x","name":"foo","spec":{}}]}`
+	resp := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(original)),
+		Header:     make(http.Header),
+	}
+
+	out := mustAdaptResponse(t, a, "", resp)
+	b, _ := io.ReadAll(out.Body)
+	if string(b) != original {
+		t.Errorf("body unexpectedly changed: %s", b)
+	}
+	var m map[string]json.RawMessage
+	_ = json.Unmarshal(b, &m)
+	var items []map[string]json.RawMessage
+	_ = json.Unmarshal(m["items"], &items)
+	if len(items) != 1 {
+		t.Fatalf("len(items) = %d, want 1", len(items))
+	}
+	if _, ok := items[0]["metadata"]; ok {
+		t.Error("metadata injected into list item with empty mappings")
+	}
+}
+
 func TestAdaptResponse_NodepoolClusterIDMappedToNamespace(t *testing.T) {
 	a := newAdapter()
 	resp := &http.Response{

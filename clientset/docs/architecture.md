@@ -248,7 +248,7 @@ An empty version string causes `metav1.AddToGroupVersion` to panic when register
 
 ```go
 func (c *Clientset) HyperfleetV1alpha1() platform.V1alpha1PublicInterface {
-    return platform.NewV1alpha1PublicClient(c.generated.V1alpha1())
+    return platform.NewV1alpha1PublicClient(c.generated.V1alpha1Public())
 }
 ```
 
