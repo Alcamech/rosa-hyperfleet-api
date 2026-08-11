@@ -48,9 +48,9 @@ SDK_INPUT         ?= v1alpha1/public
 SDK_CLIENTSET     ?= generated
 SDK_OUTPUT_DIR    ?= $(abspath clientset)
 SDK_OUTPUT_PKG    ?= $(SDK_MODULE)/clientset
-WIRE_INPUT_DIR        ?= $(abspath api/v1alpha1/public)
-WIRE_OUTPUT_DIR       ?= $(abspath clientset/transport)
-WIRE_OUTPUT_PKG       ?= transport
+BRIDGE_INPUT_DIR        ?= $(abspath api/v1alpha1/public)
+BRIDGE_OUTPUT_DIR       ?= $(abspath clientset/transport)
+BRIDGE_OUTPUT_PKG       ?= transport
 PLATFORM_OUTPUT_DIR   ?= $(abspath clientset/platform)
 PLATFORM_OUTPUT_PKG   ?= platform
 TYPED_PKG_IMPORT      ?= $(SDK_MODULE)/clientset/generated/typed/v1alpha1/public
@@ -311,13 +311,13 @@ generate-clientset: $(CLIENT_GEN) $(BRIDGE_GEN)
 		--go-header-file "$(SDK_HEADER_FILE)"
 	$(BRIDGE_GEN) \
 		--mode bridge \
-		--input-dir "$(WIRE_INPUT_DIR)" \
-		--output-dir "$(WIRE_OUTPUT_DIR)" \
-		--output-pkg "$(WIRE_OUTPUT_PKG)" \
+		--input-dir "$(BRIDGE_INPUT_DIR)" \
+		--output-dir "$(BRIDGE_OUTPUT_DIR)" \
+		--output-pkg "$(BRIDGE_OUTPUT_PKG)" \
 		--go-header-file "$(SDK_HEADER_FILE)"
 	$(BRIDGE_GEN) \
 		--mode platform \
-		--input-dir "$(WIRE_INPUT_DIR)" \
+		--input-dir "$(BRIDGE_INPUT_DIR)" \
 		--output-dir "$(PLATFORM_OUTPUT_DIR)" \
 		--output-pkg "$(PLATFORM_OUTPUT_PKG)" \
 		--typed-pkg-import "$(TYPED_PKG_IMPORT)" \
