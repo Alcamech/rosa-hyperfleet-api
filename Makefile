@@ -7,6 +7,7 @@
 	fmt vet verify verify-mod deps mod-tidy \
 	manifests generate generate-deepcopy generate-clientset verify-clientset setup-envtest \
 	codegen-passthrough codegen-registry codegen-verify codegen verify-codegen \
+    codegen-passthrough-clobber \
 	codegen-conversion verify-conversion \
 	generate-openapi verify-openapi swagger-ui \
 	image-api image-operator image-push-api image-push-operator
@@ -334,14 +335,25 @@ generate-clientset: codegen-conversion $(CLIENT_GEN) $(BRIDGE_GEN)
 verify-clientset: generate-clientset
 	git diff --exit-code clientset/
 
-codegen-passthrough: build-api-codegen
+codegen-passthrough: codegen-registry
 	cd api && ../bin/passthrough-gen \
 		-import-path github.com/openshift/hypershift/api/hypershift/v1beta1 \
 		-types HostedClusterSpec,NodePoolSpec \
 		-output-dir v1alpha1 \
-		-package v1alpha1
+		-package v1alpha1 \
+		-registry ../hack/api-codegen/pkg/registry/field_metadata.json
+	rm -f api/v1alpha1/zz_generated.passthrough.go.raw
 
-codegen-registry: codegen-passthrough generate-deepcopy build-api-codegen
+codegen-passthrough-clobber:
+	rm -f api/v1alpha1/zz_generated.passthrough.go
+	cd api && ../bin/passthrough-gen \
+  		-import-path github.com/openshift/hypershift/api/hypershift/v1beta1 \
+  		-types HostedClusterSpec,NodePoolSpec \
+  		-output-dir v1alpha1 \
+  		-package v1alpha1 \
+		-registry ../hack/api-codegen/pkg/registry/field_metadata.json
+
+codegen-registry: generate-deepcopy build-api-codegen
 	./bin/marker-scanner \
 		-input-dirs api/v1alpha1 \
 		-output-file hack/api-codegen/pkg/registry/field_metadata.go \

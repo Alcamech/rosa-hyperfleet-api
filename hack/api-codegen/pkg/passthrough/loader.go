@@ -175,7 +175,6 @@ func isForwardedMarker(marker string) bool {
 func (g *Generator) typeToString(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
-		// Check if this is a type from the source package that needs to be qualified
 		typeName := t.Name
 		if g.SourcePackageAlias != "" && g.isSourcePackageType(typeName) {
 			return g.SourcePackageAlias + "." + typeName

@@ -56,7 +56,7 @@ func (s *MarkerScanner) scanDir(dir string) error {
 		// Skip test files and generated files
 		name := fi.Name()
 		return !strings.HasSuffix(name, "_test.go") &&
-			!strings.HasPrefix(name, "zz_generated")
+			(!strings.HasPrefix(name, "zz_generated") || name == "zz_generated.passthrough.go")
 	}, parser.ParseComments)
 
 	if err != nil {
