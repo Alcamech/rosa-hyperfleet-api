@@ -70,7 +70,7 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 	list, err := h.db.ListClusters(ctx, accountID)
 	if err != nil {
 		h.logger.Error("failed to list clusters", "error", err, "account_id", accountID)
-		writeAPIError(w, ErrClusterList)
+		writeAPIError(w, ErrClusterList, h.logger)
 		return
 	}
 
@@ -108,34 +108,34 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var req types.ClusterCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeAPIError(w, ErrClusterCreateInvalidBody)
+		writeAPIError(w, ErrClusterCreateInvalidBody, h.logger)
 		return
 	}
 
 	if req.Name == "" || req.Spec == nil {
-		writeAPIError(w, ErrClusterCreateMissingFields)
+		writeAPIError(w, ErrClusterCreateMissingFields, h.logger)
 		return
 	}
 
 	if len(req.Name) > hyperfleetdb.MaxClusterNameLen {
-		writeAPIError(w, ErrClusterCreateNameTooLong)
+		writeAPIError(w, ErrClusterCreateNameTooLong, h.logger)
 		return
 	}
 
 	if errs := h.validator.ValidateCreate(req.Spec, featuregate.Default); errs != nil {
-		writeAPIError(w, ErrClusterValidation.WithErrors(errs))
+		writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
 		return
 	}
 
 	existing, err := h.db.ListClusters(ctx, accountID)
 	if err != nil {
 		h.logger.Error("failed to check cluster name uniqueness", "error", err, "account_id", accountID)
-		writeAPIError(w, ErrClusterCreateNameCheck)
+		writeAPIError(w, ErrClusterCreateNameCheck, h.logger)
 		return
 	}
 	for i := range existing.Items {
 		if existing.Items[i].Name == req.Name {
-			writeAPIError(w, ErrClusterCreateNameConflict.WithReason(req.Name))
+			writeAPIError(w, ErrClusterCreateNameConflict.WithReason(req.Name), h.logger)
 			return
 		}
 	}
@@ -153,7 +153,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		cr, err := hyperfleetdb.PlatformCreateToClusterCR(clusterID, accountID, &req)
 		if err != nil {
 			h.logger.Error("failed to convert cluster spec", "error", err, "account_id", accountID)
-			writeAPIError(w, ErrClusterCreateInvalidSpec)
+			writeAPIError(w, ErrClusterCreateInvalidSpec, h.logger)
 			return
 		}
 
@@ -173,10 +173,10 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 			}
 			h.logger.Error("failed to create cluster", "error", err, "account_id", accountID)
 			if hyperfleetdb.IsAlreadyExists(err) {
-				writeAPIError(w, ErrClusterCreateIDExhausted)
+				writeAPIError(w, ErrClusterCreateIDExhausted, h.logger)
 				return
 			}
-			writeAPIError(w, ErrClusterCreateFailed)
+			writeAPIError(w, ErrClusterCreateFailed, h.logger)
 			return
 		}
 
@@ -200,11 +200,11 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 	cr, err := h.db.GetCluster(ctx, accountID, clusterID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			writeAPIError(w, ErrClusterGetNotFound)
+			writeAPIError(w, ErrClusterGetNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to get cluster", "error", err, "account_id", accountID, "cluster_id", clusterID)
-		writeAPIError(w, ErrClusterGetFailed)
+		writeAPIError(w, ErrClusterGetFailed, h.logger)
 		return
 	}
 
@@ -222,18 +222,18 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeAPIError(w, ErrClusterUpdateInvalidBody)
+		writeAPIError(w, ErrClusterUpdateInvalidBody, h.logger)
 		return
 	}
 
 	var req types.ClusterUpdateRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeAPIError(w, ErrClusterUpdateInvalidBody)
+		writeAPIError(w, ErrClusterUpdateInvalidBody, h.logger)
 		return
 	}
 
 	if req.Spec == nil {
-		writeAPIError(w, ErrClusterUpdateMissingFields)
+		writeAPIError(w, ErrClusterUpdateMissingFields, h.logger)
 		return
 	}
 
@@ -242,16 +242,16 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	cr, err := h.db.GetCluster(ctx, accountID, clusterID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			writeAPIError(w, ErrClusterUpdateNotFound)
+			writeAPIError(w, ErrClusterUpdateNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to get cluster for update", "error", err, "account_id", accountID, "cluster_id", clusterID)
-		writeAPIError(w, ErrClusterUpdateFailed)
+		writeAPIError(w, ErrClusterUpdateFailed, h.logger)
 		return
 	}
 
 	if errs := h.validator.ValidateUpdate(req.Spec, &cr.Spec, featuregate.Default); errs != nil {
-		writeAPIError(w, ErrClusterValidation.WithErrors(errs))
+		writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
 		return
 	}
 
@@ -262,19 +262,19 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Spec json.RawMessage `json:"spec"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
-		writeAPIError(w, ErrClusterUpdateInvalidBody)
+		writeAPIError(w, ErrClusterUpdateInvalidBody, h.logger)
 		return
 	}
 
 	if err := hyperfleetdb.MergeSpecJSON(&cr.Spec, envelope.Spec); err != nil {
 		h.logger.Error("failed to merge cluster spec", "error", err)
-		writeAPIError(w, ErrClusterUpdateInvalidSpec)
+		writeAPIError(w, ErrClusterUpdateInvalidSpec, h.logger)
 		return
 	}
 
 	if err := h.db.UpdateCluster(ctx, cr); err != nil {
 		h.logger.Error("failed to update cluster", "error", err, "account_id", accountID, "cluster_id", clusterID)
-		writeAPIError(w, ErrClusterUpdateFailed)
+		writeAPIError(w, ErrClusterUpdateFailed, h.logger)
 		return
 	}
 
@@ -295,11 +295,11 @@ func (h *ClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	err := h.db.DeleteCluster(ctx, accountID, clusterID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			writeAPIError(w, ErrClusterDeleteNotFound)
+			writeAPIError(w, ErrClusterDeleteNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to delete cluster", "error", err, "account_id", accountID, "cluster_id", clusterID)
-		writeAPIError(w, ErrClusterDeleteFailed)
+		writeAPIError(w, ErrClusterDeleteFailed, h.logger)
 		return
 	}
 
@@ -325,11 +325,11 @@ func (h *ClusterHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	cr, err := h.db.GetCluster(ctx, accountID, clusterID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			writeAPIError(w, ErrClusterStatusNotFound)
+			writeAPIError(w, ErrClusterStatusNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to get cluster status", "error", err, "account_id", accountID, "cluster_id", clusterID)
-		writeAPIError(w, ErrClusterStatusFailed)
+		writeAPIError(w, ErrClusterStatusFailed, h.logger)
 		return
 	}
 

@@ -42,8 +42,8 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 	ctx := context.Background()
 
 	// Create handlers
-	healthHandler := apphandlers.NewHealthHandler()
-	infoHandler := apphandlers.NewInfoHandler()
+	healthHandler := apphandlers.NewHealthHandler(logger)
+	infoHandler := apphandlers.NewInfoHandler(logger)
 	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(dbClient, logger)
 	clusterHandler := apphandlers.NewClusterHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, cfg.Regional.DefaultClusterExpiration, logger)
 	nodePoolHandler := apphandlers.NewNodePoolHandler(dbClient, logger)

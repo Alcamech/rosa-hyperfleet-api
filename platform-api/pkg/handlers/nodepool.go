@@ -60,7 +60,7 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 	list, err := h.db.ListNodePools(ctx, accountID, clusterID)
 	if err != nil {
 		h.logger.Error("failed to list nodepools", "error", err, "account_id", accountID)
-		writeAPIError(w, ErrNodePoolList)
+		writeAPIError(w, ErrNodePoolList, h.logger)
 		return
 	}
 
@@ -96,27 +96,27 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var req types.NodePoolCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeAPIError(w, ErrNodePoolCreateInvalidBody)
+		writeAPIError(w, ErrNodePoolCreateInvalidBody, h.logger)
 		return
 	}
 
 	if req.Name == "" || req.ClusterID == "" || req.Spec == nil {
-		writeAPIError(w, ErrNodePoolCreateMissingFields)
+		writeAPIError(w, ErrNodePoolCreateMissingFields, h.logger)
 		return
 	}
 
 	if errs := h.validator.ValidateCreate(req.Spec, featuregate.Default); errs != nil {
-		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs))
+		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
 		return
 	}
 
 	if _, err := h.db.GetCluster(ctx, accountID, req.ClusterID); err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			writeAPIError(w, ErrNodePoolCreateClusterNotFound)
+			writeAPIError(w, ErrNodePoolCreateClusterNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to verify cluster exists", "error", err, "account_id", accountID, "cluster_id", req.ClusterID)
-		writeAPIError(w, ErrNodePoolCreateClusterCheck)
+		writeAPIError(w, ErrNodePoolCreateClusterCheck, h.logger)
 		return
 	}
 
@@ -126,17 +126,17 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	cr, err := hyperfleetdb.PlatformCreateToNodePoolCR(accountID, internalPoolID, &req)
 	if err != nil {
 		h.logger.Error("failed to convert nodepool spec", "error", err, "account_id", accountID)
-		writeAPIError(w, ErrNodePoolCreateInvalidSpec)
+		writeAPIError(w, ErrNodePoolCreateInvalidSpec, h.logger)
 		return
 	}
 
 	if err := h.db.CreateNodePool(ctx, accountID, cr); err != nil {
 		h.logger.Error("failed to create nodepool", "error", err, "account_id", accountID)
 		if hyperfleetdb.IsAlreadyExists(err) {
-			writeAPIError(w, ErrNodePoolCreateNameConflict)
+			writeAPIError(w, ErrNodePoolCreateNameConflict, h.logger)
 			return
 		}
-		writeAPIError(w, ErrNodePoolCreateFailed)
+		writeAPIError(w, ErrNodePoolCreateFailed, h.logger)
 		return
 	}
 
@@ -156,11 +156,11 @@ func (h *NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 	cr, err := h.db.GetNodePool(ctx, accountID, nodepoolID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			writeAPIError(w, ErrNodePoolGetNotFound)
+			writeAPIError(w, ErrNodePoolGetNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to get nodepool", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
-		writeAPIError(w, ErrNodePoolGetFailed)
+		writeAPIError(w, ErrNodePoolGetFailed, h.logger)
 		return
 	}
 
@@ -177,18 +177,18 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeAPIError(w, ErrNodePoolUpdateInvalidBody)
+		writeAPIError(w, ErrNodePoolUpdateInvalidBody, h.logger)
 		return
 	}
 
 	var req types.NodePoolUpdateRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeAPIError(w, ErrNodePoolUpdateInvalidBody)
+		writeAPIError(w, ErrNodePoolUpdateInvalidBody, h.logger)
 		return
 	}
 
 	if req.Spec == nil {
-		writeAPIError(w, ErrNodePoolUpdateMissingFields)
+		writeAPIError(w, ErrNodePoolUpdateMissingFields, h.logger)
 		return
 	}
 
@@ -197,16 +197,16 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 	cr, err := h.db.GetNodePool(ctx, accountID, nodepoolID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			writeAPIError(w, ErrNodePoolUpdateNotFound)
+			writeAPIError(w, ErrNodePoolUpdateNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to get nodepool for update", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
-		writeAPIError(w, ErrNodePoolUpdateFailed)
+		writeAPIError(w, ErrNodePoolUpdateFailed, h.logger)
 		return
 	}
 
 	if errs := h.validator.ValidateUpdate(req.Spec, &cr.Spec, featuregate.Default); errs != nil {
-		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs))
+		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
 		return
 	}
 
@@ -214,19 +214,19 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Spec json.RawMessage `json:"spec"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
-		writeAPIError(w, ErrNodePoolUpdateInvalidBody)
+		writeAPIError(w, ErrNodePoolUpdateInvalidBody, h.logger)
 		return
 	}
 
 	if err := hyperfleetdb.MergeSpecJSON(&cr.Spec, envelope.Spec); err != nil {
 		h.logger.Error("failed to merge nodepool spec", "error", err)
-		writeAPIError(w, ErrNodePoolUpdateInvalidSpec)
+		writeAPIError(w, ErrNodePoolUpdateInvalidSpec, h.logger)
 		return
 	}
 
 	if err := h.db.UpdateNodePool(ctx, cr); err != nil {
 		h.logger.Error("failed to update nodepool", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
-		writeAPIError(w, ErrNodePoolUpdateFailed)
+		writeAPIError(w, ErrNodePoolUpdateFailed, h.logger)
 		return
 	}
 
@@ -246,11 +246,11 @@ func (h *NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	err := h.db.DeleteNodePool(ctx, accountID, nodepoolID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			writeAPIError(w, ErrNodePoolDeleteNotFound)
+			writeAPIError(w, ErrNodePoolDeleteNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to delete nodepool", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
-		writeAPIError(w, ErrNodePoolDeleteFailed)
+		writeAPIError(w, ErrNodePoolDeleteFailed, h.logger)
 		return
 	}
 
@@ -275,11 +275,11 @@ func (h *NodePoolHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	cr, err := h.db.GetNodePool(ctx, accountID, nodepoolID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			writeAPIError(w, ErrNodePoolStatusNotFound)
+			writeAPIError(w, ErrNodePoolStatusNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to get nodepool status", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
-		writeAPIError(w, ErrNodePoolStatusFailed)
+		writeAPIError(w, ErrNodePoolStatusFailed, h.logger)
 		return
 	}
 

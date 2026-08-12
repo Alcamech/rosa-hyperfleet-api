@@ -31,13 +31,13 @@ func (a *Authorization) RequireAllowedAccount(next http.Handler) http.Handler {
 
 		if accountID == "" {
 			a.logger.Warn("missing account ID in request")
-			writeError(w, ErrMissingAccountID)
+			writeError(w, ErrMissingAccountID, a.logger)
 			return
 		}
 
 		if _, allowed := a.allowedAccounts[accountID]; !allowed {
 			a.logger.Warn("account not allowed", "account_id", accountID)
-			writeError(w, ErrAccountNotAllowed)
+			writeError(w, ErrAccountNotAllowed, a.logger)
 			return
 		}
 

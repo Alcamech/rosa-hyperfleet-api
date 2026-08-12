@@ -29,7 +29,7 @@ func (a *AccountCheck) RequireProvisioned(next http.Handler) http.Handler {
 		accountID := GetAccountID(ctx)
 
 		if accountID == "" {
-			writeError(w, ErrMissingAccountID)
+			writeError(w, ErrMissingAccountID, a.logger)
 			return
 		}
 
@@ -43,13 +43,13 @@ func (a *AccountCheck) RequireProvisioned(next http.Handler) http.Handler {
 		provisioned, err := a.authorizer.IsAccountProvisioned(ctx, accountID)
 		if err != nil {
 			a.logger.Error("failed to check account provisioning status", "error", err, "account_id", accountID)
-			writeError(w, ErrProvisionedCheckFailed)
+			writeError(w, ErrProvisionedCheckFailed, a.logger)
 			return
 		}
 
 		if !provisioned {
 			a.logger.Warn("account not provisioned", "account_id", accountID)
-			writeError(w, ErrAccountNotProvisioned)
+			writeError(w, ErrAccountNotProvisioned, a.logger)
 			return
 		}
 

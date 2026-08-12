@@ -53,21 +53,21 @@ func (h *ManagementClusterHandler) Create(w http.ResponseWriter, r *http.Request
 	var req ManagementClusterCreateRequest
 	if r.Body != nil && r.ContentLength > 0 {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeAPIError(w, ErrMCCreateInvalidBody)
+			writeAPIError(w, ErrMCCreateInvalidBody, h.logger)
 			return
 		}
 	}
 
 	if req.ID == "" {
-		writeAPIError(w, ErrMCCreateMissingID)
+		writeAPIError(w, ErrMCCreateMissingID, h.logger)
 		return
 	}
 	if req.Region == "" {
-		writeAPIError(w, ErrMCCreateMissingReg)
+		writeAPIError(w, ErrMCCreateMissingReg, h.logger)
 		return
 	}
 	if req.AccountID == "" {
-		writeAPIError(w, ErrMCCreateMissingAcct)
+		writeAPIError(w, ErrMCCreateMissingAcct, h.logger)
 		return
 	}
 
@@ -83,11 +83,11 @@ func (h *ManagementClusterHandler) Create(w http.ResponseWriter, r *http.Request
 
 	if err := h.db.CreateManagementCluster(ctx, mc); err != nil {
 		if hyperfleetdb.IsAlreadyExists(err) {
-			writeAPIError(w, ErrMCCreateExists.WithReason(req.ID))
+			writeAPIError(w, ErrMCCreateExists.WithReason(req.ID), h.logger)
 			return
 		}
 		h.logger.Error("failed to create management cluster", "error", err)
-		writeAPIError(w, ErrMCCreateFailed)
+		writeAPIError(w, ErrMCCreateFailed, h.logger)
 		return
 	}
 
@@ -108,7 +108,7 @@ func (h *ManagementClusterHandler) List(w http.ResponseWriter, r *http.Request) 
 	list, err := h.db.ListManagementClusters(ctx)
 	if err != nil {
 		h.logger.Error("failed to list management clusters", "error", err)
-		writeAPIError(w, ErrMCListFailed)
+		writeAPIError(w, ErrMCListFailed, h.logger)
 		return
 	}
 
@@ -140,11 +140,11 @@ func (h *ManagementClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 	mc, err := h.db.GetManagementCluster(ctx, id)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			writeAPIError(w, ErrMCGetNotFound)
+			writeAPIError(w, ErrMCGetNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to get management cluster", "error", err, "id", id)
-		writeAPIError(w, ErrMCGetFailed)
+		writeAPIError(w, ErrMCGetFailed, h.logger)
 		return
 	}
 

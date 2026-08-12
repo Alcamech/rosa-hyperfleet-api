@@ -29,7 +29,7 @@ func (a *AdminCheck) RequireAdmin(next http.Handler) http.Handler {
 		accountID := GetAccountID(ctx)
 
 		if accountID == "" {
-			writeError(w, ErrMissingAccountID)
+			writeError(w, ErrMissingAccountID, a.logger)
 			return
 		}
 
@@ -41,20 +41,20 @@ func (a *AdminCheck) RequireAdmin(next http.Handler) http.Handler {
 
 		callerARN := GetCallerARN(ctx)
 		if callerARN == "" {
-			writeError(w, ErrMissingCallerARN)
+			writeError(w, ErrMissingCallerARN, a.logger)
 			return
 		}
 
 		isAdmin, err := a.authorizer.IsAdmin(ctx, accountID, callerARN)
 		if err != nil {
 			a.logger.Error("failed to check admin status", "error", err, "account_id", accountID, "caller_arn", callerARN)
-			writeError(w, ErrAdminCheckFailed)
+			writeError(w, ErrAdminCheckFailed, a.logger)
 			return
 		}
 
 		if !isAdmin {
 			a.logger.Warn("admin access denied", "account_id", accountID, "caller_arn", callerARN)
-			writeError(w, ErrNotAdmin)
+			writeError(w, ErrNotAdmin, a.logger)
 			return
 		}
 

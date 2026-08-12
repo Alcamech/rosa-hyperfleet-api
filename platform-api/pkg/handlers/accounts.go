@@ -58,12 +58,12 @@ func (h *AccountsHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var req EnableAccountRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeAPIError(w, ErrAccountCreateInvalidBody)
+		writeAPIError(w, ErrAccountCreateInvalidBody, h.logger)
 		return
 	}
 
 	if req.AccountID == "" {
-		writeAPIError(w, ErrAccountCreateMissingID)
+		writeAPIError(w, ErrAccountCreateMissingID, h.logger)
 		return
 	}
 
@@ -71,18 +71,18 @@ func (h *AccountsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	existing, err := h.authorizer.GetAccount(ctx, req.AccountID)
 	if err != nil {
 		h.logger.Error("failed to check existing account", "error", err, "account_id", req.AccountID)
-		writeAPIError(w, ErrAccountCreateCheckFailed)
+		writeAPIError(w, ErrAccountCreateCheckFailed, h.logger)
 		return
 	}
 	if existing != nil {
-		writeAPIError(w, ErrAccountCreateExists)
+		writeAPIError(w, ErrAccountCreateExists, h.logger)
 		return
 	}
 
 	account, err := h.authorizer.EnableAccount(ctx, req.AccountID, callerARN, req.Privileged)
 	if err != nil {
 		h.logger.Error("failed to enable account", "error", err, "account_id", req.AccountID)
-		writeAPIError(w, ErrAccountCreateFailed)
+		writeAPIError(w, ErrAccountCreateFailed, h.logger)
 		return
 	}
 
@@ -107,7 +107,7 @@ func (h *AccountsHandler) List(w http.ResponseWriter, r *http.Request) {
 	accounts, err := h.authorizer.ListAccounts(ctx)
 	if err != nil {
 		h.logger.Error("failed to list accounts", "error", err)
-		writeAPIError(w, ErrAccountListFailed)
+		writeAPIError(w, ErrAccountListFailed, h.logger)
 		return
 	}
 
@@ -141,12 +141,12 @@ func (h *AccountsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	account, err := h.authorizer.GetAccount(ctx, accountID)
 	if err != nil {
 		h.logger.Error("failed to get account", "error", err, "account_id", accountID)
-		writeAPIError(w, ErrAccountGetFailed)
+		writeAPIError(w, ErrAccountGetFailed, h.logger)
 		return
 	}
 
 	if account == nil {
-		writeAPIError(w, ErrAccountGetNotFound)
+		writeAPIError(w, ErrAccountGetNotFound, h.logger)
 		return
 	}
 
@@ -174,7 +174,7 @@ func (h *AccountsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	err := h.authorizer.DisableAccount(ctx, accountID)
 	if err != nil {
 		h.logger.Error("failed to disable account", "error", err, "account_id", accountID)
-		writeAPIError(w, ErrAccountDeleteFailed)
+		writeAPIError(w, ErrAccountDeleteFailed, h.logger)
 		return
 	}
 

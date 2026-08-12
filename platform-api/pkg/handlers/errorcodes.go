@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
@@ -11,9 +12,10 @@ import (
 // APIError is an alias for api.APIError so handler code uses the short form.
 type APIError = api.APIError
 
-// TODO: add a logger parameter so write errors can be logged.
-func writeAPIError(w http.ResponseWriter, def APIError) {
-	_ = api.WriteError(w, def)
+func writeAPIError(w http.ResponseWriter, def APIError, logger *slog.Logger) {
+	if err := api.WriteError(w, def); err != nil {
+		logger.Error("failed to write error response", "error", err)
+	}
 }
 
 // Cluster error codes

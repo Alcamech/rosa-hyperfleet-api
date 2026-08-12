@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -10,12 +11,13 @@ import (
 )
 
 // InfoHandler handles the info endpoint
-// TODO: add a logger field so write errors can be logged.
-type InfoHandler struct{}
+type InfoHandler struct {
+	logger *slog.Logger
+}
 
 // NewInfoHandler creates a new InfoHandler
-func NewInfoHandler() *InfoHandler {
-	return &InfoHandler{}
+func NewInfoHandler(logger *slog.Logger) *InfoHandler {
+	return &InfoHandler{logger: logger}
 }
 
 // Info handles GET /api/v0/info
@@ -26,12 +28,14 @@ func (h *InfoHandler) Info(w http.ResponseWriter, r *http.Request) {
 	// Target Group ARN format: arn:aws:elasticloadbalancing:{region}:{account_id}:targetgroup/{name}/{id}
 	parts := strings.SplitN(tgARN, ":", 6)
 	if len(parts) < 6 || parts[4] == "" {
-		writeAPIError(w, ErrInfoRegionalAccountUnavailable)
+		writeAPIError(w, ErrInfoRegionalAccountUnavailable, h.logger)
 		return
 	}
 
 	accountID := parts[4]
 	arn := fmt.Sprintf("arn:aws:iam::%s:role/LambdaExecutor", accountID)
 
-	_ = api.Write(w, http.StatusOK, map[string]string{"arn": arn})
+	if err := api.Write(w, http.StatusOK, map[string]string{"arn": arn}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }

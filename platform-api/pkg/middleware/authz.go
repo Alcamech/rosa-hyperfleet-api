@@ -46,12 +46,12 @@ func (a *Authz) Authorize(next http.Handler) http.Handler {
 		callerARN := GetCallerARN(ctx)
 
 		if accountID == "" {
-			writeError(w, ErrMissingAccountID)
+			writeError(w, ErrMissingAccountID, a.logger)
 			return
 		}
 
 		if callerARN == "" {
-			writeError(w, ErrMissingCallerARN)
+			writeError(w, ErrMissingCallerARN, a.logger)
 			return
 		}
 
@@ -70,10 +70,10 @@ func (a *Authz) Authorize(next http.Handler) http.Handler {
 			a.logger.Error("authorization check failed", "error", err, "account_id", accountID, "action", req.Action)
 			// Check if it's a "not provisioned" error
 			if strings.Contains(err.Error(), "not provisioned") {
-				writeError(w, ErrAccountNotProvisioned)
+				writeError(w, ErrAccountNotProvisioned, a.logger)
 				return
 			}
-			writeError(w, ErrAuthorizationFailed)
+			writeError(w, ErrAuthorizationFailed, a.logger)
 			return
 		}
 
@@ -84,7 +84,7 @@ func (a *Authz) Authorize(next http.Handler) http.Handler {
 				"action", req.Action,
 				"resource", req.Resource,
 			)
-			writeError(w, ErrAccessDenied)
+			writeError(w, ErrAccessDenied, a.logger)
 			return
 		}
 

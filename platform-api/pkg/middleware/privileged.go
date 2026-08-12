@@ -57,7 +57,7 @@ func (p *Privileged) RequirePrivileged(next http.Handler) http.Handler {
 		accountID := GetAccountID(ctx)
 
 		if accountID == "" {
-			writeError(w, ErrMissingAccountID)
+			writeError(w, ErrMissingAccountID, p.logger)
 			return
 		}
 
@@ -68,14 +68,14 @@ func (p *Privileged) RequirePrivileged(next http.Handler) http.Handler {
 			isPrivileged, err = p.authorizer.IsPrivileged(ctx, accountID)
 			if err != nil {
 				p.logger.Error("failed to check privileged status", "error", err, "account_id", accountID)
-				writeError(w, ErrPrivilegedCheckFailed)
+				writeError(w, ErrPrivilegedCheckFailed, p.logger)
 				return
 			}
 		}
 
 		if !isPrivileged {
 			p.logger.Warn("privileged access denied", "account_id", accountID)
-			writeError(w, ErrNotPrivileged)
+			writeError(w, ErrNotPrivileged, p.logger)
 			return
 		}
 

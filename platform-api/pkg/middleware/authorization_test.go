@@ -420,7 +420,7 @@ func TestAuthorization_WriteError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			writeError(w, tt.def)
+			writeError(w, tt.def, slog.Default())
 
 			if w.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
