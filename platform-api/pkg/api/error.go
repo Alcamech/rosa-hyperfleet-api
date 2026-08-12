@@ -1,4 +1,4 @@
-package apierror
+package api
 
 import (
 	"encoding/json"
@@ -29,22 +29,27 @@ func (e APIError) WithErrors(v any) APIError {
 // test time.
 func (e APIError) WithReason(args ...any) APIError {
 	if e.Reason == "" {
-		panic(fmt.Sprintf("apierror: WithReason() called on %q which has no Reason template", e.Code))
+		panic(fmt.Sprintf("api: WithReason() called on %q which has no Reason template", e.Code))
 	}
 	e.Errors = fmt.Errorf(e.Reason, args...)
 	return e
 }
 
-// Write serializes def as a JSON error response.
+// WriteError serializes def as a JSON error response. The return value follows
+// the same contract as Write: a marshal failure is returned before headers are
+// committed; a write failure after WriteHeader is unrecoverable but still
+// returned so the caller can log it.
 //
-// When Errors implements error, reason is derived from Errors.Error() so the
-// top-level field always carries full detail. If the concrete Errors value has
-// no exported fields (e.g. errors.New, fmt.Errorf) its JSON representation
-// would be "{}", which adds no value; Write suppresses it from the output so
-// that clients only see the populated reason and not an empty errors object.
-func Write(w http.ResponseWriter, def APIError) {
+// When Errors implements error and marshals to "{}" or "null" (plain errors),
+// reason is derived from Errors.Error() and the errors field is suppressed.
+// For structured Errors (exported fields), the static Message is kept and
+// Errors serializes as-is.
+func WriteError(w http.ResponseWriter, def APIError) error {
 	if err, ok := def.Errors.(error); ok {
-		b, _ := json.Marshal(def.Errors)
+		b, merr := json.Marshal(def.Errors)
+		if merr != nil {
+			return merr
+		}
 		if len(b) == 0 || string(b) == "{}" || string(b) == "null" {
 			// Plain error: derive reason from message, suppress empty errors field.
 			def.Message = err.Error()
@@ -52,10 +57,15 @@ func Write(w http.ResponseWriter, def APIError) {
 		}
 		// Structured error: keep the static Message and let Errors serialize as-is.
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(def.HTTPStatus)
-	_ = json.NewEncoder(w).Encode(struct {
+	b, err := json.Marshal(struct {
 		Kind string `json:"kind"`
 		APIError
 	}{Kind: "Error", APIError: def})
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(def.HTTPStatus)
+	_, err = w.Write(b)
+	return err
 }

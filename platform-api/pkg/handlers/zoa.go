@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/zoa"
@@ -238,9 +239,9 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	h.recordAudit(ctx, r, accountID, callerARN, operator, http.StatusAccepted, originalAction, req.TargetCluster, execID, req.Jira, string(exec.ApprovalState))
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusAccepted)
-	_ = json.NewEncoder(w).Encode(exec)
+	if err := api.Write(w, http.StatusAccepted, exec); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Get handles GET /api/v0/trusted-actions/runs/{id}
@@ -305,9 +306,9 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(response)
+	if err := api.Write(w, http.StatusOK, response); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // List handles GET /api/v0/trusted-actions/runs
@@ -373,9 +374,9 @@ func (h *ZoaHandler) List(w http.ResponseWriter, r *http.Request) {
 	operator := extractOperator(callerARN)
 	h.recordAudit(ctx, r, accountID, callerARN, operator, http.StatusOK, "", "", "", "", "")
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(response)
+	if err := api.Write(w, http.StatusOK, response); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // parseSince converts a duration shorthand (e.g. "1h", "24h", "7d") or RFC3339 timestamp
@@ -431,12 +432,12 @@ func (h *ZoaHandler) Catalog(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	if err := api.Write(w, http.StatusOK, map[string]any{
 		"items": items,
 		"total": len(items),
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Describe handles GET /api/v0/trusted-actions/{action}
@@ -461,9 +462,9 @@ func (h *ZoaHandler) Describe(w http.ResponseWriter, r *http.Request) {
 		RequiredFields:       []string{"target_cluster", "jira"},
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(response)
+	if err := api.Write(w, http.StatusOK, response); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *ZoaHandler) fetchS3Content(ctx context.Context, s3URI string) ([]byte, error) {
@@ -695,11 +696,11 @@ func (h *ZoaHandler) AuditList(w http.ResponseWriter, r *http.Request) {
 	operator := extractOperator(callerARN)
 	h.recordAudit(ctx, r, accountID, callerARN, operator, http.StatusOK, "", "", "", "", "")
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	if err := api.Write(w, http.StatusOK, map[string]any{
 		"kind":  "AuditList",
 		"items": entries,
 		"total": len(entries),
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }

@@ -1,12 +1,14 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"sync/atomic"
+
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 )
 
 // HealthHandler handles health check endpoints
+// TODO: add a logger field so write errors can be logged.
 type HealthHandler struct {
 	ready *atomic.Bool
 }
@@ -27,19 +29,15 @@ func (h *HealthHandler) SetReady(ready bool) {
 
 // Liveness handles GET /live
 func (h *HealthHandler) Liveness(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = api.Write(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // Readiness handles GET /ready
 func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	if !h.ready.Load() {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "unavailable"})
+		_ = api.Write(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
 		return
 	}
 
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = api.Write(w, http.StatusOK, map[string]string{"status": "ok"})
 }

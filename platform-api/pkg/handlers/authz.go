@@ -7,6 +7,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/authz"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 )
@@ -161,15 +162,15 @@ func (h *AuthzHandler) CreatePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(PolicyResponse{
+	if err := api.Write(w, http.StatusCreated, PolicyResponse{
 		Kind:        "Policy",
 		PolicyID:    p.PolicyID,
 		Name:        p.Name,
 		Description: p.Description,
 		CreatedAt:   p.CreatedAt,
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 //nolint:dupl // ListPolicies and ListGroups are structurally similar but operate on different types
@@ -195,12 +196,13 @@ func (h *AuthzHandler) ListPolicies(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(PolicyListResponse{
+	if err := api.Write(w, http.StatusOK, PolicyListResponse{
 		Kind:  "PolicyList",
 		Items: items,
 		Total: len(items),
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) GetPolicy(w http.ResponseWriter, r *http.Request) {
@@ -221,14 +223,15 @@ func (h *AuthzHandler) GetPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(PolicyResponse{
+	if err := api.Write(w, http.StatusOK, PolicyResponse{
 		Kind:        "Policy",
 		PolicyID:    p.PolicyID,
 		Name:        p.Name,
 		Description: p.Description,
 		CreatedAt:   p.CreatedAt,
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) UpdatePolicy(w http.ResponseWriter, r *http.Request) {
@@ -250,14 +253,15 @@ func (h *AuthzHandler) UpdatePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(PolicyResponse{
+	if err := api.Write(w, http.StatusOK, PolicyResponse{
 		Kind:        "Policy",
 		PolicyID:    p.PolicyID,
 		Name:        p.Name,
 		Description: p.Description,
 		CreatedAt:   p.CreatedAt,
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) DeletePolicy(w http.ResponseWriter, r *http.Request) {
@@ -277,7 +281,9 @@ func (h *AuthzHandler) DeletePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	if err := api.Write(w, http.StatusNoContent, nil); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Group Handlers
@@ -304,15 +310,15 @@ func (h *AuthzHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(GroupResponse{
+	if err := api.Write(w, http.StatusCreated, GroupResponse{
 		Kind:        "Group",
 		GroupID:     g.GroupID,
 		Name:        g.Name,
 		Description: g.Description,
 		CreatedAt:   g.CreatedAt,
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 //nolint:dupl // ListGroups and ListPolicies are structurally similar but operate on different types
@@ -338,12 +344,13 @@ func (h *AuthzHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(GroupListResponse{
+	if err := api.Write(w, http.StatusOK, GroupListResponse{
 		Kind:  "GroupList",
 		Items: items,
 		Total: len(items),
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) GetGroup(w http.ResponseWriter, r *http.Request) {
@@ -364,14 +371,15 @@ func (h *AuthzHandler) GetGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(GroupResponse{
+	if err := api.Write(w, http.StatusOK, GroupResponse{
 		Kind:        "Group",
 		GroupID:     g.GroupID,
 		Name:        g.Name,
 		Description: g.Description,
 		CreatedAt:   g.CreatedAt,
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
@@ -387,7 +395,9 @@ func (h *AuthzHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	if err := api.Write(w, http.StatusNoContent, nil); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) UpdateGroupMembers(w http.ResponseWriter, r *http.Request) {
@@ -428,12 +438,13 @@ func (h *AuthzHandler) UpdateGroupMembers(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(MemberListResponse{
+	if err := api.Write(w, http.StatusOK, MemberListResponse{
 		Kind:  "MemberList",
 		Items: members,
 		Total: len(members),
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) ListGroupMembers(w http.ResponseWriter, r *http.Request) {
@@ -449,12 +460,13 @@ func (h *AuthzHandler) ListGroupMembers(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(MemberListResponse{
+	if err := api.Write(w, http.StatusOK, MemberListResponse{
 		Kind:  "MemberList",
 		Items: members,
 		Total: len(members),
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Attachment Handlers
@@ -486,16 +498,16 @@ func (h *AuthzHandler) CreateAttachment(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(AttachmentResponse{
+	if err := api.Write(w, http.StatusCreated, AttachmentResponse{
 		Kind:         "Attachment",
 		AttachmentID: a.AttachmentID,
 		PolicyID:     a.PolicyID,
 		TargetType:   string(a.TargetType),
 		TargetID:     a.TargetID,
 		CreatedAt:    a.CreatedAt,
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) ListAttachments(w http.ResponseWriter, r *http.Request) {
@@ -528,12 +540,13 @@ func (h *AuthzHandler) ListAttachments(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(AttachmentListResponse{
+	if err := api.Write(w, http.StatusOK, AttachmentListResponse{
 		Kind:  "AttachmentList",
 		Items: items,
 		Total: len(items),
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request) {
@@ -549,7 +562,9 @@ func (h *AuthzHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	if err := api.Write(w, http.StatusNoContent, nil); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Admin Handlers
@@ -577,12 +592,12 @@ func (h *AuthzHandler) AddAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	if err := api.Write(w, http.StatusCreated, map[string]any{
 		"kind":         "Admin",
 		"principalArn": req.PrincipalARN,
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) ListAdmins(w http.ResponseWriter, r *http.Request) {
@@ -596,12 +611,13 @@ func (h *AuthzHandler) ListAdmins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(AdminListResponse{
+	if err := api.Write(w, http.StatusOK, AdminListResponse{
 		Kind:  "AdminList",
 		Items: admins,
 		Total: len(admins),
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *AuthzHandler) RemoveAdmin(w http.ResponseWriter, r *http.Request) {
@@ -618,7 +634,9 @@ func (h *AuthzHandler) RemoveAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	if err := api.Write(w, http.StatusNoContent, nil); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // CheckAuthorization evaluates an authorization request and returns the decision.
@@ -670,9 +688,10 @@ func (h *AuthzHandler) CheckAuthorization(w http.ResponseWriter, r *http.Request
 		decision = "ALLOW"
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(CheckAuthorizationResponse{
+	if err := api.Write(w, http.StatusOK, CheckAuthorizationResponse{
 		Kind:     "AuthorizationDecision",
 		Decision: decision,
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }

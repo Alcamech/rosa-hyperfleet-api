@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/internal/codegen/featuregate"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/types"
@@ -95,7 +96,9 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 		"offset": offset,
 	}
 
-	h.writeJSON(w, http.StatusOK, response)
+	if err := api.Write(w, http.StatusOK, response); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Create handles POST /api/v0/clusters
@@ -178,7 +181,9 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 
 		cluster := hyperfleetdb.ClusterCRToPlatform(cr)
-		h.writeJSON(w, http.StatusCreated, cluster)
+		if err := api.Write(w, http.StatusCreated, cluster); err != nil {
+			h.logger.Error("failed to write response", "error", err)
+		}
 		return
 	}
 }
@@ -203,7 +208,9 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, hyperfleetdb.ClusterCRToPlatform(cr))
+	if err := api.Write(w, http.StatusOK, hyperfleetdb.ClusterCRToPlatform(cr)); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Update handles PUT /api/v0/clusters/{id}
@@ -271,7 +278,9 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, hyperfleetdb.ClusterCRToPlatform(cr))
+	if err := api.Write(w, http.StatusOK, hyperfleetdb.ClusterCRToPlatform(cr)); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Delete handles DELETE /api/v0/clusters/{id}
@@ -299,7 +308,9 @@ func (h *ClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		"cluster_id": clusterID,
 	}
 
-	h.writeJSON(w, http.StatusAccepted, response)
+	if err := api.Write(w, http.StatusAccepted, response); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // GetStatus handles GET /api/v0/clusters/{id}/statuses
@@ -322,11 +333,7 @@ func (h *ClusterHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, hyperfleetdb.ClusterStatusFromCR(cr))
-}
-
-func (h *ClusterHandler) writeJSON(w http.ResponseWriter, status int, data any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(data)
+	if err := api.Write(w, http.StatusOK, hyperfleetdb.ClusterStatusFromCR(cr)); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }

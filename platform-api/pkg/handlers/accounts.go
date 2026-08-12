@@ -7,6 +7,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/authz"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 )
@@ -87,16 +88,16 @@ func (h *AccountsHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("account enabled", "account_id", req.AccountID, "privileged", req.Privileged)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(AccountResponse{
+	if err := api.Write(w, http.StatusCreated, AccountResponse{
 		Kind:          "Account",
 		AccountID:     account.AccountID,
 		PolicyStoreID: account.PolicyStoreID,
 		Privileged:    account.Privileged,
 		CreatedAt:     account.CreatedAt,
 		CreatedBy:     account.CreatedBy,
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // List handles GET /api/v0/accounts
@@ -122,12 +123,13 @@ func (h *AccountsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(AccountListResponse{
+	if err := api.Write(w, http.StatusOK, AccountListResponse{
 		Kind:  "AccountList",
 		Items: items,
 		Total: len(items),
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Get handles GET /api/v0/accounts/{id}
@@ -148,15 +150,16 @@ func (h *AccountsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(AccountResponse{
+	if err := api.Write(w, http.StatusOK, AccountResponse{
 		Kind:          "Account",
 		AccountID:     account.AccountID,
 		PolicyStoreID: account.PolicyStoreID,
 		Privileged:    account.Privileged,
 		CreatedAt:     account.CreatedAt,
 		CreatedBy:     account.CreatedBy,
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Delete handles DELETE /api/v0/accounts/{id}
@@ -177,5 +180,7 @@ func (h *AccountsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("account disabled", "account_id", accountID)
 
-	w.WriteHeader(http.StatusNoContent)
+	if err := api.Write(w, http.StatusNoContent, nil); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }

@@ -1,4 +1,4 @@
-package apierror_test
+package api_test
 
 import (
 	"encoding/json"
@@ -7,10 +7,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/apierror"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 )
 
-var base = apierror.APIError{
+var base = api.APIError{
 	Code:       "TEST-001",
 	HTTPStatus: http.StatusBadRequest,
 	Message:    "something went wrong",
@@ -33,9 +33,11 @@ func decode(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
 	return out
 }
 
-func write(def apierror.APIError) *httptest.ResponseRecorder {
+func write(def api.APIError) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
-	apierror.Write(w, def)
+	if err := api.WriteError(w, def); err != nil {
+		panic("WriteError: " + err.Error())
+	}
 	return w
 }
 
@@ -59,7 +61,7 @@ func TestWithErrors_DoesNotMutateBase(t *testing.T) {
 // --- WithReason ---
 
 func TestWithReason_AppliesTemplate(t *testing.T) {
-	e := apierror.APIError{Code: "X", HTTPStatus: 400, Message: "m", Reason: "hello %s"}
+	e := api.APIError{Code: "X", HTTPStatus: 400, Message: "m", Reason: "hello %s"}
 	got := e.WithReason("world")
 	if got.Errors == nil {
 		t.Fatal("expected Errors to be set")
@@ -71,7 +73,7 @@ func TestWithReason_AppliesTemplate(t *testing.T) {
 
 func TestWithReason_WrapsErrorWithW(t *testing.T) {
 	sentinel := errors.New("sentinel")
-	e := apierror.APIError{Code: "X", HTTPStatus: 500, Message: "m", Reason: "%w"}
+	e := api.APIError{Code: "X", HTTPStatus: 500, Message: "m", Reason: "%w"}
 	got := e.WithReason(sentinel)
 	if !errors.Is(got.Errors.(error), sentinel) {
 		t.Fatal("expected error chain to be preserved via %w")
@@ -88,7 +90,7 @@ func TestWithReason_PanicsWithoutTemplate(t *testing.T) {
 }
 
 func TestWithReason_DoesNotMutateBase(t *testing.T) {
-	e := apierror.APIError{Code: "X", HTTPStatus: 400, Message: "m", Reason: "%s"}
+	e := api.APIError{Code: "X", HTTPStatus: 400, Message: "m", Reason: "%s"}
 	_ = e.WithReason("x")
 	if e.Errors != nil {
 		t.Fatal("WithReason must not mutate the receiver")
@@ -98,7 +100,7 @@ func TestWithReason_DoesNotMutateBase(t *testing.T) {
 // --- Write: HTTP envelope ---
 
 func TestWrite_StatusCode(t *testing.T) {
-	w := write(apierror.APIError{Code: "X", HTTPStatus: http.StatusNotFound, Message: "m"})
+	w := write(api.APIError{Code: "X", HTTPStatus: http.StatusNotFound, Message: "m"})
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}
@@ -133,7 +135,7 @@ func TestWrite_CodeAndReason(t *testing.T) {
 // --- Write: plain error (no exported fields) ---
 
 func TestWrite_PlainError_ReasonFromError(t *testing.T) {
-	e := apierror.APIError{Code: "TEST-001", HTTPStatus: http.StatusNotFound, Message: "not found", Reason: "cluster %q not found"}
+	e := api.APIError{Code: "TEST-001", HTTPStatus: http.StatusNotFound, Message: "not found", Reason: "cluster %q not found"}
 	w := write(e.WithReason("abc"))
 	resp := decode(t, w)
 	if resp["reason"] != `cluster "abc" not found` {
@@ -142,7 +144,7 @@ func TestWrite_PlainError_ReasonFromError(t *testing.T) {
 }
 
 func TestWrite_PlainError_ErrorsFieldSuppressed(t *testing.T) {
-	e := apierror.APIError{Code: "TEST-001", HTTPStatus: http.StatusBadRequest, Message: "bad", Reason: "%w"}
+	e := api.APIError{Code: "TEST-001", HTTPStatus: http.StatusBadRequest, Message: "bad", Reason: "%w"}
 	w := write(e.WithReason(errors.New("oops")))
 	resp := decode(t, w)
 	if _, ok := resp["errors"]; ok {
@@ -188,18 +190,18 @@ func TestWrite_NoErrors_NoErrorsField(t *testing.T) {
 
 func TestWrite_ResponseFormat(t *testing.T) {
 	cases := []struct {
-		name        string
-		def         apierror.APIError
-		wantStatus  int
-		wantKind    string
-		wantCode    string
-		wantReason  string
-		wantErrors  any    // nil means field must be absent
-		forbidden   []string // keys that must not appear in the response
+		name       string
+		def        api.APIError
+		wantStatus int
+		wantKind   string
+		wantCode   string
+		wantReason string
+		wantErrors any      // nil means field must be absent
+		forbidden  []string // keys that must not appear in the response
 	}{
 		{
 			name:       "static message no errors",
-			def:        apierror.APIError{Code: "A-001", HTTPStatus: http.StatusBadRequest, Message: "bad request"},
+			def:        api.APIError{Code: "A-001", HTTPStatus: http.StatusBadRequest, Message: "bad request"},
 			wantStatus: http.StatusBadRequest,
 			wantKind:   "Error",
 			wantCode:   "A-001",
@@ -208,7 +210,7 @@ func TestWrite_ResponseFormat(t *testing.T) {
 		},
 		{
 			name:       "plain error derives reason and suppresses errors field",
-			def:        apierror.APIError{Code: "A-002", HTTPStatus: http.StatusNotFound, Message: "default", Reason: "item %q not found"}.WithReason("xyz"),
+			def:        api.APIError{Code: "A-002", HTTPStatus: http.StatusNotFound, Message: "default", Reason: "item %q not found"}.WithReason("xyz"),
 			wantStatus: http.StatusNotFound,
 			wantKind:   "Error",
 			wantCode:   "A-002",
@@ -217,7 +219,7 @@ func TestWrite_ResponseFormat(t *testing.T) {
 		},
 		{
 			name:       "structured error keeps static reason and exposes errors",
-			def:        apierror.APIError{Code: "A-003", HTTPStatus: http.StatusUnprocessableEntity, Message: "validation failed"}.WithErrors(&structuredError{Field: "name", Detail: "required"}),
+			def:        api.APIError{Code: "A-003", HTTPStatus: http.StatusUnprocessableEntity, Message: "validation failed"}.WithErrors(&structuredError{Field: "name", Detail: "required"}),
 			wantStatus: http.StatusUnprocessableEntity,
 			wantKind:   "Error",
 			wantCode:   "A-003",

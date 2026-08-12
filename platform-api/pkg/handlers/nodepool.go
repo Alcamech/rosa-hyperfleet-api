@@ -7,14 +7,15 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/internal/codegen/featuregate"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/types"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/validation"
-
-	"github.com/google/uuid"
 )
 
 type NodePoolHandler struct {
@@ -84,7 +85,9 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 		"offset": offset,
 	}
 
-	h.writeJSON(w, http.StatusOK, response)
+	if err := api.Write(w, http.StatusOK, response); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +140,9 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusCreated, hyperfleetdb.NodePoolCRToPlatform(cr))
+	if err := api.Write(w, http.StatusCreated, hyperfleetdb.NodePoolCRToPlatform(cr)); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -159,7 +164,9 @@ func (h *NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, hyperfleetdb.NodePoolCRToPlatform(cr))
+	if err := api.Write(w, http.StatusOK, hyperfleetdb.NodePoolCRToPlatform(cr)); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -223,7 +230,9 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, hyperfleetdb.NodePoolCRToPlatform(cr))
+	if err := api.Write(w, http.StatusOK, hyperfleetdb.NodePoolCRToPlatform(cr)); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -250,7 +259,9 @@ func (h *NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		"nodepool_id": nodepoolID,
 	}
 
-	h.writeJSON(w, http.StatusAccepted, response)
+	if err := api.Write(w, http.StatusAccepted, response); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func (h *NodePoolHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
@@ -272,11 +283,7 @@ func (h *NodePoolHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, hyperfleetdb.NodePoolStatusFromCR(cr))
-}
-
-func (h *NodePoolHandler) writeJSON(w http.ResponseWriter, status int, data any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(data)
+	if err := api.Write(w, http.StatusOK, hyperfleetdb.NodePoolStatusFromCR(cr)); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }

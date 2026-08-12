@@ -10,6 +10,7 @@ import (
 
 	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
 
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 )
@@ -92,9 +93,9 @@ func (h *ManagementClusterHandler) Create(w http.ResponseWriter, r *http.Request
 
 	h.logger.Info("management cluster created", "id", mc.Name, "account_id", accountID)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(mcToResponse(mc))
+	if err := api.Write(w, http.StatusCreated, mcToResponse(mc)); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // List handles GET /api/v0/management_clusters
@@ -118,12 +119,13 @@ func (h *ManagementClusterHandler) List(w http.ResponseWriter, r *http.Request) 
 
 	h.logger.Debug("management clusters listed", "total", len(clusters), "account_id", accountID)
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	if err := api.Write(w, http.StatusOK, map[string]any{
 		"kind":  "ManagementClusterList",
 		"items": clusters,
 		"total": len(clusters),
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Get handles GET /api/v0/management_clusters/{id}
@@ -148,8 +150,9 @@ func (h *ManagementClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Debug("management cluster retrieved", "id", mc.Name, "account_id", accountID)
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(mcToResponse(mc))
+	if err := api.Write(w, http.StatusOK, mcToResponse(mc)); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 func mcToResponse(mc *hyperfleetv1alpha1.ManagementCluster) ManagementClusterResponse {
