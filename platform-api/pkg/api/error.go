@@ -48,6 +48,7 @@ func WriteError(w http.ResponseWriter, def APIError) error {
 	if err, ok := def.Errors.(error); ok {
 		b, merr := json.Marshal(def.Errors)
 		if merr != nil {
+			writeFallback(w)
 			return merr
 		}
 		if len(b) == 0 || string(b) == "{}" || string(b) == "null" {
@@ -62,10 +63,23 @@ func WriteError(w http.ResponseWriter, def APIError) error {
 		APIError
 	}{Kind: "Error", APIError: def})
 	if err != nil {
+		writeFallback(w)
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(def.HTTPStatus)
 	_, err = w.Write(b)
 	return err
+}
+
+// fallbackBody is the pre-marshaled form of ErrInternalMarshal, populated by
+// errorcodes.go's init() after ErrInternalMarshal is set.
+var fallbackBody []byte
+
+// writeFallback writes a 500 JSON body when normal serialization has failed.
+// It must not call Write or WriteError to avoid circular/recursive calls.
+func writeFallback(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusInternalServerError)
+	_, _ = w.Write(fallbackBody)
 }

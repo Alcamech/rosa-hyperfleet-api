@@ -91,7 +91,7 @@ func (h *ManagementClusterHandler) Create(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	h.logger.Info("management cluster created", "id", mc.Name, "account_id", accountID)
+	h.logger.Info("management cluster created", "id", redact(mc.Name), "account_id", redact(accountID))
 
 	if err := api.Write(w, http.StatusCreated, mcToResponse(mc)); err != nil {
 		h.logger.Error("failed to write response", "error", err)

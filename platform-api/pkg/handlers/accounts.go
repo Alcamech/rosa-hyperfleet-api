@@ -86,7 +86,7 @@ func (h *AccountsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.logger.Info("account enabled", "account_id", req.AccountID, "privileged", req.Privileged)
+	h.logger.Info("account enabled", "account_id", redact(req.AccountID), "privileged", req.Privileged)
 
 	if err := api.Write(w, http.StatusCreated, AccountResponse{
 		Kind:          "Account",
