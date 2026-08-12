@@ -321,6 +321,160 @@ var FieldRegistry = map[string]FieldMeta{
 		FieldPath: "spec.expirationTimestamp",
 		WriteMode: Mutable,
 	},
+	"spec.hostedCluster.additionalTrustBundle": {
+		FieldPath: "spec.hostedCluster.additionalTrustBundle",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.auditWebhook": {
+		FieldPath: "spec.hostedCluster.auditWebhook",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.autoNode": {
+		FieldPath: "spec.hostedCluster.autoNode",
+		WriteMode: ServiceSet,
+	},
+	"spec.hostedCluster.autoscaling": {
+		FieldPath: "spec.hostedCluster.autoscaling",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.capabilities": {
+		FieldPath: "spec.hostedCluster.capabilities",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.channel": {
+		FieldPath: "spec.hostedCluster.channel",
+		WriteMode: ServiceSet,
+	},
+	"spec.hostedCluster.clusterID": {
+		FieldPath: "spec.hostedCluster.clusterID",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.configuration": {
+		FieldPath: "spec.hostedCluster.configuration",
+		WriteMode: ServiceSet,
+	},
+	"spec.hostedCluster.controlPlaneRelease": {
+		FieldPath: "spec.hostedCluster.controlPlaneRelease",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.controllerAvailabilityPolicy": {
+		FieldPath: "spec.hostedCluster.controllerAvailabilityPolicy",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.dns": {
+		FieldPath: "spec.hostedCluster.dns",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.etcd": {
+		FieldPath: "spec.hostedCluster.etcd",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.fips": {
+		FieldPath: "spec.hostedCluster.fips",
+		WriteMode: ServiceSet,
+	},
+	"spec.hostedCluster.imageContentSources": {
+		FieldPath: "spec.hostedCluster.imageContentSources",
+		WriteMode: Mutable,
+	},
+	"spec.hostedCluster.infraID": {
+		FieldPath: "spec.hostedCluster.infraID",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.infrastructureAvailabilityPolicy": {
+		FieldPath: "spec.hostedCluster.infrastructureAvailabilityPolicy",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.issuerURL": {
+		FieldPath: "spec.hostedCluster.issuerURL",
+		WriteMode: Mutable,
+	},
+	"spec.hostedCluster.kubeAPIServerDNSName": {
+		FieldPath: "spec.hostedCluster.kubeAPIServerDNSName",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.labels": {
+		FieldPath: "spec.hostedCluster.labels",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.networking": {
+		FieldPath: "spec.hostedCluster.networking",
+		WriteMode: Mutable,
+	},
+	"spec.hostedCluster.nodeSelector": {
+		FieldPath: "spec.hostedCluster.nodeSelector",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.olmCatalogPlacement": {
+		FieldPath: "spec.hostedCluster.olmCatalogPlacement",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.operatorConfiguration": {
+		FieldPath: "spec.hostedCluster.operatorConfiguration",
+		WriteMode: ServiceSet,
+	},
+	"spec.hostedCluster.pausedUntil": {
+		FieldPath: "spec.hostedCluster.pausedUntil",
+		WriteMode: ServiceSet,
+	},
+	"spec.hostedCluster.platform": {
+		FieldPath: "spec.hostedCluster.platform",
+		WriteMode: Mutable,
+	},
+	"spec.hostedCluster.pullSecret": {
+		FieldPath: "spec.hostedCluster.pullSecret",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.release": {
+		FieldPath: "spec.hostedCluster.release",
+		WriteMode: Mutable,
+	},
+	"spec.hostedCluster.secretEncryption": {
+		FieldPath: "spec.hostedCluster.secretEncryption",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.serviceAccountSigningKey": {
+		FieldPath: "spec.hostedCluster.serviceAccountSigningKey",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.services": {
+		FieldPath: "spec.hostedCluster.services",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.sshKey": {
+		FieldPath: "spec.hostedCluster.sshKey",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.tolerations": {
+		FieldPath: "spec.hostedCluster.tolerations",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.hostedCluster.updateService": {
+		FieldPath: "spec.hostedCluster.updateService",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
 	"spec.internalId": {
 		FieldPath: "spec.internalId",
 		WriteMode: ServiceSet,
@@ -334,6 +488,77 @@ var FieldRegistry = map[string]FieldMeta{
 	"spec.labels": {
 		FieldPath: "spec.labels",
 		WriteMode: Mutable,
+	},
+	"spec.nodePool.arch": {
+		FieldPath: "spec.nodePool.arch",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.nodePool.autoScaling": {
+		FieldPath: "spec.nodePool.autoScaling",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.nodePool.clusterName": {
+		FieldPath: "spec.nodePool.clusterName",
+		WriteMode: Mutable,
+	},
+	"spec.nodePool.config": {
+		FieldPath: "spec.nodePool.config",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.nodePool.management": {
+		FieldPath: "spec.nodePool.management",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.nodePool.nodeDrainTimeout": {
+		FieldPath: "spec.nodePool.nodeDrainTimeout",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.nodePool.nodeLabels": {
+		FieldPath: "spec.nodePool.nodeLabels",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.nodePool.nodeVolumeDetachTimeout": {
+		FieldPath: "spec.nodePool.nodeVolumeDetachTimeout",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.nodePool.osImageStream": {
+		FieldPath: "spec.nodePool.osImageStream",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.nodePool.pausedUntil": {
+		FieldPath: "spec.nodePool.pausedUntil",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.nodePool.platform": {
+		FieldPath: "spec.nodePool.platform",
+		WriteMode: Mutable,
+	},
+	"spec.nodePool.release": {
+		FieldPath: "spec.nodePool.release",
+		WriteMode: Mutable,
+	},
+	"spec.nodePool.replicas": {
+		FieldPath: "spec.nodePool.replicas",
+		WriteMode: Mutable,
+	},
+	"spec.nodePool.taints": {
+		FieldPath: "spec.nodePool.taints",
+		WriteMode: ServiceSet,
+		Hidden:    true,
+	},
+	"spec.nodePool.tuningConfig": {
+		FieldPath: "spec.nodePool.tuningConfig",
+		WriteMode: ServiceSet,
+		Hidden:    true,
 	},
 	"spec.properties": {
 		FieldPath: "spec.properties",

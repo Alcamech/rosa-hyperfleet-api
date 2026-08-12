@@ -12,8 +12,8 @@ import (
 // HostedClusterSpecPassthrough mirrors HostedClusterSpec from upstream HyperShift
 type HostedClusterSpecPassthrough struct {
 	// release specifies the desired OCP release payload for all the hosted cluster components.
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
 	// +required
 	Release hypershiftv1beta1.Release `json:"release"`
 	// controlPlaneRelease is like spec.release but only for the components running on the management cluster.
@@ -42,8 +42,8 @@ type HostedClusterSpecPassthrough struct {
 	// +optional
 	Channel string `json:"channel,omitempty"`
 	// platform specifies the underlying infrastructure provider for the cluster
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
 	// +required
 	Platform hypershiftv1beta1.PlatformSpec `json:"platform"`
 	// kubeAPIServerDNSName specifies a desired DNS name to resolve to the KAS.
@@ -67,8 +67,8 @@ type HostedClusterSpecPassthrough struct {
 	// +optional
 	DNS hypershiftv1beta1.DNSSpec `json:"dns,omitempty"`
 	// networking specifies network configuration for the hosted cluster.
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
 	// +required
 	Networking hypershiftv1beta1.ClusterNetworking `json:"networking"`
 	// autoscaling specifies auto-scaling behavior that applies to all NodePools
@@ -102,8 +102,8 @@ type HostedClusterSpecPassthrough struct {
 	// +optional
 	SSHKey corev1.LocalObjectReference `json:"sshKey"`
 	// issuerURL is an OIDC issuer URL which will be used as the issuer in all
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
 	// +optional
 	IssuerURL string `json:"issuerURL,omitempty"`
 	// serviceAccountSigningKey is a local reference to a secret that must have a "key" key whose content must be the private key
@@ -127,8 +127,8 @@ type HostedClusterSpecPassthrough struct {
 	// +optional
 	AuditWebhook *corev1.LocalObjectReference `json:"auditWebhook,omitempty"`
 	// imageContentSources specifies image mirrors that can be used by cluster
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
 	// +optional
 	ImageContentSources []hypershiftv1beta1.ImageContentSource `json:"imageContentSources,omitempty"`
 	// additionalTrustBundle is a local reference to a ConfigMap that must have a "ca-bundle.crt" key
@@ -181,23 +181,23 @@ type HostedClusterSpecPassthrough struct {
 // NodePoolSpecPassthrough mirrors NodePoolSpec from upstream HyperShift
 type NodePoolSpecPassthrough struct {
 	// clusterName is the name of the HostedCluster this NodePool belongs to.
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
 	// +required
 	ClusterName string `json:"clusterName"`
 	// release specifies the OCP release used for this NodePool. It drives the machine ignition configuration (including
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
 	// +required
 	Release hypershiftv1beta1.Release `json:"release"`
 	// platform specifies the underlying infrastructure provider for the NodePool
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
 	// +required
 	Platform hypershiftv1beta1.NodePoolPlatform `json:"platform"`
 	// replicas is the desired number of nodes the pool should maintain. If unset, the controller default value is 0.
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
 	// management specifies behavior for managing nodes in the pool, such as
