@@ -1,0 +1,164 @@
+package handlers
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
+)
+
+// APIError defines a typed error response. HTTPStatus drives the response code;
+// Code, Message, and optional Errors are serialized to JSON under "kind":"Error".
+type APIError struct {
+	Code       string `json:"code"`
+	HTTPStatus int    `json:"-"`
+	Message    string `json:"reason"`
+	Errors     any    `json:"errors,omitempty"`
+}
+
+// writeAPIError writes a typed JSON error response.
+// reason overrides the default Message when provided.
+func writeAPIError(w http.ResponseWriter, def APIError, reason ...string) {
+	if len(reason) > 0 {
+		def.Message = reason[0]
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(def.HTTPStatus)
+	_ = json.NewEncoder(w).Encode(struct {
+		Kind string `json:"kind"`
+		APIError
+	}{Kind: "Error", APIError: def})
+}
+
+// Cluster error codes
+var (
+	ErrClusterList APIError
+
+	ErrClusterCreateInvalidBody   APIError
+	ErrClusterCreateMissingFields APIError
+	ErrClusterCreateFailed        APIError
+	ErrClusterCreateNameCheck     APIError
+	ErrClusterCreateNameConflict  APIError
+	ErrClusterCreateNameTooLong   APIError
+	ErrClusterCreateIDExhausted   APIError
+	ErrClusterCreateInvalidSpec   APIError
+
+	ErrClusterGetNotFound APIError
+	ErrClusterGetFailed   APIError
+
+	ErrClusterUpdateInvalidBody   APIError
+	ErrClusterUpdateMissingFields APIError
+	ErrClusterUpdateNotFound      APIError
+	ErrClusterUpdateFailed        APIError
+	ErrClusterUpdateInvalidSpec   APIError
+
+	ErrClusterDeleteNotFound APIError
+	ErrClusterDeleteFailed   APIError
+
+	ErrClusterStatusNotFound APIError
+	ErrClusterStatusFailed   APIError
+
+	ErrClusterValidation APIError
+)
+
+// NodePool error codes
+var (
+	ErrNodePoolList APIError
+
+	ErrNodePoolCreateInvalidBody     APIError
+	ErrNodePoolCreateMissingFields   APIError
+	ErrNodePoolCreateNameConflict    APIError
+	ErrNodePoolCreateClusterNotFound APIError
+	ErrNodePoolCreateClusterCheck    APIError
+	ErrNodePoolCreateInvalidSpec     APIError
+	ErrNodePoolCreateFailed          APIError
+
+	ErrNodePoolGetNotFound APIError
+	ErrNodePoolGetFailed   APIError
+
+	ErrNodePoolUpdateInvalidBody   APIError
+	ErrNodePoolUpdateMissingFields APIError
+	ErrNodePoolUpdateNotFound      APIError
+	ErrNodePoolUpdateFailed        APIError
+	ErrNodePoolUpdateInvalidSpec   APIError
+
+	ErrNodePoolDeleteNotFound APIError
+	ErrNodePoolDeleteFailed   APIError
+
+	ErrNodePoolStatusNotFound APIError
+	ErrNodePoolStatusFailed   APIError
+
+	ErrNodePoolValidation APIError
+)
+
+func init() {
+	// Cluster — List
+	ErrClusterList = APIError{Code: "CLUSTERS-MGMT-LIST-001", HTTPStatus: http.StatusInternalServerError, Message: "Failed to list clusters"}
+
+	// Cluster — Create
+	ErrClusterCreateInvalidBody   = APIError{Code: "CLUSTERS-MGMT-CREATE-001", HTTPStatus: http.StatusBadRequest, Message: "Invalid request body"}
+	ErrClusterCreateMissingFields = APIError{Code: "CLUSTERS-MGMT-CREATE-002", HTTPStatus: http.StatusBadRequest, Message: "Missing required fields: name and spec"}
+	ErrClusterCreateFailed        = APIError{Code: "CLUSTERS-MGMT-CREATE-003", HTTPStatus: http.StatusInternalServerError, Message: "Failed to create cluster"}
+	ErrClusterCreateNameCheck     = APIError{Code: "CLUSTERS-MGMT-CREATE-004", HTTPStatus: http.StatusInternalServerError, Message: "Failed to validate cluster name"}
+	ErrClusterCreateNameConflict  = APIError{Code: "CLUSTERS-MGMT-CREATE-005", HTTPStatus: http.StatusConflict, Message: "Cluster name already exists in this account"}
+	ErrClusterCreateNameTooLong   = APIError{Code: "CLUSTERS-MGMT-CREATE-006", HTTPStatus: http.StatusBadRequest, Message: fmt.Sprintf("Cluster name must be no more than %d characters", hyperfleetdb.MaxClusterNameLen)}
+	ErrClusterCreateIDExhausted   = APIError{Code: "CLUSTERS-MGMT-CREATE-007", HTTPStatus: http.StatusInternalServerError, Message: "Unable to generate unique DNS identifier"}
+	ErrClusterCreateInvalidSpec   = APIError{Code: "CLUSTERS-MGMT-CREATE-008", HTTPStatus: http.StatusBadRequest, Message: "Invalid cluster spec"}
+
+	// Cluster — Get
+	ErrClusterGetNotFound = APIError{Code: "CLUSTERS-MGMT-GET-001", HTTPStatus: http.StatusNotFound, Message: "Cluster not found"}
+	ErrClusterGetFailed   = APIError{Code: "CLUSTERS-MGMT-GET-002", HTTPStatus: http.StatusInternalServerError, Message: "Failed to get cluster"}
+
+	// Cluster — Update
+	ErrClusterUpdateInvalidBody   = APIError{Code: "CLUSTERS-MGMT-UPDATE-001", HTTPStatus: http.StatusBadRequest, Message: "Invalid request body"}
+	ErrClusterUpdateMissingFields = APIError{Code: "CLUSTERS-MGMT-UPDATE-002", HTTPStatus: http.StatusBadRequest, Message: "Missing required field: spec"}
+	ErrClusterUpdateNotFound      = APIError{Code: "CLUSTERS-MGMT-UPDATE-003", HTTPStatus: http.StatusNotFound, Message: "Cluster not found"}
+	ErrClusterUpdateFailed        = APIError{Code: "CLUSTERS-MGMT-UPDATE-004", HTTPStatus: http.StatusInternalServerError, Message: "Failed to update cluster"}
+	ErrClusterUpdateInvalidSpec   = APIError{Code: "CLUSTERS-MGMT-UPDATE-005", HTTPStatus: http.StatusBadRequest, Message: "Invalid cluster spec"}
+
+	// Cluster — Delete
+	ErrClusterDeleteNotFound = APIError{Code: "CLUSTERS-MGMT-DELETE-001", HTTPStatus: http.StatusNotFound, Message: "Cluster not found"}
+	ErrClusterDeleteFailed   = APIError{Code: "CLUSTERS-MGMT-DELETE-002", HTTPStatus: http.StatusInternalServerError, Message: "Failed to delete cluster"}
+
+	// Cluster — Status
+	ErrClusterStatusNotFound = APIError{Code: "CLUSTERS-MGMT-STATUS-001", HTTPStatus: http.StatusNotFound, Message: "Cluster not found"}
+	ErrClusterStatusFailed   = APIError{Code: "CLUSTERS-MGMT-STATUS-002", HTTPStatus: http.StatusInternalServerError, Message: "Failed to get cluster status"}
+
+	// Cluster — Validation
+	ErrClusterValidation = APIError{Code: "CLUSTERS-MGMT-VALIDATION-001", HTTPStatus: http.StatusUnprocessableEntity, Message: "Request validation failed"}
+
+	// NodePool — List
+	ErrNodePoolList = APIError{Code: "NODEPOOLS-MGMT-LIST-001", HTTPStatus: http.StatusInternalServerError, Message: "Failed to list nodepools"}
+
+	// NodePool — Create
+	ErrNodePoolCreateInvalidBody     = APIError{Code: "NODEPOOLS-MGMT-CREATE-001", HTTPStatus: http.StatusBadRequest, Message: "Invalid request body"}
+	ErrNodePoolCreateMissingFields   = APIError{Code: "NODEPOOLS-MGMT-CREATE-002", HTTPStatus: http.StatusBadRequest, Message: "Missing required fields: name, cluster_id, and spec"}
+	ErrNodePoolCreateNameConflict    = APIError{Code: "NODEPOOLS-MGMT-CREATE-003", HTTPStatus: http.StatusConflict, Message: "NodePool already exists"}
+	ErrNodePoolCreateClusterNotFound = APIError{Code: "NODEPOOLS-MGMT-CREATE-004", HTTPStatus: http.StatusNotFound, Message: "Referenced cluster not found"}
+	ErrNodePoolCreateClusterCheck    = APIError{Code: "NODEPOOLS-MGMT-CREATE-005", HTTPStatus: http.StatusInternalServerError, Message: "Failed to validate cluster reference"}
+	ErrNodePoolCreateInvalidSpec     = APIError{Code: "NODEPOOLS-MGMT-CREATE-006", HTTPStatus: http.StatusBadRequest, Message: "Invalid nodepool spec"}
+	ErrNodePoolCreateFailed          = APIError{Code: "NODEPOOLS-MGMT-CREATE-007", HTTPStatus: http.StatusInternalServerError, Message: "Failed to create nodepool"}
+
+	// NodePool — Get
+	ErrNodePoolGetNotFound = APIError{Code: "NODEPOOLS-MGMT-GET-001", HTTPStatus: http.StatusNotFound, Message: "NodePool not found"}
+	ErrNodePoolGetFailed   = APIError{Code: "NODEPOOLS-MGMT-GET-002", HTTPStatus: http.StatusInternalServerError, Message: "Failed to get nodepool"}
+
+	// NodePool — Update
+	ErrNodePoolUpdateInvalidBody   = APIError{Code: "NODEPOOLS-MGMT-UPDATE-001", HTTPStatus: http.StatusBadRequest, Message: "Invalid request body"}
+	ErrNodePoolUpdateMissingFields = APIError{Code: "NODEPOOLS-MGMT-UPDATE-002", HTTPStatus: http.StatusBadRequest, Message: "Missing required field: spec"}
+	ErrNodePoolUpdateNotFound      = APIError{Code: "NODEPOOLS-MGMT-UPDATE-003", HTTPStatus: http.StatusNotFound, Message: "NodePool not found"}
+	ErrNodePoolUpdateFailed        = APIError{Code: "NODEPOOLS-MGMT-UPDATE-004", HTTPStatus: http.StatusInternalServerError, Message: "Failed to update nodepool"}
+	ErrNodePoolUpdateInvalidSpec   = APIError{Code: "NODEPOOLS-MGMT-UPDATE-005", HTTPStatus: http.StatusBadRequest, Message: "Invalid nodepool spec"}
+
+	// NodePool — Delete
+	ErrNodePoolDeleteNotFound = APIError{Code: "NODEPOOLS-MGMT-DELETE-001", HTTPStatus: http.StatusNotFound, Message: "NodePool not found"}
+	ErrNodePoolDeleteFailed   = APIError{Code: "NODEPOOLS-MGMT-DELETE-002", HTTPStatus: http.StatusInternalServerError, Message: "Failed to delete nodepool"}
+
+	// NodePool — Status
+	ErrNodePoolStatusNotFound = APIError{Code: "NODEPOOLS-MGMT-STATUS-001", HTTPStatus: http.StatusNotFound, Message: "NodePool not found"}
+	ErrNodePoolStatusFailed   = APIError{Code: "NODEPOOLS-MGMT-STATUS-002", HTTPStatus: http.StatusInternalServerError, Message: "Failed to get nodepool status"}
+
+	// NodePool — Validation
+	ErrNodePoolValidation = APIError{Code: "NODEPOOLS-MGMT-VALIDATION-001", HTTPStatus: http.StatusUnprocessableEntity, Message: "Request validation failed"}
+}

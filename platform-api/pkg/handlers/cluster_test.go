@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -268,6 +269,32 @@ func TestClusterHandler_Create_MissingFields(t *testing.T) {
 				t.Errorf("expected 400, got %d", w.Code)
 			}
 		})
+	}
+}
+
+func TestClusterHandler_Create_NameTooLong(t *testing.T) {
+	scheme := newTestScheme()
+	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
+
+	longName := strings.Repeat("a", hyperfleetdb.MaxClusterNameLen+1)
+	body, _ := json.Marshal(map[string]any{"name": longName, "spec": map[string]any{}})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
+	req = req.WithContext(testContext(testAccountID))
+
+	w := httptest.NewRecorder()
+	handler.Create(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var errResp map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&errResp)
+	if errResp["code"] != ErrClusterCreateNameTooLong.Code {
+		t.Errorf("expected code %s, got %v", ErrClusterCreateNameTooLong.Code, errResp["code"])
 	}
 }
 

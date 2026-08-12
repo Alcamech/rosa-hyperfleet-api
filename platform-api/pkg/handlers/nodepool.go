@@ -7,13 +7,14 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/internal/codegen/featuregate"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/types"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/validation"
+
+	"github.com/google/uuid"
 )
 
 type NodePoolHandler struct {
@@ -58,7 +59,7 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 	list, err := h.db.ListNodePools(ctx, accountID, clusterID)
 	if err != nil {
 		h.logger.Error("failed to list nodepools", "error", err, "account_id", accountID)
-		h.writeError(w, http.StatusInternalServerError, "NODEPOOLS-MGMT-LIST-001", "Failed to list nodepools")
+		writeAPIError(w, ErrNodePoolList)
 		return
 	}
 
@@ -92,27 +93,29 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var req types.NodePoolCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-CREATE-001", "Invalid request body")
+		writeAPIError(w, ErrNodePoolCreateInvalidBody)
 		return
 	}
 
 	if req.Name == "" || req.ClusterID == "" || req.Spec == nil {
-		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-CREATE-002", "Missing required fields: name, cluster_id, and spec")
+		writeAPIError(w, ErrNodePoolCreateMissingFields)
 		return
 	}
 
 	if errs := h.validator.ValidateCreate(req.Spec, featuregate.Default); errs != nil {
-		h.writeValidationErrors(w, errs)
+		def := ErrNodePoolValidation
+		def.Errors = errs
+		writeAPIError(w, def)
 		return
 	}
 
 	if _, err := h.db.GetCluster(ctx, accountID, req.ClusterID); err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			h.writeError(w, http.StatusNotFound, "NODEPOOLS-MGMT-CREATE-004", "Referenced cluster not found")
+			writeAPIError(w, ErrNodePoolCreateClusterNotFound)
 			return
 		}
 		h.logger.Error("failed to verify cluster exists", "error", err, "account_id", accountID, "cluster_id", req.ClusterID)
-		h.writeError(w, http.StatusInternalServerError, "NODEPOOLS-MGMT-CREATE-005", "Failed to validate cluster reference")
+		writeAPIError(w, ErrNodePoolCreateClusterCheck)
 		return
 	}
 
@@ -122,17 +125,17 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	cr, err := hyperfleetdb.PlatformCreateToNodePoolCR(accountID, internalPoolID, &req)
 	if err != nil {
 		h.logger.Error("failed to convert nodepool spec", "error", err, "account_id", accountID)
-		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-CREATE-002", "Invalid nodepool spec")
+		writeAPIError(w, ErrNodePoolCreateInvalidSpec)
 		return
 	}
 
 	if err := h.db.CreateNodePool(ctx, accountID, cr); err != nil {
 		h.logger.Error("failed to create nodepool", "error", err, "account_id", accountID)
 		if hyperfleetdb.IsAlreadyExists(err) {
-			h.writeError(w, http.StatusConflict, "NODEPOOLS-MGMT-CREATE-003", "NodePool already exists")
+			writeAPIError(w, ErrNodePoolCreateNameConflict)
 			return
 		}
-		h.writeError(w, http.StatusInternalServerError, "NODEPOOLS-MGMT-CREATE-003", "Failed to create nodepool")
+		writeAPIError(w, ErrNodePoolCreateFailed)
 		return
 	}
 
@@ -150,11 +153,11 @@ func (h *NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 	cr, err := h.db.GetNodePool(ctx, accountID, nodepoolID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			h.writeError(w, http.StatusNotFound, "NODEPOOLS-MGMT-GET-001", "NodePool not found")
+			writeAPIError(w, ErrNodePoolGetNotFound)
 			return
 		}
 		h.logger.Error("failed to get nodepool", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
-		h.writeError(w, http.StatusInternalServerError, "NODEPOOLS-MGMT-GET-002", "Failed to get nodepool")
+		writeAPIError(w, ErrNodePoolGetFailed)
 		return
 	}
 
@@ -169,18 +172,18 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-001", "Failed to read request body")
+		writeAPIError(w, ErrNodePoolUpdateInvalidBody)
 		return
 	}
 
 	var req types.NodePoolUpdateRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-001", "Invalid request body")
+		writeAPIError(w, ErrNodePoolUpdateInvalidBody)
 		return
 	}
 
 	if req.Spec == nil {
-		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-002", "Missing required field: spec")
+		writeAPIError(w, ErrNodePoolUpdateMissingFields)
 		return
 	}
 
@@ -189,16 +192,18 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 	cr, err := h.db.GetNodePool(ctx, accountID, nodepoolID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			h.writeError(w, http.StatusNotFound, "NODEPOOLS-MGMT-UPDATE-003", "NodePool not found")
+			writeAPIError(w, ErrNodePoolUpdateNotFound)
 			return
 		}
 		h.logger.Error("failed to get nodepool for update", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
-		h.writeError(w, http.StatusInternalServerError, "NODEPOOLS-MGMT-UPDATE-004", "Failed to update nodepool")
+		writeAPIError(w, ErrNodePoolUpdateFailed)
 		return
 	}
 
 	if errs := h.validator.ValidateUpdate(req.Spec, &cr.Spec, featuregate.Default); errs != nil {
-		h.writeValidationErrors(w, errs)
+		def := ErrNodePoolValidation
+		def.Errors = errs
+		writeAPIError(w, def)
 		return
 	}
 
@@ -206,19 +211,19 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Spec json.RawMessage `json:"spec"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
-		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-001", "Invalid request body")
+		writeAPIError(w, ErrNodePoolUpdateInvalidBody)
 		return
 	}
 
 	if err := hyperfleetdb.MergeSpecJSON(&cr.Spec, envelope.Spec); err != nil {
 		h.logger.Error("failed to merge nodepool spec", "error", err)
-		h.writeError(w, http.StatusBadRequest, "NODEPOOLS-MGMT-UPDATE-002", "Invalid nodepool spec")
+		writeAPIError(w, ErrNodePoolUpdateInvalidSpec)
 		return
 	}
 
 	if err := h.db.UpdateNodePool(ctx, cr); err != nil {
 		h.logger.Error("failed to update nodepool", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
-		h.writeError(w, http.StatusInternalServerError, "NODEPOOLS-MGMT-UPDATE-004", "Failed to update nodepool")
+		writeAPIError(w, ErrNodePoolUpdateFailed)
 		return
 	}
 
@@ -236,11 +241,11 @@ func (h *NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	err := h.db.DeleteNodePool(ctx, accountID, nodepoolID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			h.writeError(w, http.StatusNotFound, "NODEPOOLS-MGMT-DELETE-001", "NodePool not found")
+			writeAPIError(w, ErrNodePoolDeleteNotFound)
 			return
 		}
 		h.logger.Error("failed to delete nodepool", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
-		h.writeError(w, http.StatusInternalServerError, "NODEPOOLS-MGMT-DELETE-002", "Failed to delete nodepool")
+		writeAPIError(w, ErrNodePoolDeleteFailed)
 		return
 	}
 
@@ -263,11 +268,11 @@ func (h *NodePoolHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	cr, err := h.db.GetNodePool(ctx, accountID, nodepoolID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			h.writeError(w, http.StatusNotFound, "NODEPOOLS-MGMT-STATUS-001", "NodePool not found")
+			writeAPIError(w, ErrNodePoolStatusNotFound)
 			return
 		}
 		h.logger.Error("failed to get nodepool status", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
-		h.writeError(w, http.StatusInternalServerError, "NODEPOOLS-MGMT-STATUS-002", "Failed to get nodepool status")
+		writeAPIError(w, ErrNodePoolStatusFailed)
 		return
 	}
 
@@ -278,27 +283,4 @@ func (h *NodePoolHandler) writeJSON(w http.ResponseWriter, status int, data any)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
-}
-
-func (h *NodePoolHandler) writeValidationErrors(w http.ResponseWriter, errs validation.ValidationErrors) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusUnprocessableEntity)
-	resp := map[string]any{
-		"kind":   "Error",
-		"code":   "NODEPOOLS-MGMT-VALIDATION-001",
-		"reason": "Request validation failed",
-		"errors": errs,
-	}
-	_ = json.NewEncoder(w).Encode(resp)
-}
-
-func (h *NodePoolHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	resp := map[string]any{
-		"kind":   "Error",
-		"code":   code,
-		"reason": reason,
-	}
-	_ = json.NewEncoder(w).Encode(resp)
 }
