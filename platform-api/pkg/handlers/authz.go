@@ -140,24 +140,24 @@ func (h *AuthzHandler) CreatePolicy(w http.ResponseWriter, r *http.Request) {
 
 	var req CreatePolicyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
+		writeAPIError(w, ErrAuthzPolicyCreateInvalidBody)
 		return
 	}
 
 	if req.Name == "" {
-		h.writeError(w, http.StatusBadRequest, "missing-name", "name is required")
+		writeAPIError(w, ErrAuthzPolicyCreateMissingName)
 		return
 	}
 
 	if req.Policy == "" {
-		h.writeError(w, http.StatusBadRequest, "missing-policy", "policy (Cedar text) is required")
+		writeAPIError(w, ErrAuthzPolicyCreateMissingText)
 		return
 	}
 
 	p, err := h.service.CreatePolicy(ctx, accountID, req.Name, req.Description, req.Policy)
 	if err != nil {
 		h.logger.Error("failed to create policy", "error", err, "account_id", accountID)
-		h.writeError(w, http.StatusBadRequest, "invalid-policy", err.Error())
+		writeAPIError(w, ErrAuthzPolicyCreateInvalid.WithReason(err))
 		return
 	}
 
@@ -180,7 +180,7 @@ func (h *AuthzHandler) ListPolicies(w http.ResponseWriter, r *http.Request) {
 	policies, err := h.service.ListPolicies(ctx, accountID)
 	if err != nil {
 		h.logger.Error("failed to list policies", "error", err, "account_id", accountID)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to list policies")
+		writeAPIError(w, ErrAuthzPolicyListFailed)
 		return
 	}
 
@@ -212,12 +212,12 @@ func (h *AuthzHandler) GetPolicy(w http.ResponseWriter, r *http.Request) {
 	p, err := h.service.GetPolicy(ctx, accountID, policyID)
 	if err != nil {
 		h.logger.Error("failed to get policy", "error", err, "account_id", accountID, "policy_id", policyID)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to get policy")
+		writeAPIError(w, ErrAuthzPolicyGetFailed)
 		return
 	}
 
 	if p == nil {
-		h.writeError(w, http.StatusNotFound, "not-found", "Policy not found")
+		writeAPIError(w, ErrAuthzPolicyGetNotFound)
 		return
 	}
 
@@ -239,14 +239,14 @@ func (h *AuthzHandler) UpdatePolicy(w http.ResponseWriter, r *http.Request) {
 
 	var req CreatePolicyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
+		writeAPIError(w, ErrAuthzPolicyUpdateInvalidBody)
 		return
 	}
 
 	p, err := h.service.UpdatePolicy(ctx, accountID, policyID, req.Name, req.Description, req.Policy)
 	if err != nil {
 		h.logger.Error("failed to update policy", "error", err, "account_id", accountID, "policy_id", policyID)
-		h.writeError(w, http.StatusBadRequest, "invalid-policy", err.Error())
+		writeAPIError(w, ErrAuthzPolicyUpdateInvalid.WithReason(err))
 		return
 	}
 
@@ -270,10 +270,10 @@ func (h *AuthzHandler) DeletePolicy(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.logger.Error("failed to delete policy", "error", err, "account_id", accountID, "policy_id", policyID)
 		if err.Error() == "cannot delete policy with existing attachments" {
-			h.writeError(w, http.StatusConflict, "policy-in-use", err.Error())
+			writeAPIError(w, ErrAuthzPolicyDeleteInUse.WithReason(err))
 			return
 		}
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to delete policy")
+		writeAPIError(w, ErrAuthzPolicyDeleteFailed)
 		return
 	}
 
@@ -288,19 +288,19 @@ func (h *AuthzHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 
 	var req CreateGroupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
+		writeAPIError(w, ErrAuthzGroupCreateInvalidBody)
 		return
 	}
 
 	if req.Name == "" {
-		h.writeError(w, http.StatusBadRequest, "missing-name", "name is required")
+		writeAPIError(w, ErrAuthzGroupCreateMissingName)
 		return
 	}
 
 	g, err := h.service.CreateGroup(ctx, accountID, req.Name, req.Description)
 	if err != nil {
 		h.logger.Error("failed to create group", "error", err, "account_id", accountID)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to create group")
+		writeAPIError(w, ErrAuthzGroupCreateFailed)
 		return
 	}
 
@@ -323,7 +323,7 @@ func (h *AuthzHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	groups, err := h.service.ListGroups(ctx, accountID)
 	if err != nil {
 		h.logger.Error("failed to list groups", "error", err, "account_id", accountID)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to list groups")
+		writeAPIError(w, ErrAuthzGroupListFailed)
 		return
 	}
 
@@ -355,12 +355,12 @@ func (h *AuthzHandler) GetGroup(w http.ResponseWriter, r *http.Request) {
 	g, err := h.service.GetGroup(ctx, accountID, groupID)
 	if err != nil {
 		h.logger.Error("failed to get group", "error", err, "account_id", accountID, "group_id", groupID)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to get group")
+		writeAPIError(w, ErrAuthzGroupGetFailed)
 		return
 	}
 
 	if g == nil {
-		h.writeError(w, http.StatusNotFound, "not-found", "Group not found")
+		writeAPIError(w, ErrAuthzGroupGetNotFound)
 		return
 	}
 
@@ -383,7 +383,7 @@ func (h *AuthzHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 	err := h.service.DeleteGroup(ctx, accountID, groupID)
 	if err != nil {
 		h.logger.Error("failed to delete group", "error", err, "account_id", accountID, "group_id", groupID)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to delete group")
+		writeAPIError(w, ErrAuthzGroupDeleteFailed)
 		return
 	}
 
@@ -398,7 +398,7 @@ func (h *AuthzHandler) UpdateGroupMembers(w http.ResponseWriter, r *http.Request
 
 	var req UpdateMembersRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
+		writeAPIError(w, ErrAuthzGroupMembersUpdateInvalidBody)
 		return
 	}
 
@@ -406,7 +406,7 @@ func (h *AuthzHandler) UpdateGroupMembers(w http.ResponseWriter, r *http.Request
 	for _, memberARN := range req.Add {
 		if err := h.service.AddGroupMember(ctx, accountID, groupID, memberARN); err != nil {
 			h.logger.Error("failed to add group member", "error", err, "account_id", accountID, "group_id", groupID, "member", memberARN)
-			h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to add group member")
+			writeAPIError(w, ErrAuthzGroupMembersUpdateAddFailed)
 			return
 		}
 	}
@@ -415,7 +415,7 @@ func (h *AuthzHandler) UpdateGroupMembers(w http.ResponseWriter, r *http.Request
 	for _, memberARN := range req.Remove {
 		if err := h.service.RemoveGroupMember(ctx, accountID, groupID, memberARN); err != nil {
 			h.logger.Error("failed to remove group member", "error", err, "account_id", accountID, "group_id", groupID, "member", memberARN)
-			h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to remove group member")
+			writeAPIError(w, ErrAuthzGroupMembersUpdateRemFailed)
 			return
 		}
 	}
@@ -424,7 +424,7 @@ func (h *AuthzHandler) UpdateGroupMembers(w http.ResponseWriter, r *http.Request
 	members, err := h.service.ListGroupMembers(ctx, accountID, groupID)
 	if err != nil {
 		h.logger.Error("failed to list group members", "error", err, "account_id", accountID, "group_id", groupID)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to list group members")
+		writeAPIError(w, ErrAuthzGroupMembersUpdateListFailed)
 		return
 	}
 
@@ -445,7 +445,7 @@ func (h *AuthzHandler) ListGroupMembers(w http.ResponseWriter, r *http.Request) 
 	members, err := h.service.ListGroupMembers(ctx, accountID, groupID)
 	if err != nil {
 		h.logger.Error("failed to list group members", "error", err, "account_id", accountID, "group_id", groupID)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to list group members")
+		writeAPIError(w, ErrAuthzGroupMembersListFailed)
 		return
 	}
 
@@ -465,24 +465,24 @@ func (h *AuthzHandler) CreateAttachment(w http.ResponseWriter, r *http.Request) 
 
 	var req CreateAttachmentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
+		writeAPIError(w, ErrAuthzAttachCreateInvalidBody)
 		return
 	}
 
 	if req.PolicyID == "" || req.TargetType == "" || req.TargetID == "" {
-		h.writeError(w, http.StatusBadRequest, "missing-fields", "policyId, targetType, and targetId are required")
+		writeAPIError(w, ErrAuthzAttachCreateMissingFields)
 		return
 	}
 
 	if req.TargetType != "user" && req.TargetType != "group" {
-		h.writeError(w, http.StatusBadRequest, "invalid-target-type", "targetType must be 'user' or 'group'")
+		writeAPIError(w, ErrAuthzAttachCreateInvalidTarget)
 		return
 	}
 
 	a, err := h.service.AttachPolicy(ctx, accountID, req.PolicyID, authz.TargetType(req.TargetType), req.TargetID)
 	if err != nil {
 		h.logger.Error("failed to attach policy", "error", err, "account_id", accountID, "policy_id", req.PolicyID)
-		h.writeError(w, http.StatusBadRequest, "attachment-failed", err.Error())
+		writeAPIError(w, ErrAuthzAttachCreateFailed.WithReason(err))
 		return
 	}
 
@@ -512,7 +512,7 @@ func (h *AuthzHandler) ListAttachments(w http.ResponseWriter, r *http.Request) {
 	attachments, err := h.service.ListAttachments(ctx, accountID, filter)
 	if err != nil {
 		h.logger.Error("failed to list attachments", "error", err, "account_id", accountID)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to list attachments")
+		writeAPIError(w, ErrAuthzAttachListFailed)
 		return
 	}
 
@@ -545,7 +545,7 @@ func (h *AuthzHandler) DeleteAttachment(w http.ResponseWriter, r *http.Request) 
 	err := h.service.DetachPolicy(ctx, accountID, attachmentID)
 	if err != nil {
 		h.logger.Error("failed to detach policy", "error", err, "account_id", accountID, "attachment_id", attachmentID)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to detach policy")
+		writeAPIError(w, ErrAuthzAttachDeleteFailed)
 		return
 	}
 
@@ -561,24 +561,24 @@ func (h *AuthzHandler) AddAdmin(w http.ResponseWriter, r *http.Request) {
 
 	var req AddAdminRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
+		writeAPIError(w, ErrAuthzAdminAddInvalidBody)
 		return
 	}
 
 	if req.PrincipalARN == "" {
-		h.writeError(w, http.StatusBadRequest, "missing-principal-arn", "principalArn is required")
+		writeAPIError(w, ErrAuthzAdminAddMissingPrinc)
 		return
 	}
 
 	err := h.service.AddAdmin(ctx, accountID, req.PrincipalARN, callerARN)
 	if err != nil {
 		h.logger.Error("failed to add admin", "error", err, "account_id", accountID, "principal_arn", req.PrincipalARN)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to add admin")
+		writeAPIError(w, ErrAuthzAdminAddFailed)
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"kind":         "Admin",
 		"principalArn": req.PrincipalARN,
@@ -592,7 +592,7 @@ func (h *AuthzHandler) ListAdmins(w http.ResponseWriter, r *http.Request) {
 	admins, err := h.service.ListAdmins(ctx, accountID)
 	if err != nil {
 		h.logger.Error("failed to list admins", "error", err, "account_id", accountID)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to list admins")
+		writeAPIError(w, ErrAuthzAdminListFailed)
 		return
 	}
 
@@ -614,7 +614,7 @@ func (h *AuthzHandler) RemoveAdmin(w http.ResponseWriter, r *http.Request) {
 	err := h.service.RemoveAdmin(ctx, accountID, principalARN)
 	if err != nil {
 		h.logger.Error("failed to remove admin", "error", err, "account_id", accountID, "principal_arn", principalARN)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to remove admin")
+		writeAPIError(w, ErrAuthzAdminDeleteFailed)
 		return
 	}
 
@@ -628,22 +628,22 @@ func (h *AuthzHandler) CheckAuthorization(w http.ResponseWriter, r *http.Request
 
 	var req CheckAuthorizationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
+		writeAPIError(w, ErrAuthzCheckInvalidBody)
 		return
 	}
 
 	if req.Principal == "" {
-		h.writeError(w, http.StatusBadRequest, "missing-principal", "principal is required")
+		writeAPIError(w, ErrAuthzCheckMissingPrinc)
 		return
 	}
 
 	if req.Action == "" {
-		h.writeError(w, http.StatusBadRequest, "missing-action", "action is required")
+		writeAPIError(w, ErrAuthzCheckMissingAction)
 		return
 	}
 
 	if req.Resource == "" {
-		h.writeError(w, http.StatusBadRequest, "missing-resource", "resource is required")
+		writeAPIError(w, ErrAuthzCheckMissingRes)
 		return
 	}
 
@@ -661,7 +661,7 @@ func (h *AuthzHandler) CheckAuthorization(w http.ResponseWriter, r *http.Request
 	allowed, err := h.checker.Authorize(ctx, authzReq)
 	if err != nil {
 		h.logger.Error("authorization check failed", "error", err, "account_id", accountID, "principal", req.Principal, "action", req.Action)
-		h.writeError(w, http.StatusInternalServerError, "authorization-error", err.Error())
+		writeAPIError(w, ErrAuthzCheckFailed.WithReason(err))
 		return
 	}
 
@@ -675,17 +675,4 @@ func (h *AuthzHandler) CheckAuthorization(w http.ResponseWriter, r *http.Request
 		Kind:     "AuthorizationDecision",
 		Decision: decision,
 	})
-}
-
-func (h *AuthzHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-
-	resp := map[string]any{
-		"kind":   "Error",
-		"code":   code,
-		"reason": reason,
-	}
-
-	_ = json.NewEncoder(w).Encode(resp)
 }

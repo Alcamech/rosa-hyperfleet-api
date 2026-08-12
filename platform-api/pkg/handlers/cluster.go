@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -116,15 +115,12 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(req.Name) > hyperfleetdb.MaxClusterNameLen {
-		writeAPIError(w, ErrClusterCreateNameTooLong,
-			fmt.Sprintf("Cluster name must be no more than %d characters", hyperfleetdb.MaxClusterNameLen))
+		writeAPIError(w, ErrClusterCreateNameTooLong)
 		return
 	}
 
 	if errs := h.validator.ValidateCreate(req.Spec, featuregate.Default); errs != nil {
-		def := ErrClusterValidation
-		def.Errors = errs
-		writeAPIError(w, def)
+		writeAPIError(w, ErrClusterValidation.WithErrors(errs))
 		return
 	}
 
@@ -136,8 +132,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	for i := range existing.Items {
 		if existing.Items[i].Name == req.Name {
-			writeAPIError(w, ErrClusterCreateNameConflict,
-				fmt.Sprintf("A cluster named %q already exists in this account", req.Name))
+			writeAPIError(w, ErrClusterCreateNameConflict.WithReason(req.Name))
 			return
 		}
 	}
@@ -249,9 +244,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if errs := h.validator.ValidateUpdate(req.Spec, &cr.Spec, featuregate.Default); errs != nil {
-		def := ErrClusterValidation
-		def.Errors = errs
-		writeAPIError(w, def)
+		writeAPIError(w, ErrClusterValidation.WithErrors(errs))
 		return
 	}
 

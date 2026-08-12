@@ -51,7 +51,7 @@ func TestInfoHandler_MissingEnvVar(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if result["code"] != "regional-account-unavailable" {
+	if result["code"] != ErrInfoRegionalAccountUnavailable.Code {
 		t.Errorf("expected code=regional-account-unavailable, got %s", result["code"])
 	}
 }
@@ -73,7 +73,7 @@ func TestInfoHandler_MalformedARN(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if result["code"] != "regional-account-unavailable" {
+	if result["code"] != ErrInfoRegionalAccountUnavailable.Code {
 		t.Errorf("expected code=regional-account-unavailable, got %s", result["code"])
 	}
 }

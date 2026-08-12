@@ -117,8 +117,8 @@ func TestAdminCheck_RequireAdmin_NonAdminCaller(t *testing.T) {
 	if errorResp["kind"] != "Error" {
 		t.Errorf("expected kind=Error, got %v", errorResp["kind"])
 	}
-	if errorResp["code"] != "not-admin" {
-		t.Errorf("expected code=not-admin, got %v", errorResp["code"])
+	if errorResp["code"] != ErrNotAdmin.Code {
+		t.Errorf("expected code=%s, got %v", ErrNotAdmin.Code, errorResp["code"])
 	}
 	if errorResp["reason"] != "This operation requires admin privileges" {
 		t.Errorf("expected reason='This operation requires admin privileges', got %v", errorResp["reason"])
@@ -189,8 +189,8 @@ func TestAdminCheck_RequireAdmin_MissingCallerARN(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&errorResp); err != nil {
 		t.Fatalf("failed to decode error response: %v", err)
 	}
-	if errorResp["code"] != "missing-caller-arn" {
-		t.Errorf("expected code=missing-caller-arn, got %v", errorResp["code"])
+	if errorResp["code"] != ErrMissingCallerARN.Code {
+		t.Errorf("expected code=%s, got %v", ErrMissingCallerARN.Code, errorResp["code"])
 	}
 }
 
@@ -228,8 +228,8 @@ func TestAdminCheck_RequireAdmin_IsAdminError(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&errorResp); err != nil {
 		t.Fatalf("failed to decode error response: %v", err)
 	}
-	if errorResp["code"] != "internal-error" {
-		t.Errorf("expected code=internal-error, got %v", errorResp["code"])
+	if errorResp["code"] != ErrAdminCheckFailed.Code {
+		t.Errorf("expected code=%s, got %v", ErrAdminCheckFailed.Code, errorResp["code"])
 	}
 }
 
@@ -259,7 +259,7 @@ func TestAdminCheck_RequireAdmin_MissingAccountID(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&errorResp); err != nil {
 		t.Fatalf("failed to decode error response: %v", err)
 	}
-	if errorResp["code"] != "missing-account-id" {
-		t.Errorf("expected code=missing-account-id, got %v", errorResp["code"])
+	if errorResp["code"] != ErrMissingAccountID.Code {
+		t.Errorf("expected code=%s, got %v", ErrMissingAccountID.Code, errorResp["code"])
 	}
 }

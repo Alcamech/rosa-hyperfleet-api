@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 
@@ -58,7 +57,7 @@ func (p *Privileged) RequirePrivileged(next http.Handler) http.Handler {
 		accountID := GetAccountID(ctx)
 
 		if accountID == "" {
-			p.writeError(w, http.StatusForbidden, "missing-account-id", "Account ID header is required")
+			writeError(w, ErrMissingAccountID)
 			return
 		}
 
@@ -69,32 +68,19 @@ func (p *Privileged) RequirePrivileged(next http.Handler) http.Handler {
 			isPrivileged, err = p.authorizer.IsPrivileged(ctx, accountID)
 			if err != nil {
 				p.logger.Error("failed to check privileged status", "error", err, "account_id", accountID)
-				p.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to check account status")
+				writeError(w, ErrPrivilegedCheckFailed)
 				return
 			}
 		}
 
 		if !isPrivileged {
 			p.logger.Warn("privileged access denied", "account_id", accountID)
-			p.writeError(w, http.StatusForbidden, "not-privileged", "This operation requires a privileged account")
+			writeError(w, ErrNotPrivileged)
 			return
 		}
 
 		next.ServeHTTP(w, r)
 	})
-}
-
-func (p *Privileged) writeError(w http.ResponseWriter, status int, code, reason string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-
-	resp := map[string]any{
-		"kind":   "Error",
-		"code":   code,
-		"reason": reason,
-	}
-
-	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // GetPrivileged retrieves the privileged status from context

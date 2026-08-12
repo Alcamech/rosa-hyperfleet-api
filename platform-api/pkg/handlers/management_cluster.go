@@ -52,21 +52,21 @@ func (h *ManagementClusterHandler) Create(w http.ResponseWriter, r *http.Request
 	var req ManagementClusterCreateRequest
 	if r.Body != nil && r.ContentLength > 0 {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
+			writeAPIError(w, ErrMCCreateInvalidBody)
 			return
 		}
 	}
 
 	if req.ID == "" {
-		h.writeError(w, http.StatusBadRequest, "missing-id", "id is required")
+		writeAPIError(w, ErrMCCreateMissingID)
 		return
 	}
 	if req.Region == "" {
-		h.writeError(w, http.StatusBadRequest, "missing-region", "region is required")
+		writeAPIError(w, ErrMCCreateMissingReg)
 		return
 	}
 	if req.AccountID == "" {
-		h.writeError(w, http.StatusBadRequest, "missing-account-id", "accountId is required")
+		writeAPIError(w, ErrMCCreateMissingAcct)
 		return
 	}
 
@@ -82,11 +82,11 @@ func (h *ManagementClusterHandler) Create(w http.ResponseWriter, r *http.Request
 
 	if err := h.db.CreateManagementCluster(ctx, mc); err != nil {
 		if hyperfleetdb.IsAlreadyExists(err) {
-			h.writeError(w, http.StatusConflict, "already-exists", "Management cluster already registered: "+req.ID)
+			writeAPIError(w, ErrMCCreateExists.WithReason(req.ID))
 			return
 		}
 		h.logger.Error("failed to create management cluster", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "config-error", "Failed to save management cluster config")
+		writeAPIError(w, ErrMCCreateFailed)
 		return
 	}
 
@@ -107,7 +107,7 @@ func (h *ManagementClusterHandler) List(w http.ResponseWriter, r *http.Request) 
 	list, err := h.db.ListManagementClusters(ctx)
 	if err != nil {
 		h.logger.Error("failed to list management clusters", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "config-error", "Failed to load management cluster config")
+		writeAPIError(w, ErrMCListFailed)
 		return
 	}
 
@@ -138,11 +138,11 @@ func (h *ManagementClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 	mc, err := h.db.GetManagementCluster(ctx, id)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			h.writeError(w, http.StatusNotFound, "not-found", "Management cluster not found")
+			writeAPIError(w, ErrMCGetNotFound)
 			return
 		}
 		h.logger.Error("failed to get management cluster", "error", err, "id", id)
-		h.writeError(w, http.StatusInternalServerError, "config-error", "Failed to load management cluster config")
+		writeAPIError(w, ErrMCGetFailed)
 		return
 	}
 
@@ -158,17 +158,4 @@ func mcToResponse(mc *hyperfleetv1alpha1.ManagementCluster) ManagementClusterRes
 		Region:    mc.Spec.Region,
 		AccountID: mc.Spec.AccountID,
 	}
-}
-
-func (h *ManagementClusterHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-
-	resp := map[string]any{
-		"kind":   "Error",
-		"code":   code,
-		"reason": reason,
-	}
-
-	_ = json.NewEncoder(w).Encode(resp)
 }

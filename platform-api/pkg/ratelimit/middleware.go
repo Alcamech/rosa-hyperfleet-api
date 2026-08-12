@@ -2,7 +2,6 @@ package ratelimit
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
@@ -14,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/apierror"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 )
 
@@ -120,14 +120,13 @@ func (l *Limiter) findLimit(method, path string) RouteLimit {
 	}
 }
 
+var errRateLimit = apierror.APIError{
+	Code:       "RATE-LIMIT-001",
+	HTTPStatus: http.StatusTooManyRequests,
+	Message:    "Too Many Requests",
+	Reason:     "429 Too Many Requests — %s %s, %d req/%ds, retry after %ds",
+}
+
 func (l *Limiter) writeRateLimitError(w http.ResponseWriter, method, path string, limit RouteLimit, retryAfter int) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusTooManyRequests)
-	if err := json.NewEncoder(w).Encode(map[string]any{
-		"kind":   "Error",
-		"code":   "429",
-		"reason": fmt.Sprintf("429 Too Many Requests — %s %s, %d req/%ds, retry after %ds", method, path, limit.Rate, limit.Window, retryAfter),
-	}); err != nil {
-		l.logger.Warn("failed to write rate limit error response", "error_type", fmt.Sprintf("%T", err))
-	}
+	apierror.Write(w, errRateLimit.WithReason(method, path, limit.Rate, limit.Window, retryAfter))
 }

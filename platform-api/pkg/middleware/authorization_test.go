@@ -70,8 +70,8 @@ func TestAuthorization_RequireAllowedAccount_NotAllowed(t *testing.T) {
 		t.Errorf("expected kind=Error, got %v", errorResp["kind"])
 	}
 
-	if errorResp["code"] != "account-not-allowed" {
-		t.Errorf("expected code=account-not-allowed, got %v", errorResp["code"])
+	if errorResp["code"] != ErrAccountNotAllowed.Code {
+		t.Errorf("expected code=%s, got %v", ErrAccountNotAllowed.Code, errorResp["code"])
 	}
 
 	if errorResp["reason"] != "account not allowed" {
@@ -114,8 +114,8 @@ func TestAuthorization_RequireAllowedAccount_MissingAccountID(t *testing.T) {
 		t.Errorf("expected kind=Error, got %v", errorResp["kind"])
 	}
 
-	if errorResp["code"] != "missing-account-id" {
-		t.Errorf("expected code=missing-account-id, got %v", errorResp["code"])
+	if errorResp["code"] != ErrMissingAccountID.Code {
+		t.Errorf("expected code=%s, got %v", ErrMissingAccountID.Code, errorResp["code"])
 	}
 
 	if errorResp["reason"] != "Account ID header is required" {
@@ -153,8 +153,8 @@ func TestAuthorization_RequireAllowedAccount_EmptyAccountID(t *testing.T) {
 		t.Fatalf("failed to decode error response: %v", err)
 	}
 
-	if errorResp["code"] != "missing-account-id" {
-		t.Errorf("expected code=missing-account-id, got %v", errorResp["code"])
+	if errorResp["code"] != ErrMissingAccountID.Code {
+		t.Errorf("expected code=%s, got %v", ErrMissingAccountID.Code, errorResp["code"])
 	}
 }
 
@@ -387,49 +387,40 @@ func TestAuthorization_RequireAllowedAccount_TwentyAccounts(t *testing.T) {
 			t.Fatalf("failed to decode error response: %v", err)
 		}
 
-		if errorResp["code"] != "account-not-allowed" {
-			t.Errorf("expected code=account-not-allowed, got %v", errorResp["code"])
+		if errorResp["code"] != ErrAccountNotAllowed.Code {
+			t.Errorf("expected code=%s, got %v", ErrAccountNotAllowed.Code, errorResp["code"])
 		}
 	})
 }
 
 func TestAuthorization_WriteError(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	auth := NewAuthorization([]string{}, logger)
-
 	tests := []struct {
 		name           string
-		status         int
-		code           string
-		reason         string
+		def            APIError
 		expectedStatus int
 		expectedCode   string
 		expectedReason string
 	}{
 		{
-			name:           "forbidden error",
-			status:         http.StatusForbidden,
-			code:           "account-not-allowed",
-			reason:         "account not allowed",
+			name:           "account not allowed",
+			def:            ErrAccountNotAllowed,
 			expectedStatus: http.StatusForbidden,
-			expectedCode:   "account-not-allowed",
-			expectedReason: "account not allowed",
+			expectedCode:   ErrAccountNotAllowed.Code,
+			expectedReason: ErrAccountNotAllowed.Message,
 		},
 		{
-			name:           "missing account ID error",
-			status:         http.StatusForbidden,
-			code:           "missing-account-id",
-			reason:         "Account ID header is required",
+			name:           "missing account ID",
+			def:            ErrMissingAccountID,
 			expectedStatus: http.StatusForbidden,
-			expectedCode:   "missing-account-id",
-			expectedReason: "Account ID header is required",
+			expectedCode:   ErrMissingAccountID.Code,
+			expectedReason: ErrMissingAccountID.Message,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			auth.writeError(w, tt.status, tt.code, tt.reason)
+			writeError(w, tt.def)
 
 			if w.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)

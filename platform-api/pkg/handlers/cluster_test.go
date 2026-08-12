@@ -347,8 +347,8 @@ func TestClusterHandler_Get_NotFound(t *testing.T) {
 
 	var errResp map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&errResp)
-	if errResp["code"] != "CLUSTERS-MGMT-GET-001" {
-		t.Errorf("expected code CLUSTERS-MGMT-GET-001, got %v", errResp["code"])
+	if errResp["code"] != ErrClusterGetNotFound.Code {
+		t.Errorf("expected code %s, got %v", ErrClusterGetNotFound.Code, errResp["code"])
 	}
 }
 
@@ -553,8 +553,8 @@ func TestClusterHandler_Create_DuplicateName(t *testing.T) {
 
 	var errResp map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&errResp)
-	if errResp["code"] != "CLUSTERS-MGMT-CREATE-005" {
-		t.Errorf("expected code CLUSTERS-MGMT-CREATE-005, got %v", errResp["code"])
+	if errResp["code"] != ErrClusterCreateNameConflict.Code {
+		t.Errorf("expected code %s, got %v", ErrClusterCreateNameConflict.Code, errResp["code"])
 	}
 }
 
@@ -661,8 +661,8 @@ func TestClusterHandler_Create_Hash4ExhaustedRetries(t *testing.T) {
 
 	var errResp map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&errResp)
-	if errResp["code"] != "CLUSTERS-MGMT-CREATE-007" {
-		t.Errorf("expected code CLUSTERS-MGMT-CREATE-007, got %v", errResp["code"])
+	if errResp["code"] != ErrClusterCreateIDExhausted.Code {
+		t.Errorf("expected code %s, got %v", ErrClusterCreateIDExhausted.Code, errResp["code"])
 	}
 }
 

@@ -360,7 +360,7 @@ func TestZoaHandler_Create_UnknownParams(t *testing.T) {
 	var errResp map[string]any
 	err := json.NewDecoder(rr.Body).Decode(&errResp)
 	require.NoError(t, err)
-	assert.Equal(t, "invalid-params", errResp["code"])
+	assert.Equal(t, ErrZoaCreateInvalidParams.Code, errResp["code"])
 	assert.Contains(t, errResp["reason"], "unknown parameter 'namespace'")
 	assert.Contains(t, errResp["reason"], "node_selector")
 }
@@ -412,7 +412,7 @@ script: |
 	assert.Equal(t, http.StatusTooManyRequests, rr.Code)
 	var errResp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
-	assert.Equal(t, "write-cooldown", errResp["code"])
+	assert.Equal(t, ErrZoaCreateCooldown.Code, errResp["code"])
 }
 
 func TestZoaHandler_Create_WriteCooldown_ForceBypass(t *testing.T) {
@@ -499,7 +499,7 @@ func TestZoaHandler_Create_MaxConcurrent(t *testing.T) {
 	assert.Equal(t, http.StatusTooManyRequests, rr.Code)
 	var errResp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
-	assert.Equal(t, "max-concurrent", errResp["code"])
+	assert.Equal(t, ErrZoaCreateMaxConcurrent.Code, errResp["code"])
 	assert.Contains(t, errResp["reason"].(string), "10 active executions")
 }
 

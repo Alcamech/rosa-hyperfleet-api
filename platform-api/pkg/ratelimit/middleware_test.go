@@ -321,8 +321,8 @@ func TestMiddleware_429ResponseFormat(t *testing.T) {
 	if body["kind"] != "Error" {
 		t.Errorf("expected kind=Error, got %v", body["kind"])
 	}
-	if body["code"] != "429" {
-		t.Errorf("expected code=429, got %v", body["code"])
+	if body["code"] != errRateLimit.Code {
+		t.Errorf("expected code=%s, got %v", errRateLimit.Code, body["code"])
 	}
 	reason, _ := body["reason"].(string)
 	if reason == "" {

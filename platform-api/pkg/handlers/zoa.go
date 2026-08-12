@@ -77,30 +77,30 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	tmpl, ok := h.registry.Get(action)
 	if !ok {
-		h.writeError(w, http.StatusNotFound, "unknown-action", "Trusted action not found: "+action)
+		writeAPIError(w, ErrZoaCreateUnknownAction.WithReason(action))
 		return
 	}
 
 	var req zoa.CreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
+		writeAPIError(w, ErrZoaCreateInvalidBody)
 		return
 	}
 
 	if req.TargetCluster == "" {
 		h.recordAudit(ctx, r, accountID, callerARN, extractOperator(callerARN), http.StatusBadRequest, action, "", "", "", "")
-		h.writeError(w, http.StatusBadRequest, "missing-target-cluster", "target_cluster is required")
+		writeAPIError(w, ErrZoaCreateMissingCluster)
 		return
 	}
 
 	if req.Jira == "" {
 		h.recordAudit(ctx, r, accountID, callerARN, extractOperator(callerARN), http.StatusBadRequest, action, req.TargetCluster, "", "", "")
-		h.writeError(w, http.StatusBadRequest, "missing-jira", "jira is required for all trusted actions (e.g. ROSAENG-1234)")
+		writeAPIError(w, ErrZoaCreateMissingJira)
 		return
 	}
 	if !isValidJiraFormat(req.Jira) {
 		h.recordAudit(ctx, r, accountID, callerARN, extractOperator(callerARN), http.StatusBadRequest, action, req.TargetCluster, "", req.Jira, "")
-		h.writeError(w, http.StatusBadRequest, "invalid-jira", "jira does not have correct format; expected PROJECT-NUMBER (e.g. ROSAENG-1234)")
+		writeAPIError(w, ErrZoaCreateInvalidJira)
 		return
 	}
 
@@ -113,7 +113,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	if err := validateParams(tmpl, cleanParams); err != nil {
 		h.recordAudit(ctx, r, accountID, callerARN, extractOperator(callerARN), http.StatusBadRequest, action, req.TargetCluster, "", req.Jira, "")
-		h.writeError(w, http.StatusBadRequest, "invalid-params", err.Error())
+		writeAPIError(w, ErrZoaCreateInvalidParams.WithReason(err))
 		return
 	}
 
@@ -125,7 +125,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		if cooldown > 0 {
 			if err := h.checkWriteCooldown(ctx, accountID, action, req.TargetCluster, cooldown); err != nil {
 				h.recordAudit(ctx, r, accountID, callerARN, extractOperator(callerARN), http.StatusTooManyRequests, action, req.TargetCluster, "", req.Jira, "")
-				h.writeError(w, http.StatusTooManyRequests, "write-cooldown", err.Error())
+				writeAPIError(w, ErrZoaCreateCooldown.WithReason(err))
 				return
 			}
 		}
@@ -138,7 +138,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := h.checkMaxConcurrent(ctx, accountID, req.TargetCluster, maxConcurrent); err != nil {
 			h.recordAudit(ctx, r, accountID, callerARN, extractOperator(callerARN), http.StatusTooManyRequests, action, req.TargetCluster, "", req.Jira, "")
-			h.writeError(w, http.StatusTooManyRequests, "max-concurrent", err.Error())
+			writeAPIError(w, ErrZoaCreateMaxConcurrent.WithReason(err))
 			return
 		}
 	}
@@ -151,7 +151,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		executedAction = tmpl.DryRunAction
 		dryTmpl, ok := h.registry.Get(executedAction)
 		if !ok {
-			h.writeError(w, http.StatusInternalServerError, "dry-run-error", "dry_run_action '"+tmpl.DryRunAction+"' not found in registry")
+			writeAPIError(w, ErrZoaCreateDryRunError.WithReason(tmpl.DryRunAction))
 			return
 		}
 		tmpl = dryTmpl
@@ -184,7 +184,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.store.Create(ctx, exec); err != nil {
 		h.logger.Error("failed to create execution record", "error", err, "execution_id", execID)
-		h.writeError(w, http.StatusInternalServerError, "store-error", "Failed to create execution")
+		writeAPIError(w, ErrZoaCreateStoreFailed)
 		return
 	}
 
@@ -206,14 +206,14 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.logger.Error("failed to build manifest", "error", err, "execution_id", execID)
 		_ = h.store.UpdateStatus(ctx, execID, zoa.StatusFailed, time.Now().UTC().Format(time.RFC3339), 0)
-		h.writeError(w, http.StatusInternalServerError, "render-error", "Failed to build trusted action manifest")
+		writeAPIError(w, ErrZoaCreateRenderFailed)
 		return
 	}
 
 	if err := h.db.CreateManifest(ctx, zoa.JobNamespace, hfm); err != nil {
 		h.logger.Error("failed to create manifest on hyperfleet-db", "error", err, "execution_id", execID)
 		_ = h.store.UpdateStatus(ctx, execID, zoa.StatusFailed, time.Now().UTC().Format(time.RFC3339), 0)
-		h.writeError(w, http.StatusBadGateway, "dispatch-error", "Failed to dispatch trusted action")
+		writeAPIError(w, ErrZoaCreateDispatchFailed)
 		return
 	}
 
@@ -222,7 +222,7 @@ func (h *ZoaHandler) Create(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("failed to update manifest name, cleaning up", "error", err, "execution_id", execID)
 		_ = h.db.DeleteManifest(ctx, zoa.JobNamespace, hfm.Name)
 		_ = h.store.UpdateStatus(ctx, execID, zoa.StatusFailed, time.Now().UTC().Format(time.RFC3339), 0)
-		h.writeError(w, http.StatusInternalServerError, "store-error", "Failed to persist execution state")
+		writeAPIError(w, ErrZoaCreateStoreSaveFailed)
 		return
 	}
 
@@ -254,12 +254,12 @@ func (h *ZoaHandler) Get(w http.ResponseWriter, r *http.Request) {
 	exec, err := h.store.Get(ctx, execID)
 	if err != nil {
 		h.logger.Error("failed to get execution", "error", err, "execution_id", execID)
-		h.writeError(w, http.StatusInternalServerError, "store-error", "Failed to retrieve execution")
+		writeAPIError(w, ErrZoaGetStoreFailed)
 		return
 	}
 
 	if exec == nil {
-		h.writeError(w, http.StatusNotFound, "not-found", "Execution not found")
+		writeAPIError(w, ErrZoaGetNotFound)
 		return
 	}
 
@@ -357,7 +357,7 @@ func (h *ZoaHandler) List(w http.ResponseWriter, r *http.Request) {
 	executions, err := h.store.List(ctx, accountID, limit, filter)
 	if err != nil {
 		h.logger.Error("failed to list executions", "error", err, "account_id", accountID)
-		h.writeError(w, http.StatusInternalServerError, "store-error", "Failed to list executions")
+		writeAPIError(w, ErrZoaListStoreFailed)
 		return
 	}
 
@@ -445,7 +445,7 @@ func (h *ZoaHandler) Describe(w http.ResponseWriter, r *http.Request) {
 
 	tmpl, ok := h.registry.Get(action)
 	if !ok {
-		h.writeError(w, http.StatusNotFound, "unknown-action", "Trusted action not found: "+action)
+		writeAPIError(w, ErrZoaCreateUnknownAction.WithReason(action))
 		return
 	}
 
@@ -582,16 +582,6 @@ func extractOperator(callerARN string) string {
 	return callerARN
 }
 
-func (h *ZoaHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"kind":   "Error",
-		"code":   code,
-		"reason": reason,
-	})
-}
-
 func (h *ZoaHandler) checkWriteCooldown(ctx context.Context, accountID, action, targetCluster string, cooldownSeconds int) error {
 	since := time.Now().UTC().Add(-time.Duration(cooldownSeconds) * time.Second).Format(time.RFC3339)
 	notDryRun := false
@@ -663,7 +653,7 @@ func (h *ZoaHandler) recordAudit(ctx context.Context, r *http.Request, accountID
 // AuditList handles GET /api/v0/trusted-actions/audit
 func (h *ZoaHandler) AuditList(w http.ResponseWriter, r *http.Request) {
 	if h.auditStore == nil {
-		h.writeError(w, http.StatusNotFound, "audit-disabled", "Audit logging is not enabled")
+		writeAPIError(w, ErrZoaAuditDisabled)
 		return
 	}
 
@@ -697,7 +687,7 @@ func (h *ZoaHandler) AuditList(w http.ResponseWriter, r *http.Request) {
 	entries, err := h.auditStore.List(ctx, accountID, limit, filter)
 	if err != nil {
 		h.logger.Error("failed to list audit entries", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "store-error", "Failed to list audit log")
+		writeAPIError(w, ErrZoaAuditListFailed)
 		return
 	}
 

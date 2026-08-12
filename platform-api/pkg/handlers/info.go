@@ -26,12 +26,7 @@ func (h *InfoHandler) Info(w http.ResponseWriter, r *http.Request) {
 	// Target Group ARN format: arn:aws:elasticloadbalancing:{region}:{account_id}:targetgroup/{name}/{id}
 	parts := strings.SplitN(tgARN, ":", 6)
 	if len(parts) < 6 || parts[4] == "" {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"kind":   "Error",
-			"code":   "regional-account-unavailable",
-			"reason": "regional account ID is not configured",
-		})
+		writeAPIError(w, ErrInfoRegionalAccountUnavailable)
 		return
 	}
 

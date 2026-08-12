@@ -103,9 +103,7 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if errs := h.validator.ValidateCreate(req.Spec, featuregate.Default); errs != nil {
-		def := ErrNodePoolValidation
-		def.Errors = errs
-		writeAPIError(w, def)
+		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs))
 		return
 	}
 
@@ -201,9 +199,7 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if errs := h.validator.ValidateUpdate(req.Spec, &cr.Spec, featuregate.Default); errs != nil {
-		def := ErrNodePoolValidation
-		def.Errors = errs
-		writeAPIError(w, def)
+		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs))
 		return
 	}
 
