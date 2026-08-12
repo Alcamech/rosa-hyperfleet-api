@@ -124,6 +124,18 @@ func NodePoolCRToPlatform(cr *hyperfleetv1alpha1.NodePool) *types.NodePool {
 		UpdatedAt:       metaTime(cr),
 	}
 
+	// Sync top-level autoRepair → passthrough management.autoRepair so the
+	// response is internally consistent. The operator defaults to true when
+	// autoRepair is unset, so we mirror that here.
+	if np.Spec.AutoRepair != nil {
+		np.Spec.NodePool.Management.AutoRepair = *np.Spec.AutoRepair
+	} else {
+		np.Spec.NodePool.Management.AutoRepair = true
+	}
+
+	// Sync top-level labels → passthrough nodeLabels (unconditional to clear stale values).
+	np.Spec.NodePool.NodeLabels = np.Spec.Labels
+
 	if phase := cr.Status.Phase; phase != "" {
 		np.Status = &types.NodePoolStatusInfo{
 			ObservedGeneration: cr.Status.ObservedGeneration,
