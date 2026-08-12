@@ -184,3 +184,64 @@ func TestNodePoolResourceLabels(t *testing.T) {
 		t.Errorf("cluster-id label = %q, want %q", np.Labels["hyperfleet.io/cluster-id"], "abc12345")
 	}
 }
+
+func TestNodePoolResourceAutoRepair(t *testing.T) {
+	tests := []struct {
+		name      string
+		autoRepair *bool
+		want      bool
+	}{
+		{"nil defaults to true", nil, true},
+		{"explicit true", ptr.To(true), true},
+		{"explicit false", ptr.To(false), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			np := testNodePool()
+			np.Spec.AutoRepair = tt.autoRepair
+			r, err := NodePoolResource(np, testCluster())
+			if err != nil {
+				t.Fatalf("NodePoolResource: %v", err)
+			}
+			got := r.Object.(*hypershiftv1beta1.NodePool).Spec.Management.AutoRepair
+			if got != tt.want {
+				t.Errorf("AutoRepair = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNodePoolResourceNodeLabels(t *testing.T) {
+	np := testNodePool()
+	np.Spec.Labels = map[string]string{"env": "staging", "team": "platform"}
+
+	r, err := NodePoolResource(np, testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
+	got := r.Object.(*hypershiftv1beta1.NodePool).Spec.NodeLabels
+
+	for k, v := range np.Spec.Labels {
+		if got[k] != v {
+			t.Errorf("NodeLabels[%q] = %q, want %q", k, got[k], v)
+		}
+	}
+	if len(got) != len(np.Spec.Labels) {
+		t.Errorf("NodeLabels len = %d, want %d", len(got), len(np.Spec.Labels))
+	}
+}
+
+func TestNodePoolResourceNodeLabelsEmpty(t *testing.T) {
+	np := testNodePool()
+	np.Spec.Labels = nil
+
+	r, err := NodePoolResource(np, testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
+	got := r.Object.(*hypershiftv1beta1.NodePool).Spec.NodeLabels
+	if len(got) != 0 {
+		t.Errorf("NodeLabels = %v, want empty", got)
+	}
+}

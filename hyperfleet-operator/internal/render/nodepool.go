@@ -27,8 +27,14 @@ func NodePoolResource(nodePool *hyperfleetv1alpha1.NodePool, cluster *hyperfleet
 	if npSpec.Management.UpgradeType == "" {
 		npSpec.Management.UpgradeType = hypershiftv1beta1.UpgradeTypeReplace
 	}
-	if !npSpec.Management.AutoRepair {
+	if nodePool.Spec.AutoRepair != nil {
+		npSpec.Management.AutoRepair = *nodePool.Spec.AutoRepair
+	} else {
 		npSpec.Management.AutoRepair = true
+	}
+
+	if len(nodePool.Spec.Labels) > 0 {
+		npSpec.NodeLabels = nodePool.Spec.Labels
 	}
 
 	if npSpec.Replicas == nil {
