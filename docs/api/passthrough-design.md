@@ -16,7 +16,7 @@ The passthrough codegen pipeline generates Go struct types that mirror upstream 
 | File | Role |
 |------|------|
 | `api/v1alpha1/zz_generated.passthrough.go` | The committed passthrough types. Human-curated markers live here. This is the source of truth for field policy. Despite the `zz_generated` prefix, this file is intentionally hand-edited to curate markers, then regenerated to pick up upstream struct changes. |
-| `api/v1alpha1/configuration.go` | Local mirror of `hypershiftv1beta1.ClusterConfiguration` with granular markers on nested fields (kubelet, machineConfig). Referenced by the passthrough file via a type override. |
+| `api/v1alpha1/configuration.go` | Local mirror of `ClusterConfiguration` with granular markers on nested fields (kubelet, machineConfig). Used by the scanner for nested field marker extraction. |
 | `hack/api-codegen/pkg/registry/field_metadata.json` | Generated field registry (JSON). Produced by `marker-scanner` from the passthrough file. Consumed by `passthrough-gen`, `conversion-gen`, and `openapi-gen`. |
 | `hack/api-codegen/pkg/registry/field_metadata.go` | Generated field registry (Go). Same data as the JSON, importable by Go code. |
 
@@ -93,18 +93,6 @@ The registry captures the following marker categories from the passthrough file:
 
 Upstream markers like `+optional` and `+required` are propagated directly from HyperShift source by `passthrough-gen` via `isForwardedMarker()` — they do not go through the registry.
 
-## Type overrides (planned)
-
-The passthrough file should use `*ClusterConfiguration` (a local type defined in `api/v1alpha1/configuration.go`) instead of the upstream `*hypershiftv1beta1.ClusterConfiguration`. This would allow HyperFleet to add granular markers to nested fields (kubelet config, machineConfig) that the upstream type doesn't have.
-
-This requires a new `-type-overrides` flag on `passthrough-gen` (see Remaining gaps, item 4). The intended invocation:
-
-```
--type-overrides "hypershiftv1beta1.ClusterConfiguration=ClusterConfiguration"
-```
-
-The override should be applied during type resolution, before import collection, so local types don't generate unnecessary import statements.
-
 ## Safe defaults
 
 When `passthrough-gen` encounters a field from HyperShift that has no entry in the registry (i.e., a newly added field), it applies safe defaults:
@@ -114,19 +102,17 @@ When `passthrough-gen` encounters a field from HyperShift that has no entry in t
 
 This ensures new upstream fields don't accidentally become visible or mutable.
 
-## Remaining gaps
+## Resolved gaps
 
-The following issues exist in main today and need to be addressed:
+The following issues existed in main and were fixed on this branch:
 
-1. **Stale embedded registry**: `passthrough-gen` embeds a copy of `field_metadata.json` via `//go:embed` and falls back to it when no `-registry` flag is given. This stale copy can silently override the freshly generated registry. Fix: remove the embedded registry and make `-registry` mandatory.
+1. **Stale embedded registry** (fixed): `passthrough-gen` embedded a copy of `field_metadata.json` via `//go:embed`. Removed the embedded copy and made `-registry` mandatory.
 
-2. **Scanner skips `zz_generated.passthrough.go`**: The marker scanner's file filter excludes all `zz_generated*` files. Since the passthrough file was renamed to `zz_generated.passthrough.go`, the scanner cannot read it. Fix: add an exception for `zz_generated.passthrough.go`.
+2. **Scanner skips `zz_generated.passthrough.go`** (fixed): Added an exception for `zz_generated.passthrough.go` in the marker scanner's file filter.
 
-3. **Conversion-gen skips `zz_generated.passthrough.go`**: Same file filter issue in `conversion-gen`'s `parseTypes()`. Without this fix, conversion-gen cannot see `HostedClusterSpecPassthrough` or `NodePoolSpecPassthrough`, causing it to skip REST type generation and emit incorrect types in `ServiceSetFields`.
+3. **Conversion-gen skips `zz_generated.passthrough.go`** (fixed): Same file filter fix in `conversion-gen`'s `parseTypes()`.
 
-4. **No type override support**: `passthrough-gen` has no mechanism to substitute local types for upstream types. Without this, `Configuration` appears as `*hypershiftv1beta1.ClusterConfiguration` instead of the local `*ClusterConfiguration`.
-
-5. **Cyclomatic complexity**: `conversion-gen`'s `parseTypes()` has high cyclomatic complexity (31 > 30 limit). Extracting `parseStructType()` brings it under the threshold.
+4. **Cyclomatic complexity** (fixed): Extracted `parseStructType()` from `conversion-gen`'s `parseTypes()` to bring complexity under the lint threshold.
 
 ## Makefile targets
 

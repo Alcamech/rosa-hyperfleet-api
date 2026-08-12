@@ -351,8 +351,7 @@ codegen-passthrough-clobber:
   		-types HostedClusterSpec,NodePoolSpec \
   		-output-dir v1alpha1 \
   		-package v1alpha1 \
-  		-registry ../hack/api-codegen/pkg/registry/field_metadata.json \
-  		-type-overrides "hypershiftv1beta1.ClusterConfiguration=ClusterConfiguration"
+		-registry ../hack/api-codegen/pkg/registry/field_metadata.json
 
 codegen-registry: generate-deepcopy build-api-codegen
 	./bin/marker-scanner \
