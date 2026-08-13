@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 
@@ -30,7 +29,7 @@ func (a *AdminCheck) RequireAdmin(next http.Handler) http.Handler {
 		accountID := GetAccountID(ctx)
 
 		if accountID == "" {
-			a.writeError(w, http.StatusForbidden, "missing-account-id", "Account ID header is required")
+			writeError(w, ErrMissingAccountID, a.logger)
 			return
 		}
 
@@ -42,36 +41,23 @@ func (a *AdminCheck) RequireAdmin(next http.Handler) http.Handler {
 
 		callerARN := GetCallerARN(ctx)
 		if callerARN == "" {
-			a.writeError(w, http.StatusForbidden, "missing-caller-arn", "Caller ARN header is required")
+			writeError(w, ErrMissingCallerARN, a.logger)
 			return
 		}
 
 		isAdmin, err := a.authorizer.IsAdmin(ctx, accountID, callerARN)
 		if err != nil {
 			a.logger.Error("failed to check admin status", "error", err, "account_id", accountID, "caller_arn", callerARN)
-			a.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to check admin status")
+			writeError(w, ErrAdminCheckFailed, a.logger)
 			return
 		}
 
 		if !isAdmin {
 			a.logger.Warn("admin access denied", "account_id", accountID, "caller_arn", callerARN)
-			a.writeError(w, http.StatusForbidden, "not-admin", "This operation requires admin privileges")
+			writeError(w, ErrNotAdmin, a.logger)
 			return
 		}
 
 		next.ServeHTTP(w, r)
 	})
-}
-
-func (a *AdminCheck) writeError(w http.ResponseWriter, status int, code, reason string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-
-	resp := map[string]any{
-		"kind":   "Error",
-		"code":   code,
-		"reason": reason,
-	}
-
-	_ = json.NewEncoder(w).Encode(resp)
 }

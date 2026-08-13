@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 )
@@ -32,29 +31,16 @@ func (a *Authorization) RequireAllowedAccount(next http.Handler) http.Handler {
 
 		if accountID == "" {
 			a.logger.Warn("missing account ID in request")
-			a.writeError(w, http.StatusForbidden, "missing-account-id", "Account ID header is required")
+			writeError(w, ErrMissingAccountID, a.logger)
 			return
 		}
 
 		if _, allowed := a.allowedAccounts[accountID]; !allowed {
 			a.logger.Warn("account not allowed", "account_id", accountID)
-			a.writeError(w, http.StatusForbidden, "account-not-allowed", "account not allowed")
+			writeError(w, ErrAccountNotAllowed, a.logger)
 			return
 		}
 
 		next.ServeHTTP(w, r)
 	})
-}
-
-func (a *Authorization) writeError(w http.ResponseWriter, status int, code, reason string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-
-	resp := map[string]any{
-		"kind":   "Error",
-		"code":   code,
-		"reason": reason,
-	}
-
-	_ = json.NewEncoder(w).Encode(resp)
 }

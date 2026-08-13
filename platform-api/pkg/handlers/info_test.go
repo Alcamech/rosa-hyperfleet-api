@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,7 +11,7 @@ import (
 func TestInfoHandler_Success(t *testing.T) {
 	t.Setenv("TARGET_GROUP_ARN", "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/rosa-api/abc123")
 
-	handler := NewInfoHandler()
+	handler := NewInfoHandler(slog.Default())
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/info", nil)
 	w := httptest.NewRecorder()
 	handler.Info(w, req)
@@ -37,7 +38,7 @@ func TestInfoHandler_Success(t *testing.T) {
 func TestInfoHandler_MissingEnvVar(t *testing.T) {
 	t.Setenv("TARGET_GROUP_ARN", "")
 
-	handler := NewInfoHandler()
+	handler := NewInfoHandler(slog.Default())
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/info", nil)
 	w := httptest.NewRecorder()
 	handler.Info(w, req)
@@ -51,7 +52,7 @@ func TestInfoHandler_MissingEnvVar(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if result["code"] != "regional-account-unavailable" {
+	if result["code"] != ErrInfoRegionalAccountUnavailable.Code {
 		t.Errorf("expected code=regional-account-unavailable, got %s", result["code"])
 	}
 }
@@ -59,7 +60,7 @@ func TestInfoHandler_MissingEnvVar(t *testing.T) {
 func TestInfoHandler_MalformedARN(t *testing.T) {
 	t.Setenv("TARGET_GROUP_ARN", "not-a-valid-arn")
 
-	handler := NewInfoHandler()
+	handler := NewInfoHandler(slog.Default())
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/info", nil)
 	w := httptest.NewRecorder()
 	handler.Info(w, req)
@@ -73,7 +74,7 @@ func TestInfoHandler_MalformedARN(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if result["code"] != "regional-account-unavailable" {
+	if result["code"] != ErrInfoRegionalAccountUnavailable.Code {
 		t.Errorf("expected code=regional-account-unavailable, got %s", result["code"])
 	}
 }

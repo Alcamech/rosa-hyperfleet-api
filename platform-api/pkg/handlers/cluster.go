@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/internal/codegen/featuregate"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/types"
@@ -70,7 +70,7 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 	list, err := h.db.ListClusters(ctx, accountID)
 	if err != nil {
 		h.logger.Error("failed to list clusters", "error", err, "account_id", accountID)
-		h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-LIST-001", "Failed to list clusters")
+		writeAPIError(w, ErrClusterList, h.logger)
 		return
 	}
 
@@ -96,7 +96,9 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 		"offset": offset,
 	}
 
-	h.writeJSON(w, http.StatusOK, response)
+	if err := api.Write(w, http.StatusOK, response); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Create handles POST /api/v0/clusters
@@ -106,30 +108,34 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var req types.ClusterCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "CLUSTERS-MGMT-CREATE-001", "Invalid request body")
+		writeAPIError(w, ErrClusterCreateInvalidBody, h.logger)
 		return
 	}
 
 	if req.Name == "" || req.Spec == nil {
-		h.writeError(w, http.StatusBadRequest, "CLUSTERS-MGMT-CREATE-002", "Missing required fields: name and spec")
+		writeAPIError(w, ErrClusterCreateMissingFields, h.logger)
+		return
+	}
+
+	if len(req.Name) > hyperfleetdb.MaxClusterNameLen {
+		writeAPIError(w, ErrClusterCreateNameTooLong, h.logger)
 		return
 	}
 
 	if errs := h.validator.ValidateCreate(req.Spec, featuregate.Default); errs != nil {
-		h.writeValidationErrors(w, errs)
+		writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
 		return
 	}
 
 	existing, err := h.db.ListClusters(ctx, accountID)
 	if err != nil {
 		h.logger.Error("failed to check cluster name uniqueness", "error", err, "account_id", accountID)
-		h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-CREATE-004", "Failed to validate cluster name")
+		writeAPIError(w, ErrClusterCreateNameCheck, h.logger)
 		return
 	}
 	for i := range existing.Items {
 		if existing.Items[i].Name == req.Name {
-			h.writeError(w, http.StatusConflict, "CLUSTERS-MGMT-CREATE-005",
-				fmt.Sprintf("A cluster named %q already exists in this account", req.Name))
+			writeAPIError(w, ErrClusterCreateNameConflict.WithReason(req.Name), h.logger)
 			return
 		}
 	}
@@ -147,7 +153,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		cr, err := hyperfleetdb.PlatformCreateToClusterCR(clusterID, accountID, &req)
 		if err != nil {
 			h.logger.Error("failed to convert cluster spec", "error", err, "account_id", accountID)
-			h.writeError(w, http.StatusBadRequest, "CLUSTERS-MGMT-CREATE-002", "Invalid cluster spec")
+			writeAPIError(w, ErrClusterCreateInvalidSpec, h.logger)
 			return
 		}
 
@@ -167,15 +173,17 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 			}
 			h.logger.Error("failed to create cluster", "error", err, "account_id", accountID)
 			if hyperfleetdb.IsAlreadyExists(err) {
-				h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-CREATE-007", "Unable to generate unique DNS identifier")
+				writeAPIError(w, ErrClusterCreateIDExhausted, h.logger)
 				return
 			}
-			h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-CREATE-003", "Failed to create cluster")
+			writeAPIError(w, ErrClusterCreateFailed, h.logger)
 			return
 		}
 
 		cluster := hyperfleetdb.ClusterCRToPlatform(cr)
-		h.writeJSON(w, http.StatusCreated, cluster)
+		if err := api.Write(w, http.StatusCreated, cluster); err != nil {
+			h.logger.Error("failed to write response", "error", err)
+		}
 		return
 	}
 }
@@ -192,15 +200,17 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 	cr, err := h.db.GetCluster(ctx, accountID, clusterID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			h.writeError(w, http.StatusNotFound, "CLUSTERS-MGMT-GET-001", "Cluster not found")
+			writeAPIError(w, ErrClusterGetNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to get cluster", "error", err, "account_id", accountID, "cluster_id", clusterID)
-		h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-GET-002", "Failed to get cluster")
+		writeAPIError(w, ErrClusterGetFailed, h.logger)
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, hyperfleetdb.ClusterCRToPlatform(cr))
+	if err := api.Write(w, http.StatusOK, hyperfleetdb.ClusterCRToPlatform(cr)); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Update handles PUT /api/v0/clusters/{id}
@@ -212,18 +222,18 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "CLUSTERS-MGMT-UPDATE-001", "Failed to read request body")
+		writeAPIError(w, ErrClusterUpdateInvalidBody, h.logger)
 		return
 	}
 
 	var req types.ClusterUpdateRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "CLUSTERS-MGMT-UPDATE-001", "Invalid request body")
+		writeAPIError(w, ErrClusterUpdateInvalidBody, h.logger)
 		return
 	}
 
 	if req.Spec == nil {
-		h.writeError(w, http.StatusBadRequest, "CLUSTERS-MGMT-UPDATE-002", "Missing required field: spec")
+		writeAPIError(w, ErrClusterUpdateMissingFields, h.logger)
 		return
 	}
 
@@ -232,16 +242,16 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	cr, err := h.db.GetCluster(ctx, accountID, clusterID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			h.writeError(w, http.StatusNotFound, "CLUSTERS-MGMT-UPDATE-003", "Cluster not found")
+			writeAPIError(w, ErrClusterUpdateNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to get cluster for update", "error", err, "account_id", accountID, "cluster_id", clusterID)
-		h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-UPDATE-004", "Failed to update cluster")
+		writeAPIError(w, ErrClusterUpdateFailed, h.logger)
 		return
 	}
 
 	if errs := h.validator.ValidateUpdate(req.Spec, &cr.Spec, featuregate.Default); errs != nil {
-		h.writeValidationErrors(w, errs)
+		writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
 		return
 	}
 
@@ -252,23 +262,25 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Spec json.RawMessage `json:"spec"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
-		h.writeError(w, http.StatusBadRequest, "CLUSTERS-MGMT-UPDATE-001", "Invalid request body")
+		writeAPIError(w, ErrClusterUpdateInvalidBody, h.logger)
 		return
 	}
 
 	if err := hyperfleetdb.MergeSpecJSON(&cr.Spec, envelope.Spec); err != nil {
 		h.logger.Error("failed to merge cluster spec", "error", err)
-		h.writeError(w, http.StatusBadRequest, "CLUSTERS-MGMT-UPDATE-002", "Invalid cluster spec")
+		writeAPIError(w, ErrClusterUpdateInvalidSpec, h.logger)
 		return
 	}
 
 	if err := h.db.UpdateCluster(ctx, cr); err != nil {
 		h.logger.Error("failed to update cluster", "error", err, "account_id", accountID, "cluster_id", clusterID)
-		h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-UPDATE-004", "Failed to update cluster")
+		writeAPIError(w, ErrClusterUpdateFailed, h.logger)
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, hyperfleetdb.ClusterCRToPlatform(cr))
+	if err := api.Write(w, http.StatusOK, hyperfleetdb.ClusterCRToPlatform(cr)); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Delete handles DELETE /api/v0/clusters/{id}
@@ -283,11 +295,11 @@ func (h *ClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	err := h.db.DeleteCluster(ctx, accountID, clusterID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			h.writeError(w, http.StatusNotFound, "CLUSTERS-MGMT-DELETE-001", "Cluster not found")
+			writeAPIError(w, ErrClusterDeleteNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to delete cluster", "error", err, "account_id", accountID, "cluster_id", clusterID)
-		h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-DELETE-002", "Failed to delete cluster")
+		writeAPIError(w, ErrClusterDeleteFailed, h.logger)
 		return
 	}
 
@@ -296,7 +308,9 @@ func (h *ClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		"cluster_id": clusterID,
 	}
 
-	h.writeJSON(w, http.StatusAccepted, response)
+	if err := api.Write(w, http.StatusAccepted, response); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // GetStatus handles GET /api/v0/clusters/{id}/statuses
@@ -311,43 +325,15 @@ func (h *ClusterHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	cr, err := h.db.GetCluster(ctx, accountID, clusterID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
-			h.writeError(w, http.StatusNotFound, "CLUSTERS-MGMT-STATUS-001", "Cluster not found")
+			writeAPIError(w, ErrClusterStatusNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to get cluster status", "error", err, "account_id", accountID, "cluster_id", clusterID)
-		h.writeError(w, http.StatusInternalServerError, "CLUSTERS-MGMT-STATUS-002", "Failed to get cluster status")
+		writeAPIError(w, ErrClusterStatusFailed, h.logger)
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, hyperfleetdb.ClusterStatusFromCR(cr))
-}
-
-// Helper methods
-func (h *ClusterHandler) writeJSON(w http.ResponseWriter, status int, data any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(data)
-}
-
-func (h *ClusterHandler) writeValidationErrors(w http.ResponseWriter, errs validation.ValidationErrors) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusUnprocessableEntity)
-	resp := map[string]any{
-		"kind":   "Error",
-		"code":   "CLUSTERS-MGMT-VALIDATION-001",
-		"reason": "Request validation failed",
-		"errors": errs,
+	if err := api.Write(w, http.StatusOK, hyperfleetdb.ClusterStatusFromCR(cr)); err != nil {
+		h.logger.Error("failed to write response", "error", err)
 	}
-	_ = json.NewEncoder(w).Encode(resp)
-}
-
-func (h *ClusterHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	resp := map[string]any{
-		"kind":   "Error",
-		"code":   code,
-		"reason": reason,
-	}
-	_ = json.NewEncoder(w).Encode(resp)
 }

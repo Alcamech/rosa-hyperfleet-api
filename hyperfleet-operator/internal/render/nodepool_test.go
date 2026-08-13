@@ -187,9 +187,9 @@ func TestNodePoolResourceLabels(t *testing.T) {
 
 func TestNodePoolResourceAutoRepair(t *testing.T) {
 	tests := []struct {
-		name      string
+		name       string
 		autoRepair *bool
-		want      bool
+		want       bool
 	}{
 		{"nil defaults to true", nil, true},
 		{"explicit true", ptr.To(true), true},

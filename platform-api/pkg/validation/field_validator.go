@@ -32,14 +32,11 @@ func (e ValidationErrors) Error() string {
 	if len(e) == 0 {
 		return "no validation errors"
 	}
-	var sb strings.Builder
-	sb.WriteString("validation failed:\n")
-	for _, err := range e {
-		sb.WriteString("  ")
-		sb.WriteString(err.Error())
-		sb.WriteString("\n")
+	msgs := make([]string, len(e))
+	for i, err := range e {
+		msgs[i] = err.Error()
 	}
-	return sb.String()
+	return strings.Join(msgs, "; ")
 }
 
 type FieldValidator struct {

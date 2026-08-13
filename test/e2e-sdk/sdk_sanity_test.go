@@ -284,7 +284,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		case http.StatusConflict:
 			var body map[string]interface{}
 			Expect(json.Unmarshal(resp.Body, &body)).To(Succeed())
-			Expect(body["code"]).To(Equal("account-exists"),
+			Expect(body["code"]).To(Equal("ACCOUNTS-MGMT-CREATE-004"),
 				"unexpected 409 body: %s", string(resp.Body))
 			GinkgoWriter.Printf("Customer account %s already registered\n", customerAccountID)
 		default:

@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -47,12 +46,12 @@ func (a *Authz) Authorize(next http.Handler) http.Handler {
 		callerARN := GetCallerARN(ctx)
 
 		if accountID == "" {
-			a.writeError(w, http.StatusForbidden, "missing-account-id", "Account ID header is required")
+			writeError(w, ErrMissingAccountID, a.logger)
 			return
 		}
 
 		if callerARN == "" {
-			a.writeError(w, http.StatusForbidden, "missing-caller-arn", "Caller ARN header is required")
+			writeError(w, ErrMissingCallerARN, a.logger)
 			return
 		}
 
@@ -71,11 +70,10 @@ func (a *Authz) Authorize(next http.Handler) http.Handler {
 			a.logger.Error("authorization check failed", "error", err, "account_id", accountID, "action", req.Action)
 			// Check if it's a "not provisioned" error
 			if strings.Contains(err.Error(), "not provisioned") {
-				a.writeError(w, http.StatusForbidden, "account-not-provisioned",
-					"Account is not provisioned for ROSA authorization")
+				writeError(w, ErrAccountNotProvisioned, a.logger)
 				return
 			}
-			a.writeError(w, http.StatusInternalServerError, "authorization-error", "Authorization check failed")
+			writeError(w, ErrAuthorizationFailed, a.logger)
 			return
 		}
 
@@ -86,8 +84,7 @@ func (a *Authz) Authorize(next http.Handler) http.Handler {
 				"action", req.Action,
 				"resource", req.Resource,
 			)
-			a.writeError(w, http.StatusForbidden, "access-denied",
-				"You do not have permission to perform this action")
+			writeError(w, ErrAccessDenied, a.logger)
 			return
 		}
 
@@ -217,16 +214,3 @@ const (
 	contextKeyResourceTags contextKey = "resource_tags"
 	contextKeyRequestTags  contextKey = "request_tags"
 )
-
-func (a *Authz) writeError(w http.ResponseWriter, status int, code, reason string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-
-	resp := map[string]any{
-		"kind":   "Error",
-		"code":   code,
-		"reason": reason,
-	}
-
-	_ = json.NewEncoder(w).Encode(resp)
-}

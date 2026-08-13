@@ -7,6 +7,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/authz"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 )
@@ -57,12 +58,12 @@ func (h *AccountsHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var req EnableAccountRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid-request", "Invalid request body")
+		writeAPIError(w, ErrAccountCreateInvalidBody, h.logger)
 		return
 	}
 
 	if req.AccountID == "" {
-		h.writeError(w, http.StatusBadRequest, "missing-account-id", "accountId is required")
+		writeAPIError(w, ErrAccountCreateMissingID, h.logger)
 		return
 	}
 
@@ -70,33 +71,33 @@ func (h *AccountsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	existing, err := h.authorizer.GetAccount(ctx, req.AccountID)
 	if err != nil {
 		h.logger.Error("failed to check existing account", "error", err, "account_id", req.AccountID)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to check account status")
+		writeAPIError(w, ErrAccountCreateCheckFailed, h.logger)
 		return
 	}
 	if existing != nil {
-		h.writeError(w, http.StatusConflict, "account-exists", "Account is already enabled")
+		writeAPIError(w, ErrAccountCreateExists, h.logger)
 		return
 	}
 
 	account, err := h.authorizer.EnableAccount(ctx, req.AccountID, callerARN, req.Privileged)
 	if err != nil {
 		h.logger.Error("failed to enable account", "error", err, "account_id", req.AccountID)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to enable account")
+		writeAPIError(w, ErrAccountCreateFailed, h.logger)
 		return
 	}
 
-	h.logger.Info("account enabled", "account_id", req.AccountID, "privileged", req.Privileged)
+	h.logger.Info("account enabled", "account_id", redact(req.AccountID), "privileged", req.Privileged)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(AccountResponse{
+	if err := api.Write(w, http.StatusCreated, AccountResponse{
 		Kind:          "Account",
 		AccountID:     account.AccountID,
 		PolicyStoreID: account.PolicyStoreID,
 		Privileged:    account.Privileged,
 		CreatedAt:     account.CreatedAt,
 		CreatedBy:     account.CreatedBy,
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // List handles GET /api/v0/accounts
@@ -106,7 +107,7 @@ func (h *AccountsHandler) List(w http.ResponseWriter, r *http.Request) {
 	accounts, err := h.authorizer.ListAccounts(ctx)
 	if err != nil {
 		h.logger.Error("failed to list accounts", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to list accounts")
+		writeAPIError(w, ErrAccountListFailed, h.logger)
 		return
 	}
 
@@ -122,12 +123,13 @@ func (h *AccountsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(AccountListResponse{
+	if err := api.Write(w, http.StatusOK, AccountListResponse{
 		Kind:  "AccountList",
 		Items: items,
 		Total: len(items),
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Get handles GET /api/v0/accounts/{id}
@@ -139,24 +141,25 @@ func (h *AccountsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	account, err := h.authorizer.GetAccount(ctx, accountID)
 	if err != nil {
 		h.logger.Error("failed to get account", "error", err, "account_id", accountID)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to get account")
+		writeAPIError(w, ErrAccountGetFailed, h.logger)
 		return
 	}
 
 	if account == nil {
-		h.writeError(w, http.StatusNotFound, "not-found", "Account not found")
+		writeAPIError(w, ErrAccountGetNotFound, h.logger)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(AccountResponse{
+	if err := api.Write(w, http.StatusOK, AccountResponse{
 		Kind:          "Account",
 		AccountID:     account.AccountID,
 		PolicyStoreID: account.PolicyStoreID,
 		Privileged:    account.Privileged,
 		CreatedAt:     account.CreatedAt,
 		CreatedBy:     account.CreatedBy,
-	})
+	}); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
 }
 
 // Delete handles DELETE /api/v0/accounts/{id}
@@ -171,24 +174,13 @@ func (h *AccountsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	err := h.authorizer.DisableAccount(ctx, accountID)
 	if err != nil {
 		h.logger.Error("failed to disable account", "error", err, "account_id", accountID)
-		h.writeError(w, http.StatusInternalServerError, "internal-error", "Failed to disable account")
+		writeAPIError(w, ErrAccountDeleteFailed, h.logger)
 		return
 	}
 
 	h.logger.Info("account disabled", "account_id", accountID)
 
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *AccountsHandler) writeError(w http.ResponseWriter, status int, code, reason string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-
-	resp := map[string]any{
-		"kind":   "Error",
-		"code":   code,
-		"reason": reason,
+	if err := api.Write(w, http.StatusNoContent, nil); err != nil {
+		h.logger.Error("failed to write response", "error", err)
 	}
-
-	_ = json.NewEncoder(w).Encode(resp)
 }

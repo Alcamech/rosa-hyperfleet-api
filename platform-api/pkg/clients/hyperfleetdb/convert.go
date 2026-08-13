@@ -193,6 +193,14 @@ func metaTime(obj metav1.Object) time.Time {
 
 const clusterNSPrefix = "cluster-"
 
+// clusterUUIDLen is the fixed length of a RFC 4122 UUID string (e.g. "4610b27e-8f77-4f4c-9661-c11b42e04dec").
+const clusterUUIDLen = 36
+
+// MaxClusterNameLen is the maximum allowed cluster name length.
+// HyperShift creates a control plane namespace as "<hc-namespace>-<hc-name>",
+// which expands to "cluster-<uuid>-<name>" and must fit within 63 characters (k8s namespace limit).
+const MaxClusterNameLen = 63 - len(clusterNSPrefix) - clusterUUIDLen - len("-")
+
 func clusterNamespace(clusterID string) string {
 	return clusterNSPrefix + clusterID
 }

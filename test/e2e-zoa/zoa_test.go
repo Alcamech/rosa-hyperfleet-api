@@ -127,7 +127,7 @@ var _ = Describe("ZOA Trusted Actions", Ordered, func() {
 				Reason string `json:"reason"`
 			}
 			Expect(json.Unmarshal(resp.Body, &errResp)).To(Succeed())
-			Expect(errResp.Code).To(Equal("missing-target-cluster"))
+			Expect(errResp.Code).To(Equal("ZOA-CREATE-003"))
 		})
 
 		It("should reject request without jira ticket", func() {
@@ -142,7 +142,7 @@ var _ = Describe("ZOA Trusted Actions", Ordered, func() {
 				Code string `json:"code"`
 			}
 			Expect(json.Unmarshal(resp.Body, &errResp)).To(Succeed())
-			Expect(errResp.Code).To(Equal("missing-jira"))
+			Expect(errResp.Code).To(Equal("ZOA-CREATE-004"))
 		})
 
 		It("should reject request with invalid jira format", func() {
@@ -158,7 +158,7 @@ var _ = Describe("ZOA Trusted Actions", Ordered, func() {
 				Code string `json:"code"`
 			}
 			Expect(json.Unmarshal(resp.Body, &errResp)).To(Succeed())
-			Expect(errResp.Code).To(Equal("invalid-jira"))
+			Expect(errResp.Code).To(Equal("ZOA-CREATE-005"))
 		})
 
 		It("should reject request with unknown parameters", func() {
@@ -177,7 +177,7 @@ var _ = Describe("ZOA Trusted Actions", Ordered, func() {
 				Code string `json:"code"`
 			}
 			Expect(json.Unmarshal(resp.Body, &errResp)).To(Succeed())
-			Expect(errResp.Code).To(Equal("invalid-params"))
+			Expect(errResp.Code).To(Equal("ZOA-CREATE-006"))
 		})
 
 		It("should dispatch get_nodes and complete successfully (full wait)", func() {
@@ -330,7 +330,7 @@ var _ = Describe("ZOA Trusted Actions", Ordered, func() {
 				Code string `json:"code"`
 			}
 			Expect(json.Unmarshal(resp.Body, &errResp)).To(Succeed())
-			Expect(errResp.Code).To(Equal("write-cooldown"))
+			Expect(errResp.Code).To(Equal("ZOA-CREATE-007"))
 			GinkgoWriter.Printf("Second call correctly rejected: %s\n", errResp.Code)
 
 			By("Dispatching with force=true (should bypass cooldown)")
