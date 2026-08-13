@@ -360,8 +360,8 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		case http.StatusConflict:
 			var errBody map[string]interface{}
 			Expect(json.Unmarshal(response.Body, &errBody)).To(Succeed())
-			Expect(errBody["code"]).To(Equal("account-exists"), "unexpected 409 body: %s", string(response.Body))
-			GinkgoWriter.Printf("Customer account %s already enabled (409 account-exists)\n", customerAccountID)
+			Expect(errBody["code"]).To(Equal("ACCOUNTS-MGMT-CREATE-004"), "unexpected 409 body: %s", string(response.Body))
+			GinkgoWriter.Printf("Customer account %s already enabled (409 ACCOUNTS-MGMT-CREATE-004)\n", customerAccountID)
 		default:
 			Fail(fmt.Sprintf("failed to enable customer account: status %d body: %s", response.StatusCode, string(response.Body)))
 		}
