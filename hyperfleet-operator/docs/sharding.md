@@ -53,12 +53,12 @@ my_shard = ordinal
 
 Example with 4 replicas:
 
-| Pod   | Shard | Reconciles namespaces where       |
-| ----- | ----- | --------------------------------- |
-| Pod-0 | 0     | `abs(hashtext(namespace)::bigint) % 4 == 0`    |
-| Pod-1 | 1     | `abs(hashtext(namespace)::bigint) % 4 == 1`    |
-| Pod-2 | 2     | `abs(hashtext(namespace)::bigint) % 4 == 2`    |
-| Pod-3 | 3     | `abs(hashtext(namespace)::bigint) % 4 == 3`    |
+| Pod   | Shard | Reconciles namespaces where                 |
+| ----- | ----- | ------------------------------------------- |
+| Pod-0 | 0     | `abs(hashtext(namespace)::bigint) % 4 == 0` |
+| Pod-1 | 1     | `abs(hashtext(namespace)::bigint) % 4 == 1` |
+| Pod-2 | 2     | `abs(hashtext(namespace)::bigint) % 4 == 2` |
+| Pod-3 | 3     | `abs(hashtext(namespace)::bigint) % 4 == 3` |
 
 ### ManagementCluster Visibility
 

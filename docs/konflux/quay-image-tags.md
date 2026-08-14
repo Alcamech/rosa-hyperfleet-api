@@ -2,9 +2,9 @@
 
 This repository builds container images on Konflux (`rosa-tenant` on `kflux-prd-rh02`). Builds are defined under [`.tekton/`](../../.tekton/).
 
-| Component | Quay repository | PipelineRun names |
-| --- | --- | --- |
-| `platform-api` | `quay.io/redhat-user-workloads/rosa-tenant/platform-api` | `rosa-hyperfleet-api-on-pull-request`, `rosa-hyperfleet-api-on-push` |
+| Component             | Quay repository                                                 | PipelineRun names                                                              |
+| --------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `platform-api`        | `quay.io/redhat-user-workloads/rosa-tenant/platform-api`        | `rosa-hyperfleet-api-on-pull-request`, `rosa-hyperfleet-api-on-push`           |
 | `hyperfleet-operator` | `quay.io/redhat-user-workloads/rosa-tenant/hyperfleet-operator` | `rosa-hyperfleet-operator-on-pull-request`, `rosa-hyperfleet-operator-on-push` |
 
 Pull-request and push builds **share the same Quay repository** (one ImageRepository per component). That is expected Konflux behavior, not a separate “PR” vs “release” repo.
@@ -13,12 +13,12 @@ Konflux **component** names in this repo (`rosa-hyperfleet-api`, `rosa-hyperflee
 
 ## When pipelines run
 
-| Pipeline | Trigger (summary) |
-| --- | --- |
-| `rosa-hyperfleet-api-on-push` | Every push to `main` |
-| `rosa-hyperfleet-api-on-pull-request` | Pull requests targeting `main` |
-| `rosa-hyperfleet-operator-on-push` | Push to `main` only when `hyperfleet-operator/`, `hyperfleet-db/`, or related Tekton/Containerfile paths change |
-| `rosa-hyperfleet-operator-on-pull-request` | Same path filter on pull requests |
+| Pipeline                                   | Trigger (summary)                                                                                               |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `rosa-hyperfleet-api-on-push`              | Every push to `main`                                                                                            |
+| `rosa-hyperfleet-api-on-pull-request`      | Pull requests targeting `main`                                                                                  |
+| `rosa-hyperfleet-operator-on-push`         | Push to `main` only when `hyperfleet-operator/`, `hyperfleet-db/`, or related Tekton/Containerfile paths change |
+| `rosa-hyperfleet-operator-on-pull-request` | Same path filter on pull requests                                                                               |
 
 A commit SHA tag for `hyperfleet-operator` exists on Quay **only if** that commit triggered the operator on-push (or on-pull-request) pipeline. A `platform-api`-only merge still produces a new `platform-api:<sha>` image on every push to `main`, but does not necessarily rebuild the operator image at that SHA.
 
@@ -42,10 +42,10 @@ Do **not** use Quay `:latest` as the source of truth. Konflux push pipelines tag
 
 A single successful on-push run pushes more than the runnable image. The default multi-platform OCI pipeline also publishes **trusted-build artifacts** into the same repository, using suffix tags on the same commit:
 
-| Tag pattern | Meaning |
-| --- | --- |
-| `<sha>` | Runnable container image — **use this for pins** |
-| `<sha>.git` | Git/source artifact for the trusted build chain |
+| Tag pattern      | Meaning                                          |
+| ---------------- | ------------------------------------------------ |
+| `<sha>`          | Runnable container image — **use this for pins** |
+| `<sha>.git`      | Git/source artifact for the trusted build chain  |
 | `<sha>.prefetch` | Prefetched dependencies (hermetic / gomod cache) |
 
 Source images may be enabled (`build-source-image: true`). Quay’s tag list can look like several entries for one pipeline run; only the plain `<sha>` tag (no suffix) is the image to deploy or reference from `rosa-hyperfleet` Helm values.
@@ -74,11 +74,11 @@ If e2e or regional tests fail after a change merges to `platform-api` on `main` 
 
 ## Quick reference in Quay
 
-| What you see | Interpretation |
-| --- | --- |
-| `on-pr-*` | Pull-request build (short-lived) |
-| Plain 40-character hex SHA | `main` push (or the commit that built the image) — **deployable image** |
-| `<sha>.git`, `<sha>.prefetch` | Pipeline artifacts — ignore for deploy pins |
+| What you see                  | Interpretation                                                          |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| `on-pr-*`                     | Pull-request build (short-lived)                                        |
+| Plain 40-character hex SHA    | `main` push (or the commit that built the image) — **deployable image** |
+| `<sha>.git`, `<sha>.prefetch` | Pipeline artifacts — ignore for deploy pins                             |
 
 ## Related configuration
 

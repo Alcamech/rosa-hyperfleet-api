@@ -15,15 +15,15 @@ This tooling follows the same patterns as the GCP HCP **gecko/orlop** codegen:
 
 ## Generators
 
-| Command | Purpose |
-|---------|---------|
-| `passthrough-gen` | Generate passthrough struct types from HyperShift API types |
-| `marker-scanner` | Extract `+hyperfleet:` marker metadata from Go types |
-| `openapi-gen` | Generate OpenAPI v3 schemas via controller-tools CRD extraction |
-| `conversion-gen` | Generate JSON-roundtrip conversion functions (CRD ↔ REST) |
-| `crd-variants` | Produce CRD variants filtered by feature gates |
-| `featuregate-info` | Emit feature gate metadata for CRD fields |
-| `verify-configuration` | Validate marker consistency across types |
+| Command                | Purpose                                                         |
+| ---------------------- | --------------------------------------------------------------- |
+| `passthrough-gen`      | Generate passthrough struct types from HyperShift API types     |
+| `marker-scanner`       | Extract `+hyperfleet:` marker metadata from Go types            |
+| `openapi-gen`          | Generate OpenAPI v3 schemas via controller-tools CRD extraction |
+| `conversion-gen`       | Generate JSON-roundtrip conversion functions (CRD ↔ REST)       |
+| `crd-variants`         | Produce CRD variants filtered by feature gates                  |
+| `featuregate-info`     | Emit feature gate metadata for CRD fields                       |
+| `verify-configuration` | Validate marker consistency across types                        |
 
 ## Package layout
 
@@ -58,15 +58,15 @@ make coverage-api-codegen  # Generate coverage report
 
 The top-level Makefile exposes the following targets for running the codegen pipeline:
 
-| Target | Description |
-|--------|-------------|
+| Target                | Description                                                     |
+| --------------------- | --------------------------------------------------------------- |
 | `codegen-passthrough` | Generate passthrough types from HyperShift into `api/v1alpha1/` |
-| `codegen-registry` | Generate field metadata registry from `+hyperfleet:` markers |
-| `codegen-conversion` | Generate REST types and Project/Unproject conversion functions |
-| `codegen-verify` | Verify codegen outputs compile (`api` + `platform-api`) |
-| `codegen` | Run full pipeline: passthrough + registry + verify |
-| `verify-codegen` | Fail if codegen outputs are out of date (git diff check) |
-| `verify-conversion` | Fail if conversion outputs are out of date |
+| `codegen-registry`    | Generate field metadata registry from `+hyperfleet:` markers    |
+| `codegen-conversion`  | Generate REST types and Project/Unproject conversion functions  |
+| `codegen-verify`      | Verify codegen outputs compile (`api` + `platform-api`)         |
+| `codegen`             | Run full pipeline: passthrough + registry + verify              |
+| `verify-codegen`      | Fail if codegen outputs are out of date (git diff check)        |
+| `verify-conversion`   | Fail if conversion outputs are out of date                      |
 
 ### Dependency chain
 

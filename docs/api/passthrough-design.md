@@ -13,12 +13,12 @@ The passthrough codegen pipeline generates Go struct types that mirror upstream 
 
 ## File roles
 
-| File | Role |
-|------|------|
-| `api/v1alpha1/zz_generated.passthrough.go` | The committed passthrough types. Human-curated markers live here. This is the source of truth for field policy. Despite the `zz_generated` prefix, this file is intentionally hand-edited to curate markers, then regenerated to pick up upstream struct changes. |
-| `api/v1alpha1/configuration.go` | Local mirror of `ClusterConfiguration` with granular markers on nested fields (kubelet, machineConfig). Used by the scanner for nested field marker extraction. |
-| `hack/api-codegen/pkg/registry/field_metadata.json` | Generated field registry (JSON). Produced by `marker-scanner` from the passthrough file. Consumed by `passthrough-gen`, `conversion-gen`, and `openapi-gen`. |
-| `hack/api-codegen/pkg/registry/field_metadata.go` | Generated field registry (Go). Same data as the JSON, importable by Go code. |
+| File                                                | Role                                                                                                                                                                                                                                                              |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api/v1alpha1/zz_generated.passthrough.go`          | The committed passthrough types. Human-curated markers live here. This is the source of truth for field policy. Despite the `zz_generated` prefix, this file is intentionally hand-edited to curate markers, then regenerated to pick up upstream struct changes. |
+| `api/v1alpha1/configuration.go`                     | Local mirror of `ClusterConfiguration` with granular markers on nested fields (kubelet, machineConfig). Used by the scanner for nested field marker extraction.                                                                                                   |
+| `hack/api-codegen/pkg/registry/field_metadata.json` | Generated field registry (JSON). Produced by `marker-scanner` from the passthrough file. Consumed by `passthrough-gen`, `conversion-gen`, and `openapi-gen`.                                                                                                      |
+| `hack/api-codegen/pkg/registry/field_metadata.go`   | Generated field registry (Go). Same data as the JSON, importable by Go code.                                                                                                                                                                                      |
 
 ## Pipeline
 
@@ -84,12 +84,12 @@ If HyperShift removes a field from `HostedClusterSpec` or `NodePoolSpec`, `make 
 
 The registry captures the following marker categories from the passthrough file:
 
-| Marker | Registry field | Purpose |
-|--------|---------------|---------|
-| `+k8s:openapi-gen=false` | `hidden: true` | Field excluded from public OpenAPI and REST types |
-| `+hyperfleet:write-mode=mutable\|immutable\|service-set` | `writeMode` | Controls customer mutability |
-| `+openshift:enable:FeatureGate=X` | `featureGate` | Field gated behind a feature flag |
-| `+hyperfleet:validation:FeatureGateAwareWriteMode:...` | `featureGateAwareWriteModes` | Write-mode varies by active feature gates |
+| Marker                                                   | Registry field               | Purpose                                           |
+| -------------------------------------------------------- | ---------------------------- | ------------------------------------------------- |
+| `+k8s:openapi-gen=false`                                 | `hidden: true`               | Field excluded from public OpenAPI and REST types |
+| `+hyperfleet:write-mode=mutable\|immutable\|service-set` | `writeMode`                  | Controls customer mutability                      |
+| `+openshift:enable:FeatureGate=X`                        | `featureGate`                | Field gated behind a feature flag                 |
+| `+hyperfleet:validation:FeatureGateAwareWriteMode:...`   | `featureGateAwareWriteModes` | Write-mode varies by active feature gates         |
 
 Upstream markers like `+optional` and `+required` are propagated directly from HyperShift source by `passthrough-gen` via `isForwardedMarker()` — they do not go through the registry.
 
@@ -104,7 +104,7 @@ This ensures new upstream fields don't accidentally become visible or mutable.
 
 ## Resolved gaps
 
-The following issues existed in main and were fixed on this branch:
+The following issues existed in main and were fixed:
 
 1. **Stale embedded registry** (fixed): `passthrough-gen` embedded a copy of `field_metadata.json` via `//go:embed`. Removed the embedded copy and made `-registry` mandatory.
 
