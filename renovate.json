@@ -19,8 +19,10 @@
   "packageRules": [
     {
       "description": "Move from 2 segment to 3 segment version",
-      "matchPackagePatterns": ["quay.io/konflux-ci/"],
-      "versioning": "loose"
+      "versioning": "loose",
+      "matchPackageNames": [
+        "/quay.io/konflux-ci//"
+      ]
     },
     {
       "description": "Automerge patch/minor/digest Containerfile/Dockerfile updates when Prow + Konflux pass",
