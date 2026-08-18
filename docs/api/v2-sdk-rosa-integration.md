@@ -18,7 +18,7 @@ Two findings from the rosa codebase drive the design:
    SDK cannot simply be swapped underneath the CLI.
 2. The HCP lifecycle commands call the OCM API far beyond CRUD — versions,
    regions, machine types, billing accounts, quota, subscriptions. The
-   Platform API's *initial* surface (Cluster + NodePool) backs almost none of
+   Platform API's _initial_ surface (Cluster + NodePool) backs almost none of
    these, and even as it reaches feature parity over time, those features
    return **re-based on AWS-account tenancy** instead of the OCM org. The v2
    flow is therefore a genuinely different flow — initially smaller, and
@@ -64,11 +64,11 @@ cluster model.
 
 Measured by distinct `OCMClient` method calls:
 
-| Code path | Distinct OCM calls | Examples beyond CRUD |
-|---|---|---|
-| `cmd/create/cluster/cmd.go` | ~16 | `GetRegionList`, `ValidateVersion`, `GetAvailableMachineTypesInRegion`, `GetBillingAccounts`, `GetCredRequests`, `EnsureNoPendingClusters` (quota), `IsTechnologyPreview`, `GetOidcConfig` |
-| `cmd/describe/cluster/cmd.go` | ~11 | `GetSubscriptionBySubscriptionID`, `GetLimitedSupportReasons`, `GetInflightChecks`, `FetchClusterMigrations`, `GetScheduledUpgrade` |
-| `pkg/machinepool` | ~19 | `GetDefaultClusterFlavors`, `ListKubeletConfigNames`, `GetTuningConfigsName`, `GetClusterAutoscaler` |
+| Code path                     | Distinct OCM calls | Examples beyond CRUD                                                                                                                                                                       |
+| ----------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `cmd/create/cluster/cmd.go`   | ~16                | `GetRegionList`, `ValidateVersion`, `GetAvailableMachineTypesInRegion`, `GetBillingAccounts`, `GetCredRequests`, `EnsureNoPendingClusters` (quota), `IsTechnologyPreview`, `GetOidcConfig` |
+| `cmd/describe/cluster/cmd.go` | ~11                | `GetSubscriptionBySubscriptionID`, `GetLimitedSupportReasons`, `GetInflightChecks`, `FetchClusterMigrations`, `GetScheduledUpgrade`                                                        |
+| `pkg/machinepool`             | ~19                | `GetDefaultClusterFlavors`, `ListKubeletConfigNames`, `GetTuningConfigsName`, `GetClusterAutoscaler`                                                                                       |
 
 The HyperFleet Platform API's initial surface is **Cluster + NodePool only**
 (see [v2-sdk-initiative.md](v2-sdk-initiative.md)). Today there is nothing to
@@ -91,11 +91,11 @@ the SDK through `r.OCMClient.*` and `r.FetchCluster()` (`pkg/rosa/runner.go`,
 
 ### 4. Auth models diverge
 
-| | v1 (OCM) | v2 (HyperFleet) |
-|---|---|---|
-| Credential | OCM SSO tokens (`rosa login`, `config.Load()`) | AWS IAM (SigV4) |
-| Endpoint | Global `api.openshift.com` | Per-region Platform API endpoint |
-| Runtime support today | `WithOCM()` | needs AWS creds (`WithAWS()` exists) + endpoint resolution |
+|                       | v1 (OCM)                                       | v2 (HyperFleet)                                            |
+| --------------------- | ---------------------------------------------- | ---------------------------------------------------------- |
+| Credential            | OCM SSO tokens (`rosa login`, `config.Load()`) | AWS IAM (SigV4)                                            |
+| Endpoint              | Global `api.openshift.com`                     | Per-region Platform API endpoint                           |
+| Runtime support today | `WithOCM()`                                    | needs AWS creds (`WithAWS()` exists) + endpoint resolution |
 
 `--hyperfleet` mode cannot reuse the login config; it needs AWS credentials
 (the Runtime already obtains these via `WithAWS()`) plus regional endpoint
@@ -150,20 +150,20 @@ rosa create cluster --hosted-cp [--hyperfleet]
    radius), the v2 path maps `v1alpha1.Cluster → cmv1.Cluster` **only for
    display**, populating only fields the printers read. `cmv1` types are
    constructible via builders (`cmv1.NewCluster().ID(...).Build()`), so this is
-   mechanical. Fields with no HyperFleet equivalent *yet* (subscription,
+   mechanical. Fields with no HyperFleet equivalent _yet_ (subscription,
    limited support, billing) render as absent; the mapper grows alongside the
    Platform API surface and the commands wired to it.
 
 ### Commands in scope (per acceptance criteria)
 
-| Command | v2 path |
-|---|---|
-| `rosa create cluster --hosted-cp` | flags → `v1alpha1.Cluster` → `Clusters().Create()` |
-| `rosa describe cluster` | `Clusters().Get()` → display mapper → existing printer |
-| `rosa edit cluster` | `Clusters().Patch()` / `Update()` |
-| `rosa delete cluster` | `Clusters().Delete()` |
-| `rosa create/list/describe/edit/delete machinepool` (HCP) | `Clusters().NodePools(...)` verbs |
-| `rosa logs`, log forwarders | TBD — depends on Platform API logs surface (initiative Open Question 4) |
+| Command                                                   | v2 path                                                                 |
+| --------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `rosa create cluster --hosted-cp`                         | flags → `v1alpha1.Cluster` → `Clusters().Create()`                      |
+| `rosa describe cluster`                                   | `Clusters().Get()` → display mapper → existing printer                  |
+| `rosa edit cluster`                                       | `Clusters().Patch()` / `Update()`                                       |
+| `rosa delete cluster`                                     | `Clusters().Delete()`                                                   |
+| `rosa create/list/describe/edit/delete machinepool` (HCP) | `Clusters().NodePools(...)` verbs                                       |
+| `rosa logs`, log forwarders                               | TBD — depends on Platform API logs surface (initiative Open Question 4) |
 
 Everything else (`idp`, `ingress`, `addons`, roles, upgrades, …) has no v2
 path and errors fast under `--hyperfleet`.
@@ -192,7 +192,7 @@ implementation on the flag, and having the v2 implementation map
 - Even at feature parity, the flows fork wherever identity is consulted. Most
   v1 features (billing account selection, versions, IdPs, …) are expected to
   return in the Platform API — re-based on **AWS-account tenancy** instead of
-  the OCM org (some, like the OCM quota precheck, will not). The *step*
+  the OCM org (some, like the OCM quota precheck, will not). The _step_
   "select a billing account" exists in both flows, but the data source,
   credentials, and failure modes differ. Shared command code would need
   identity-conditional branches at every such point — which is command-level
@@ -207,17 +207,17 @@ Two other alternatives were rejected earlier and remain rejected:
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|---|---|
-| Output drift between v1 and v2 paths | Reuse v1 printers via the display mapper; acceptance e2e tests (`hcp_cluster_test.go`, `hcp_machine_pool_test.go`) are the contract |
-| Duplicated command-flow logic | The duplicated part is precisely what *must* differ (validation backed by endpoints that don't exist in v2); keep v2 run functions thin and share flag parsing/printing |
-| Interactive mode in v2 (`--interactive` prompts source region/version/machine-type lists from OCM) | Phase 1: disable interactive under `--hyperfleet`; later source lists from AWS APIs or Platform API when available |
-| Flag surface ambiguity (~300 create-cluster flags, many meaningless in v2) | Explicit allowlist per v2 command; anything else errors with "not supported with --hyperfleet" |
-| Display mapper completeness | Populate only fields the printers read for the acceptance-test commands; grow test-by-test |
+| Risk                                                                                               | Mitigation                                                                                                                                                              |
+| -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Output drift between v1 and v2 paths                                                               | Reuse v1 printers via the display mapper; acceptance e2e tests (`hcp_cluster_test.go`, `hcp_machine_pool_test.go`) are the contract                                     |
+| Duplicated command-flow logic                                                                      | The duplicated part is precisely what _must_ differ (validation backed by endpoints that don't exist in v2); keep v2 run functions thin and share flag parsing/printing |
+| Interactive mode in v2 (`--interactive` prompts source region/version/machine-type lists from OCM) | Phase 1: disable interactive under `--hyperfleet`; later source lists from AWS APIs or Platform API when available                                                      |
+| Flag surface ambiguity (~300 create-cluster flags, many meaningless in v2)                         | Explicit allowlist per v2 command; anything else errors with "not supported with --hyperfleet"                                                                          |
+| Display mapper completeness                                                                        | Populate only fields the printers read for the acceptance-test commands; grow test-by-test                                                                              |
 
 ## Relationship to the "migrate directly to client-go" vision
 
-This approach *is* the direct migration, scoped: the v2 run functions consume
+This approach _is_ the direct migration, scoped: the v2 run functions consume
 the v2 SDK natively (`v1alpha1` struct literals + verb methods), exactly as the
 initiative doc intends. Only the presentation layer borrows v1's printers via
 the display mapper — a bounded concession to "identical output formats" that
@@ -234,30 +234,30 @@ and mismatch validation that Story 3 implementations and tests must follow.
 
 ### Precedence (highest wins)
 
-| Priority | Source | What it sets |
-|----------|--------|-------------|
-| 1 | `--hyperfleet-url <url>` flag | Explicit endpoint URL; skips all other endpoint resolution |
-| 2 | Built-in region→endpoint map | Endpoint looked up by resolved region (see below) |
-| 3 | Discovery (future) | Reserved for a future service-discovery mechanism; not implemented in the initial version — if precedence 1 and 2 both miss, resolution fails |
+| Priority | Source                        | What it sets                                                                                                                                  |
+| -------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1        | `--hyperfleet-url <url>` flag | Explicit endpoint URL; skips all other endpoint resolution                                                                                    |
+| 2        | Built-in region→endpoint map  | Endpoint looked up by resolved region (see below)                                                                                             |
+| 3        | Discovery (future)            | Reserved for a future service-discovery mechanism; not implemented in the initial version — if precedence 1 and 2 both miss, resolution fails |
 
 ### Region derivation (highest wins)
 
-| Priority | Source |
-|----------|--------|
-| 1 | `--region` flag (explicit) |
-| 2 | `AWS_DEFAULT_REGION` environment variable |
-| 3 | AWS SDK default credential chain region (e.g. `~/.aws/config` profile) |
+| Priority | Source                                                                 |
+| -------- | ---------------------------------------------------------------------- |
+| 1        | `--region` flag (explicit)                                             |
+| 2        | `AWS_DEFAULT_REGION` environment variable                              |
+| 3        | AWS SDK default credential chain region (e.g. `~/.aws/config` profile) |
 
 If none of these sources yield a region, `WithHyperFleet()` must return a
 clear error: `"region is required for --hyperfleet mode: set --region, AWS_DEFAULT_REGION, or configure a region in your AWS profile"`.
 
 ### Error behavior
 
-| Condition | Behavior |
-|-----------|----------|
-| No region resolvable | Fatal error before SDK client construction (see message above) |
+| Condition                                                                                          | Behavior                                                                                                      |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| No region resolvable                                                                               | Fatal error before SDK client construction (see message above)                                                |
 | Region resolved but not present in the built-in region→endpoint map and `--hyperfleet-url` not set | Fatal error: `"no Platform API endpoint known for region %s; use --hyperfleet-url to specify one explicitly"` |
-| `--hyperfleet-url` set but no region resolvable | Fatal error: region is still required for SigV4 signing even when the endpoint is explicit |
+| `--hyperfleet-url` set but no region resolvable                                                    | Fatal error: region is still required for SigV4 signing even when the endpoint is explicit                    |
 
 ### Region/endpoint mismatch validation
 

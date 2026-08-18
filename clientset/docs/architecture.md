@@ -102,11 +102,11 @@ func Install(scheme *runtime.Scheme) {
 
 The platform API differs from a standard Kubernetes API in three ways that require hand-written code:
 
-| Difference | Solution |
-|---|---|
-| Requests are signed with AWS SigV4 | `transport/sigv4.go` — custom RoundTripper |
-| Resources are account-scoped, not namespace-scoped | SigV4 transport extracts the Kubernetes namespace from the URL, maps it to `X-Amz-Account-Id`, and strips the `/namespaces/{ns}/` segment |
-| Wire format is flat JSON, not Kubernetes nested metadata | `transport/bridge.go` — request/response adapter |
+| Difference                                               | Solution                                                                                                                                  |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Requests are signed with AWS SigV4                       | `transport/sigv4.go` — custom RoundTripper                                                                                                |
+| Resources are account-scoped, not namespace-scoped       | SigV4 transport extracts the Kubernetes namespace from the URL, maps it to `X-Amz-Account-Id`, and strips the `/namespaces/{ns}/` segment |
+| Wire format is flat JSON, not Kubernetes nested metadata | `transport/bridge.go` — request/response adapter                                                                                          |
 
 ### `rest/config.go` — SDK configuration
 
@@ -137,18 +137,24 @@ The `Adapter` RoundTripper handles four transformations:
 **Response rewriting** — platform API returns flat JSON objects:
 
 ```json
-{"id": "abc-123", "name": "my-cluster", "resource_version": "1", "spec": {}, "status": {}}
+{
+  "id": "abc-123",
+  "name": "my-cluster",
+  "resource_version": "1",
+  "spec": {},
+  "status": {}
+}
 ```
 
 The Kubernetes decoder populates `v1alpha1.Cluster` from `metadata.*` fields. The adapter rewrites each response before the decoder sees it:
 
-| Wire field | → | Kubernetes field |
-|---|---|---|
-| `name` | → | `metadata.name` |
-| `id` | → | `metadata.uid` |
-| `resource_version` | → | `metadata.resourceVersion` |
-| `generation` | → | `metadata.generation` |
-| `spec`, `status`, … | → | unchanged |
+| Wire field          | →   | Kubernetes field           |
+| ------------------- | --- | -------------------------- |
+| `name`              | →   | `metadata.name`            |
+| `id`                | →   | `metadata.uid`             |
+| `resource_version`  | →   | `metadata.resourceVersion` |
+| `generation`        | →   | `metadata.generation`      |
+| `spec`, `status`, … | →   | unchanged                  |
 
 Both single-object and list (`{"items": [...]}`) responses are handled.
 
@@ -159,15 +165,24 @@ Both single-object and list (`{"items": [...]}`) responses are handled.
 **Error response translation** — platform API errors use a different envelope from `metav1.Status`:
 
 ```json
-{"kind": "Error", "code": "CLUSTERS-MGMT-001", "reason": "account not authorized"}
+{
+  "kind": "Error",
+  "code": "CLUSTERS-MGMT-001",
+  "reason": "account not authorized"
+}
 ```
 
 client-go's `transformResponse` cannot parse this format and falls back to `StatusReasonUnknown`, silently discarding the server's error message. The adapter intercepts any non-2xx response that matches the platform envelope and rewrites it to a minimal `metav1.Status` JSON body before client-go sees it:
 
 ```json
-{"apiVersion": "v1", "kind": "Status", "status": "Failure",
- "message": "CLUSTERS-MGMT-001: account not authorized",
- "reason": "Forbidden", "code": 403}
+{
+  "apiVersion": "v1",
+  "kind": "Status",
+  "status": "Failure",
+  "message": "CLUSTERS-MGMT-001: account not authorized",
+  "reason": "Forbidden",
+  "code": 403
+}
 ```
 
 This ensures `k8s.io/apimachinery/pkg/api/errors` helpers (`IsNotFound`, `IsForbidden`, etc.) classify errors correctly and that callers receive the full server message rather than a generic unknown error.
