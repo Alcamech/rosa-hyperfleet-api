@@ -39,6 +39,9 @@ const (
 	ddbContainerName = "hyperfleet-test-dynamodb"
 	pgContainerName  = "hyperfleet-test-postgres"
 	mc               = "mc01"
+
+	postgresImage    = "quay.io/sclorg/postgresql-16-c10s"
+	dynamoLocalImage = "public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local:latest"
 )
 
 var (
@@ -74,13 +77,14 @@ var _ = BeforeSuite(func() {
 
 	By("starting Postgres container")
 	pgPort = freePort()
-	cmd := exec.Command(containerTool, "run", "-d", "--rm",
+	cmd := exec.Command(
+		containerTool, "run", "-d", "--rm",
 		"--name", pgContainerName,
-		"-e", "POSTGRES_DB=pgruntime_test",
-		"-e", "POSTGRES_USER=test",
-		"-e", "POSTGRES_PASSWORD=test",
+		"-e", "POSTGRESQL_DATABASE=pgruntime_test",
+		"-e", "POSTGRESQL_USER=test",
+		"-e", "POSTGRESQL_PASSWORD=test",
 		"-p", fmt.Sprintf("%s:5432", pgPort),
-		"postgres:16-alpine",
+		postgresImage,
 	)
 	out, err := cmd.CombinedOutput()
 	Expect(err).NotTo(HaveOccurred(), "start postgres: %s", string(out))
@@ -101,10 +105,11 @@ var _ = BeforeSuite(func() {
 
 	By("starting DynamoDB Local container")
 	ddbPort = freePort()
-	cmd = exec.Command(containerTool, "run", "-d", "--rm",
+	cmd = exec.Command(
+		containerTool, "run", "-d", "--rm",
 		"--name", ddbContainerName,
 		"-p", fmt.Sprintf("%s:8000", ddbPort),
-		"amazon/dynamodb-local",
+		dynamoLocalImage,
 	)
 	out, err = cmd.CombinedOutput()
 	Expect(err).NotTo(HaveOccurred(), "start DynamoDB Local: %s", string(out))
