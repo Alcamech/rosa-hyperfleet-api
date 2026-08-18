@@ -33,9 +33,7 @@ func NodePoolResource(nodePool *hyperfleetv1alpha1.NodePool, cluster *hyperfleet
 		npSpec.Management.AutoRepair = true
 	}
 
-	if len(nodePool.Spec.Labels) > 0 {
-		npSpec.NodeLabels = nodePool.Spec.Labels
-	}
+	npSpec.NodeLabels = nodePool.Spec.Labels
 
 	if npSpec.Replicas == nil {
 		npSpec.Replicas = ptr.To(int32(2))
