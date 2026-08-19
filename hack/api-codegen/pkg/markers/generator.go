@@ -158,6 +158,11 @@ func (s *MarkerScanner) Generate(outputFile string) error {
 		}
 	}
 
+	// TODO: Generate synthetic full paths for upstream-reduced types embedded in CRDs
+	// This requires analyzing passthrough type structures to discover where upstream-reduced types are embedded
+	// Implementation: scan passthrough types for Configuration/Config fields, map to local types via upstreamReducedTypes,
+	// then generate synthetic full paths (e.g., spec.hostedCluster.configuration.kubelet.maxPods) under CRD owner
+
 	// Set sorted owners for template
 	data.SortedOwners = owners
 
