@@ -144,31 +144,36 @@ func (s *MarkerScanner) scanDir(dir string) error {
 	// First pass: cache all struct types across all files in this package
 	for _, pkg := range pkgs {
 		for _, file := range pkg.Files {
-			ast.Inspect(file, func(n ast.Node) bool {
-				typeSpec, ok := n.(*ast.TypeSpec)
+			for _, decl := range file.Decls {
+				gd, ok := decl.(*ast.GenDecl)
 				if !ok {
-					return true
+					continue
 				}
-				structType, ok := typeSpec.Type.(*ast.StructType)
-				if !ok {
-					return true
-				}
-				dirCache[typeSpec.Name.Name] = structType
 
-				// Extract upstream-reduced-object marker if present
-				if typeSpec.Doc != nil {
-					docText := typeSpec.Doc.Text()
-					if matches := upstreamReducedObjectPattern.FindStringSubmatch(docText); len(matches) > 1 {
-						s.upstreamReducedTypes[typeSpec.Name.Name] = UpstreamReducedMapping{
-							LocalType:    typeSpec.Name.Name,
-							UpstreamType: matches[1],
+				for _, spec := range gd.Specs {
+					typeSpec, ok := spec.(*ast.TypeSpec)
+					if !ok {
+						continue
+					}
+					structType, ok := typeSpec.Type.(*ast.StructType)
+					if !ok {
+						continue
+					}
+					dirCache[typeSpec.Name.Name] = structType
+
+					// Extract upstream-reduced-object marker from the GenDecl comment
+					if gd.Doc != nil {
+						docText := gd.Doc.Text()
+						if matches := upstreamReducedObjectPattern.FindStringSubmatch(docText); len(matches) > 1 {
+							s.upstreamReducedTypes[typeSpec.Name.Name] = UpstreamReducedMapping{
+								LocalType:    typeSpec.Name.Name,
+								UpstreamType: matches[1],
+							}
+							s.logf("  found upstream-reduced type: %s → %s", typeSpec.Name.Name, matches[1])
 						}
-						s.logf("  found upstream-reduced type: %s → %s", typeSpec.Name.Name, matches[1])
 					}
 				}
-
-				return true
-			})
+			}
 		}
 	}
 
