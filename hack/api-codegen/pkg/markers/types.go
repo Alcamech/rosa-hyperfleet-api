@@ -68,6 +68,15 @@ type UpstreamReducedMapping struct {
 	UpstreamType string
 }
 
+// EmbeddedUpstreamType tracks where upstream-reduced types are embedded in CRDs
+type EmbeddedUpstreamType struct {
+	ContainerFieldPath string // e.g., "spec.hostedCluster.configuration"
+	LocalType          string // e.g., "ClusterConfiguration"
+	UpstreamType       string // e.g., "hypershiftv1beta1.ClusterConfiguration"
+	CRDOwner           string // e.g., "Cluster"
+	CRDOwnerGVK        string // e.g., "hyperfleet.io/v1alpha1.Cluster"
+}
+
 // MarkerScanner extracts markers from Go source files
 type MarkerScanner struct {
 	// InputDirs are the directories to scan for Go files
@@ -85,6 +94,10 @@ type MarkerScanner struct {
 	// upstreamReducedTypes maps local type names to their upstream equivalents
 	// Used to identify types that need special handling for nested path generation
 	upstreamReducedTypes map[string]UpstreamReducedMapping
+
+	// embeddedUpstreamTypes tracks where upstream-reduced types are embedded in CRDs
+	// Key: "CRDOwner.ContainerFieldPath.LocalType" to deduplicate
+	embeddedUpstreamTypes map[string]EmbeddedUpstreamType
 
 	// verbose enables detailed logging to stderr
 	verbose bool

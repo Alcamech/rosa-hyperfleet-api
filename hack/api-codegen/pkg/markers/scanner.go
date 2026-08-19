@@ -26,12 +26,13 @@ var (
 // NewScanner creates a new marker scanner
 func NewScanner(inputDirs []string, verbose bool) (*MarkerScanner, error) {
 	scanner := &MarkerScanner{
-		InputDirs:            inputDirs,
-		TypedRegistry:        make(TypedFieldRegistry),
-		crdTypes:             make(map[string]string),
-		typeCache:            make(map[string]*ast.StructType),
-		upstreamReducedTypes: make(map[string]UpstreamReducedMapping),
-		verbose:              verbose,
+		InputDirs:             inputDirs,
+		TypedRegistry:         make(TypedFieldRegistry),
+		crdTypes:              make(map[string]string),
+		typeCache:             make(map[string]*ast.StructType),
+		upstreamReducedTypes:  make(map[string]UpstreamReducedMapping),
+		embeddedUpstreamTypes: make(map[string]EmbeddedUpstreamType),
+		verbose:               verbose,
 	}
 
 	// Initialize scheme and discover CRD types
@@ -235,6 +236,12 @@ func (s *MarkerScanner) isRootType(typeName string) bool {
 		return true
 	}
 
+	// Types marked as upstream-reduced should not be scanned as independent roots
+	// They should only be scanned when embedded in their containing types
+	if s.upstreamReducedTypes[typeName].UpstreamType != "" {
+		return false
+	}
+
 	// Fallback for testing and special types: use the original heuristic
 	// This handles types that are not registered CRDs but should still be scanned as roots
 	return !strings.HasSuffix(typeName, "Spec") &&
@@ -281,6 +288,24 @@ func (s *MarkerScanner) processField(field *ast.Field, parentPath string, visite
 			s.TypedRegistry[ownerKind] = make(map[string]FieldMeta)
 		}
 		s.TypedRegistry[ownerKind][fieldPath] = *meta
+
+		// Check if this field's type is an upstream-reduced type
+		// If so, mark it for synthetic path generation later
+		fieldTypeName := s.extractTypeName(field.Type)
+		if localType := s.getLocalTypeForUpstream(fieldTypeName); localType != "" {
+			// Store the embedding info for synthetic path generation (with deduplication via map key)
+			key := ownerKind + "." + fieldPath + "." + localType
+			if _, exists := s.embeddedUpstreamTypes[key]; !exists {
+				s.embeddedUpstreamTypes[key] = EmbeddedUpstreamType{
+					ContainerFieldPath: fieldPath,
+					LocalType:          localType,
+					UpstreamType:       fieldTypeName,
+					CRDOwner:           ownerKind,
+					CRDOwnerGVK:        ownerGVK,
+				}
+				s.logf("      (field type is upstream-reduced: %s)", localType)
+			}
+		}
 	}
 
 	// Recursively process nested structs
@@ -451,4 +476,103 @@ func (t TypedFieldRegistry) Validate() error {
 	}
 
 	return nil
+}
+
+// generateSyntheticPaths creates full nested paths for upstream-reduced types embedded in CRDs.
+// For example: if Cluster embeds ClusterConfiguration which maps to hypershiftv1beta1.ClusterConfiguration,
+// this duplicates all ClusterConfiguration fields under Cluster with full paths like
+// spec.hostedCluster.configuration.kubelet.maxPods
+func (s *MarkerScanner) generateSyntheticPaths(byOwner map[string][]templateField) {
+	s.logf("  generating synthetic paths for upstream-reduced types")
+	s.logf("    embedded upstream-reduced types found: %d", len(s.embeddedUpstreamTypes))
+
+	// For each embedded upstream-reduced type, generate synthetic paths
+	for _, embedding := range s.embeddedUpstreamTypes {
+		s.logf("    processing embedding: %s.%s (local: %s, upstream: %s)", embedding.CRDOwner, embedding.ContainerFieldPath, embedding.LocalType, embedding.UpstreamType)
+
+		// Get the fields from the local type
+		localFields, ok := byOwner[embedding.LocalType]
+		if !ok {
+			s.logf("      (no fields found for local type %s)", embedding.LocalType)
+			continue
+		}
+
+		// Build a map of existing field paths for deduplication
+		existingPaths := make(map[string]bool)
+		if crdFields, ok := byOwner[embedding.CRDOwner]; ok {
+			for _, field := range crdFields {
+				existingPaths[field.FieldPath] = true
+			}
+		}
+
+		// Generate synthetic paths for each field in the local type
+		// e.g., containerPath="spec.hostedCluster.configuration", field="kubelet.maxPods" → "spec.hostedCluster.configuration.kubelet.maxPods"
+		for _, field := range localFields {
+			syntheticPath := embedding.ContainerFieldPath + "." + field.FieldPath
+
+			// Skip if this path already exists (e.g., when the container field itself has been processed)
+			if existingPaths[syntheticPath] {
+				s.logf("      synthetic (skipped, already exists): %s", syntheticPath)
+				continue
+			}
+
+			syntheticField := field
+			syntheticField.FieldPath = syntheticPath
+
+			// Add to CRD owner's field list
+			byOwner[embedding.CRDOwner] = append(byOwner[embedding.CRDOwner], syntheticField)
+
+			s.logf("      synthetic: %s", syntheticPath)
+		}
+	}
+
+	// Sort each owner's fields by path after adding synthetic ones
+	for owner := range byOwner {
+		sort.Slice(byOwner[owner], func(i, j int) bool {
+			return byOwner[owner][i].FieldPath < byOwner[owner][j].FieldPath
+		})
+	}
+}
+
+// extractTypeName extracts the type name from an ast.Expr (handling pointers, etc.)
+func (s *MarkerScanner) extractTypeName(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.StarExpr:
+		return s.extractTypeName(t.X)
+	case *ast.SelectorExpr:
+		// For selector expressions like hypershiftv1beta1.ClusterConfiguration,
+		// return the full qualified name
+		if sel, ok := t.X.(*ast.Ident); ok {
+			return sel.Name + "." + t.Sel.Name
+		}
+		return ""
+	default:
+		return ""
+	}
+}
+
+// getUpstreamTypeForLocal returns the upstream type for a local type if it's marked as upstream-reduced
+func (s *MarkerScanner) getUpstreamTypeForLocal(localType string) string {
+	if mapping, ok := s.upstreamReducedTypes[localType]; ok {
+		return mapping.UpstreamType
+	}
+	return ""
+}
+
+// getLocalTypeForUpstream returns the local type for an upstream type if we have a mapped equivalent
+func (s *MarkerScanner) getLocalTypeForUpstream(upstreamType string) string {
+	// upstreamType might be "hypershiftv1beta1.ClusterConfiguration" or just "ClusterConfiguration"
+	// Check for exact match in the mappings
+	for localType, mapping := range s.upstreamReducedTypes {
+		if mapping.UpstreamType == upstreamType {
+			return localType
+		}
+		// Also match if upstreamType is just the simple name and mapping.UpstreamType ends with it
+		if !strings.Contains(upstreamType, ".") && strings.HasSuffix(mapping.UpstreamType, "."+upstreamType) {
+			return localType
+		}
+	}
+	return ""
 }
