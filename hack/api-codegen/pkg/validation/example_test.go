@@ -14,7 +14,8 @@ func ExampleValidator_Validate_create() {
 
 	// Customer tries to create a cluster
 	req := &validation.Request{
-		Operation: validation.OperationCreate,
+		Operation:    validation.OperationCreate,
+		ResourceType: "Cluster",
 		Fields: map[string]any{
 			"spec.displayName":      "my-cluster",
 			"spec.deleteProtection": true,
@@ -37,7 +38,8 @@ func ExampleValidator_Validate_serviceSet() {
 
 	// Customer tries to set a service-set field
 	req := &validation.Request{
-		Operation: validation.OperationCreate,
+		Operation:    validation.OperationCreate,
+		ResourceType: "Cluster",
 		Fields: map[string]any{
 			"spec.accountId": "my-account", // This is service-set!
 		},
@@ -65,7 +67,8 @@ func ExampleValidator_Validate_featureGate() {
 
 	// Default customer tries to use a TechPreview feature
 	req := &validation.Request{
-		Operation: validation.OperationCreate,
+		Operation:    validation.OperationCreate,
+		ResourceType: "Cluster",
 		Fields: map[string]any{
 			"spec.tags": map[string]string{"team": "platform"},
 		},
@@ -85,7 +88,8 @@ func ExampleValidator_Validate_featureGateAllowed() {
 
 	// TechPreview customer can use TechPreview features
 	req := &validation.Request{
-		Operation: validation.OperationCreate,
+		Operation:    validation.OperationCreate,
+		ResourceType: "Cluster",
 		Fields: map[string]any{
 			"spec.tags": map[string]string{"team": "platform"},
 		},
@@ -105,13 +109,13 @@ func ExampleValidator_ValidateFieldAccess() {
 	v := validation.NewValidator()
 
 	// Check if a customer can access a gated field
-	err := v.ValidateFieldAccess("spec.tags", featuregate.Default)
+	err := v.ValidateFieldAccess("Cluster", "spec.tags", featuregate.Default)
 	if err != nil {
 		fmt.Println("Default customer cannot access tags field")
 	}
 
 	// TechPreview customer can access it
-	err = v.ValidateFieldAccess("spec.tags", featuregate.TechPreviewNoUpgrade)
+	err = v.ValidateFieldAccess("Cluster", "spec.tags", featuregate.TechPreviewNoUpgrade)
 	if err == nil {
 		fmt.Println("TechPreview customer can access tags field")
 	}
@@ -125,7 +129,7 @@ func ExampleValidator_ValidateFieldAccess() {
 func ExampleValidator_GetFieldMetadata() {
 	v := validation.NewValidator()
 
-	meta, exists := v.GetFieldMetadata("spec.displayName")
+	meta, exists := v.GetFieldMetadata("Cluster", "spec.displayName")
 	if exists {
 		fmt.Printf("Field: %s\n", meta.FieldPath)
 		fmt.Printf("WriteMode: %s\n", meta.WriteMode)

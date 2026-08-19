@@ -13,21 +13,15 @@ import (
 
 // CRDVariantGenerator generates feature-set-specific CRD variants
 type CRDVariantGenerator struct {
-	fieldRegistry map[string]registry.FieldMeta
+	fieldRegistry registry.TypedFieldRegistry
+	resourceType  string
 }
 
-// NewCRDVariantGenerator creates a new CRD variant generator
-func NewCRDVariantGenerator() *CRDVariantGenerator {
-	// Build a flat field registry from the typed registry
-	flatRegistry := make(map[string]registry.FieldMeta)
-	for _, typeFields := range registry.FieldRegistry {
-		for path, meta := range typeFields {
-			flatRegistry[path] = meta
-		}
-	}
-
+// NewCRDVariantGenerator creates a new CRD variant generator for a specific resource type
+func NewCRDVariantGenerator(resourceType string) *CRDVariantGenerator {
 	return &CRDVariantGenerator{
-		fieldRegistry: flatRegistry,
+		fieldRegistry: registry.FieldRegistry,
+		resourceType:  resourceType,
 	}
 }
 
@@ -177,8 +171,15 @@ func (g *CRDVariantGenerator) filterCRDNode(node *yaml.Node, ctx *filterContext)
 
 // shouldIncludeField checks if a field should be included in the given feature set
 func (g *CRDVariantGenerator) shouldIncludeField(fieldPath string, featureSet FeatureSet) bool {
+	// Get fields for this resource type
+	fieldsForType, exists := g.fieldRegistry[g.resourceType]
+	if !exists {
+		// Resource type not in registry - include all fields
+		return true
+	}
+
 	// Check if field is in registry
-	meta, exists := g.fieldRegistry[fieldPath]
+	meta, exists := fieldsForType[fieldPath]
 	if !exists {
 		// Field not in registry - include it (it's a structural field like "properties", "type", etc.)
 		return true

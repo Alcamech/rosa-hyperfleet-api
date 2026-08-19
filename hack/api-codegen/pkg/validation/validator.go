@@ -23,6 +23,9 @@ type Request struct {
 	// Operation is the type of operation (create or update)
 	Operation Operation
 
+	// ResourceType is the CRD Kind being validated (e.g., "Cluster", "NodePool")
+	ResourceType string
+
 	// Fields maps field paths to their values (for validation we only need the paths)
 	Fields map[string]interface{}
 
@@ -78,21 +81,13 @@ func (e ValidationErrors) Error() string {
 
 // Validator validates API requests against field metadata
 type Validator struct {
-	registry map[string]registry.FieldMeta
+	registry registry.TypedFieldRegistry
 }
 
 // NewValidator creates a validator using the generated field registry
 func NewValidator() *Validator {
-	// Build a flat field registry from the typed registry
-	flatRegistry := make(map[string]registry.FieldMeta)
-	for _, typeFields := range registry.FieldRegistry {
-		for path, meta := range typeFields {
-			flatRegistry[path] = meta
-		}
-	}
-
 	return &Validator{
-		registry: flatRegistry,
+		registry: registry.FieldRegistry,
 	}
 }
 
@@ -100,8 +95,15 @@ func NewValidator() *Validator {
 func (v *Validator) Validate(req *Request) error {
 	var errors ValidationErrors
 
+	// Get fields for this resource type
+	fieldsForType, exists := v.registry[req.ResourceType]
+	if !exists {
+		// Resource type not in registry - allow all fields
+		return nil
+	}
+
 	for fieldPath := range req.Fields {
-		meta, exists := v.registry[fieldPath]
+		meta, exists := fieldsForType[fieldPath]
 		if !exists {
 			// Field not in registry - might be a field without markers (allowed)
 			continue
@@ -197,8 +199,14 @@ func (v *Validator) validateWriteMode(fieldPath string, meta registry.FieldMeta,
 }
 
 // ValidateFieldAccess checks if a customer can access a specific field
-func (v *Validator) ValidateFieldAccess(fieldPath string, featureSet featuregate.FeatureSet) error {
-	meta, exists := v.registry[fieldPath]
+func (v *Validator) ValidateFieldAccess(resourceType string, fieldPath string, featureSet featuregate.FeatureSet) error {
+	fieldsForType, exists := v.registry[resourceType]
+	if !exists {
+		// Resource type not in registry - allowed
+		return nil
+	}
+
+	meta, exists := fieldsForType[fieldPath]
 	if !exists {
 		// Field not in registry - allowed
 		return nil
@@ -215,8 +223,13 @@ func (v *Validator) ValidateFieldAccess(fieldPath string, featureSet featuregate
 	return nil
 }
 
-// GetFieldMetadata returns metadata for a field path
-func (v *Validator) GetFieldMetadata(fieldPath string) (registry.FieldMeta, bool) {
-	meta, exists := v.registry[fieldPath]
+// GetFieldMetadata returns metadata for a field path in a resource type
+func (v *Validator) GetFieldMetadata(resourceType string, fieldPath string) (registry.FieldMeta, bool) {
+	fieldsForType, exists := v.registry[resourceType]
+	if !exists {
+		return registry.FieldMeta{}, false
+	}
+
+	meta, exists := fieldsForType[fieldPath]
 	return meta, exists
 }
