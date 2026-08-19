@@ -246,7 +246,7 @@ func (s *MarkerScanner) isRootType(typeName string) bool {
 
 // processStruct walks struct fields and extracts markers
 // ownerKind is the Kind of the CRD that owns these fields (e.g., "Cluster", "NodePool")
-// ownerGVK is the full GVK string (e.g., "hyperfleet.openshift.io/v1alpha1.Cluster")
+// ownerGVK is the full GVK string (e.g., "hyperfleet.io/v1alpha1.Cluster")
 func (s *MarkerScanner) processStruct(_ string, structType *ast.StructType, parentPath string, visited map[string]bool, ownerKind string, ownerGVK string) {
 	for _, field := range structType.Fields.List {
 		s.processField(field, parentPath, visited, ownerKind, ownerGVK)
