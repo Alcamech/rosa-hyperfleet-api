@@ -52,9 +52,6 @@ type FieldMeta struct {
 	OwnerGVK string `json:"ownerGVK"`
 }
 
-// FieldRegistry is a map from field path to its metadata (flat, for backward compatibility during migration)
-type FieldRegistry map[string]FieldMeta
-
 // TypedFieldRegistry maps CRD type kinds to their field metadata
 // Maps: Kind (e.g., "Cluster") → {FieldPath → FieldMeta}
 // This allows per-CRD-type field metadata while supporting different rules for the same field in different contexts

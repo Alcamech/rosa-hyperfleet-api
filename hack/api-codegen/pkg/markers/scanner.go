@@ -448,25 +448,7 @@ func parseStructTag(tag, key string) string {
 	return ""
 }
 
-// Validate checks that all fields in the registry have required markers
-func (r FieldRegistry) Validate() error {
-	var errors []string
-
-	for path, meta := range r {
-		// All visible fields must have a write mode
-		if !meta.Hidden && meta.WriteMode == "" {
-			errors = append(errors, fmt.Sprintf("field %s is missing +hyperfleet:write-mode marker", path))
-		}
-	}
-
-	if len(errors) > 0 {
-		return fmt.Errorf("validation failed:\n  %s", strings.Join(errors, "\n  "))
-	}
-
-	return nil
-}
-
-// ValidateTyped checks that all fields in the typed registry have required markers
+// Validate checks that all fields in the typed registry have required markers
 func (t TypedFieldRegistry) Validate() error {
 	var errors []string
 

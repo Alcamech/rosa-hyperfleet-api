@@ -78,23 +78,25 @@ func (s *MarkerScanner) GenerateJSON(outputFile string) error {
 	return nil
 }
 
-// LoadRegistryFromJSON loads a field registry from a JSON file
-func LoadRegistryFromJSON(jsonFile string) (FieldRegistry, error) {
+// LoadTypedRegistryFromJSON loads a typed field registry from a JSON file
+func LoadTypedRegistryFromJSON(jsonFile string) (TypedFieldRegistry, error) {
 	data, err := os.ReadFile(jsonFile)
 	if err != nil {
 		return nil, fmt.Errorf("reading JSON file: %w", err)
 	}
-	return LoadRegistryFromJSONBytes(data)
+	return LoadTypedRegistryFromJSONBytes(data)
 }
 
-// LoadRegistryFromJSONBytes loads a field registry from raw JSON bytes
-func LoadRegistryFromJSONBytes(data []byte) (FieldRegistry, error) {
+// LoadTypedRegistryFromJSONBytes loads a typed field registry from raw JSON bytes
+func LoadTypedRegistryFromJSONBytes(data []byte) (TypedFieldRegistry, error) {
 	type jsonField struct {
 		FieldPath                  string                 `json:"fieldPath"`
 		WriteMode                  string                 `json:"writeMode,omitempty"`
 		FeatureGate                string                 `json:"featureGate,omitempty"`
 		Hidden                     bool                   `json:"hidden,omitempty"`
 		FeatureGateAwareWriteModes []FeatureGateWriteMode `json:"featureGateAwareWriteModes,omitempty"`
+		OwnerType                  string                 `json:"ownerType"`
+		OwnerGVK                   string                 `json:"ownerGVK"`
 	}
 
 	var fields []jsonField
@@ -102,14 +104,21 @@ func LoadRegistryFromJSONBytes(data []byte) (FieldRegistry, error) {
 		return nil, fmt.Errorf("unmarshaling JSON: %w", err)
 	}
 
-	registry := make(FieldRegistry)
+	// Build typed registry indexed by owner type
+	registry := make(TypedFieldRegistry)
 	for _, field := range fields {
-		registry[field.FieldPath] = FieldMeta{
+		if registry[field.OwnerType] == nil {
+			registry[field.OwnerType] = make(map[string]FieldMeta)
+		}
+
+		registry[field.OwnerType][field.FieldPath] = FieldMeta{
 			FieldPath:                  field.FieldPath,
 			WriteMode:                  WriteMode(field.WriteMode),
 			FeatureGate:                field.FeatureGate,
 			Hidden:                     field.Hidden,
 			FeatureGateAwareWriteModes: field.FeatureGateAwareWriteModes,
+			OwnerType:                  field.OwnerType,
+			OwnerGVK:                   field.OwnerGVK,
 		}
 	}
 
