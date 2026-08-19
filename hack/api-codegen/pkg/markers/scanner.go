@@ -289,7 +289,7 @@ func (s *MarkerScanner) processField(field *ast.Field, parentPath string, visite
 					CRDOwner:           ownerKind,
 					CRDOwnerGVK:        ownerGVK,
 				}
-				s.logf("      (field type is upstream-reduced, will generate synthetic paths for: %s)", localType)
+				s.logf("      (recording embedding for synthetic path generation: %s → %s)", fieldPath, localType)
 			}
 		}
 	}
@@ -526,6 +526,9 @@ func (s *MarkerScanner) generateSyntheticPaths(byOwner map[string][]templateFiel
 
 			syntheticField := field
 			syntheticField.FieldPath = syntheticPath
+			// Update owner context to the CRD that embeds this type
+			syntheticField.OwnerType = embedding.CRDOwner
+			syntheticField.OwnerGVK = embedding.CRDOwnerGVK
 
 			// Add to CRD owner's field list
 			byOwner[embedding.CRDOwner] = append(byOwner[embedding.CRDOwner], syntheticField)
@@ -539,6 +542,70 @@ func (s *MarkerScanner) generateSyntheticPaths(byOwner map[string][]templateFiel
 		sort.Slice(byOwner[owner], func(i, j int) bool {
 			return byOwner[owner][i].FieldPath < byOwner[owner][j].FieldPath
 		})
+	}
+}
+
+// updateRegistryWithSyntheticPaths adds synthetic paths from data.ByOwner back to the TypedRegistry
+// This ensures they're included in both Go and JSON output
+func (s *MarkerScanner) updateRegistryWithSyntheticPaths(byOwner map[string][]templateField) {
+	for owner, templateFields := range byOwner {
+		// Get current registry fields for this owner
+		registryFields, ok := s.TypedRegistry[owner]
+		if !ok {
+			registryFields = make(map[string]FieldMeta)
+			s.TypedRegistry[owner] = registryFields
+		}
+
+		// Collect current field paths to detect which ones are synthetic (new)
+		existingPaths := make(map[string]bool)
+		for path := range registryFields {
+			existingPaths[path] = true
+		}
+
+		// Add any new fields (synthetic paths) back to the registry
+		for _, tfield := range templateFields {
+			if !existingPaths[tfield.FieldPath] {
+				// This is a synthetic field, convert it back to FieldMeta and add to registry
+				writeMode := WriteMode("")
+				switch tfield.WriteMode {
+				case "Mutable":
+					writeMode = Mutable
+				case "Immutable":
+					writeMode = Immutable
+				case "ServiceSet":
+					writeMode = ServiceSet
+				}
+
+				var gatedModes []FeatureGateWriteMode
+				for _, gated := range tfield.GatedWriteModes {
+					gateModeVal := WriteMode("")
+					switch gated.WriteMode {
+					case "Mutable":
+						gateModeVal = Mutable
+					case "Immutable":
+						gateModeVal = Immutable
+					case "ServiceSet":
+						gateModeVal = ServiceSet
+					}
+					gatedModes = append(gatedModes, FeatureGateWriteMode{
+						FeatureGate: gated.FeatureGate,
+						WriteMode:  gateModeVal,
+					})
+				}
+
+				meta := FieldMeta{
+					FieldPath:                  tfield.FieldPath,
+					WriteMode:                  writeMode,
+					FeatureGate:                tfield.FeatureGate,
+					Hidden:                     tfield.Hidden,
+					FeatureGateAwareWriteModes: gatedModes,
+					OwnerType:                  tfield.OwnerType,
+					OwnerGVK:                   tfield.OwnerGVK,
+				}
+
+				registryFields[tfield.FieldPath] = meta
+			}
+		}
 	}
 }
 

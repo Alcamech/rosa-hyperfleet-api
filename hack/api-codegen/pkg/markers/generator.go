@@ -161,6 +161,9 @@ func (s *MarkerScanner) Generate(outputFile string) error {
 	// Generate synthetic full paths for upstream-reduced types embedded in CRDs
 	s.generateSyntheticPaths(data.ByOwner)
 
+	// Update TypedRegistry with synthetic paths so they're included in JSON output
+	s.updateRegistryWithSyntheticPaths(data.ByOwner)
+
 	// Set sorted owners for template
 	data.SortedOwners = owners
 
