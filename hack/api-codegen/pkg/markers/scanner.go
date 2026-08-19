@@ -589,7 +589,7 @@ func (s *MarkerScanner) updateRegistryWithSyntheticPaths(byOwner map[string][]te
 					}
 					gatedModes = append(gatedModes, FeatureGateWriteMode{
 						FeatureGate: gated.FeatureGate,
-						WriteMode:  gateModeVal,
+						WriteMode:   gateModeVal,
 					})
 				}
 
@@ -626,14 +626,6 @@ func (s *MarkerScanner) extractTypeName(expr ast.Expr) string {
 	default:
 		return ""
 	}
-}
-
-// getUpstreamTypeForLocal returns the upstream type for a local type if it's marked as upstream-reduced
-func (s *MarkerScanner) getUpstreamTypeForLocal(localType string) string {
-	if mapping, ok := s.upstreamReducedTypes[localType]; ok {
-		return mapping.UpstreamType
-	}
-	return ""
 }
 
 // getLocalTypeForUpstream returns the local type for an upstream type if we have a mapped equivalent
