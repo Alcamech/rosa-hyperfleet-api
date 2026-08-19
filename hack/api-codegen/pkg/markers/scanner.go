@@ -236,12 +236,6 @@ func (s *MarkerScanner) isRootType(typeName string) bool {
 		return true
 	}
 
-	// Types marked as upstream-reduced should not be scanned as independent roots
-	// They should only be scanned when embedded in their containing types
-	if s.upstreamReducedTypes[typeName].UpstreamType != "" {
-		return false
-	}
-
 	// Fallback for testing and special types: use the original heuristic
 	// This handles types that are not registered CRDs but should still be scanned as roots
 	return !strings.HasSuffix(typeName, "Spec") &&
@@ -275,24 +269,16 @@ func (s *MarkerScanner) processField(field *ast.Field, parentPath string, visite
 		fieldPath = parentPath + "." + jsonName
 	}
 
-	// Extract markers from comments
-	meta := s.extractMarkers(field, fieldPath)
-	if meta != nil {
-		// Set owner context
-		meta.OwnerType = ownerKind
-		meta.OwnerGVK = ownerGVK
-		s.logf("    field: %s  owner=%s  write-mode=%s  hidden=%v  gate=%s", fieldPath, ownerKind, meta.WriteMode, meta.Hidden, meta.FeatureGate)
+	// Check if this field's type is an upstream-reduced type
+	// If so, mark it for synthetic path generation
+	fieldTypeName := s.extractTypeName(field.Type)
+	isUpstreamReduced := false
+	var localType string
 
-		// Add to typed registry
-		if s.TypedRegistry[ownerKind] == nil {
-			s.TypedRegistry[ownerKind] = make(map[string]FieldMeta)
-		}
-		s.TypedRegistry[ownerKind][fieldPath] = *meta
-
-		// Check if this field's type is an upstream-reduced type
-		// If so, mark it for synthetic path generation later
-		fieldTypeName := s.extractTypeName(field.Type)
-		if localType := s.getLocalTypeForUpstream(fieldTypeName); localType != "" {
+	if fieldTypeName != "" {
+		localType = s.getLocalTypeForUpstream(fieldTypeName)
+		if localType != "" {
+			isUpstreamReduced = true
 			// Store the embedding info for synthetic path generation (with deduplication via map key)
 			key := ownerKind + "." + fieldPath + "." + localType
 			if _, exists := s.embeddedUpstreamTypes[key]; !exists {
@@ -303,12 +289,34 @@ func (s *MarkerScanner) processField(field *ast.Field, parentPath string, visite
 					CRDOwner:           ownerKind,
 					CRDOwnerGVK:        ownerGVK,
 				}
-				s.logf("      (field type is upstream-reduced: %s)", localType)
+				s.logf("      (field type is upstream-reduced, will generate synthetic paths for: %s)", localType)
 			}
 		}
 	}
 
-	// Recursively process nested structs
+	// Extract markers for the field
+	meta := s.extractMarkers(field, fieldPath)
+	if meta != nil && !isUpstreamReduced {
+		// Only add non-upstream-reduced fields to registry
+		// Upstream-reduced fields will be synth added via synthetic paths
+		meta.OwnerType = ownerKind
+		meta.OwnerGVK = ownerGVK
+		s.logf("    field: %s  owner=%s  write-mode=%s  hidden=%v  gate=%s", fieldPath, ownerKind, meta.WriteMode, meta.Hidden, meta.FeatureGate)
+
+		// Add to typed registry
+		if s.TypedRegistry[ownerKind] == nil {
+			s.TypedRegistry[ownerKind] = make(map[string]FieldMeta)
+		}
+		s.TypedRegistry[ownerKind][fieldPath] = *meta
+	} else if meta != nil && isUpstreamReduced {
+		// For upstream-reduced container fields, just log the markers but don't add to registry
+		meta.OwnerType = ownerKind
+		meta.OwnerGVK = ownerGVK
+		s.logf("    field: %s (container for upstream-reduced type) owner=%s write-mode=%s", fieldPath, ownerKind, meta.WriteMode)
+		// Container field markers will be reflected in synthetic paths
+	}
+
+	// Recursively process nested structs (including upstream-reduced types for deeper embeddings)
 	s.processNestedType(field.Type, fieldPath, visited, ownerKind, ownerGVK)
 }
 
