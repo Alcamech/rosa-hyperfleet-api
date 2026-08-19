@@ -8,7 +8,12 @@ import (
 )
 
 func newTestValidator(entries map[string]registry.FieldMeta) *FieldValidator {
-	return &FieldValidator{registry: entries}
+	return &FieldValidator{
+		typedRegistry: registry.TypedFieldRegistry{
+			"Test": entries,
+		},
+		resourceType: "Test",
+	}
 }
 
 func TestValidateCreate_RejectsServiceSetFields(t *testing.T) {

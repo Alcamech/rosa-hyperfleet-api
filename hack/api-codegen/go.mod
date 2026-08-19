@@ -3,11 +3,15 @@ module github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen
 go 1.26.3
 
 require (
+	github.com/openshift-online/rosa-hyperfleet-api/api v0.0.0-00010101000000-000000000000
 	github.com/openshift/hypershift/api v0.0.0-20260625052409-9acec4759a16
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apiextensions-apiserver v0.36.0
+	k8s.io/apimachinery v0.36.0
 	sigs.k8s.io/controller-tools v0.21.0
 )
+
+replace github.com/openshift-online/rosa-hyperfleet-api/api => ../../api
 
 require (
 	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
@@ -28,7 +32,6 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	k8s.io/api v0.36.0 // indirect
-	k8s.io/apimachinery v0.36.0 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260706235625-cdb1db5517a0 // indirect
 	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3 // indirect

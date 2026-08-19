@@ -7,7 +7,11 @@ import (
 	"go/token"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
+
+	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 var (
@@ -16,16 +20,81 @@ var (
 	writeModePattern                 = regexp.MustCompile(`\+hyperfleet:write-mode=(mutable|immutable|service-set)`)
 	featureGatePattern               = regexp.MustCompile(`\+openshift:enable:FeatureGate=(\w+)`)
 	featureGateAwareWriteModePattern = regexp.MustCompile(`\+hyperfleet:validation:FeatureGateAwareWriteMode:featureGate="([^"]*)",writeMode="(mutable|immutable|service-set)"`)
+	upstreamReducedObjectPattern     = regexp.MustCompile(`\+hyperfleet:upstream-reduced-object=([^\s]+)`)
 )
 
 // NewScanner creates a new marker scanner
-func NewScanner(inputDirs []string, verbose bool) *MarkerScanner {
-	return &MarkerScanner{
-		InputDirs: inputDirs,
-		Registry:  make(FieldRegistry),
-		typeCache: make(map[string]*ast.StructType),
-		verbose:   verbose,
+func NewScanner(inputDirs []string, verbose bool) (*MarkerScanner, error) {
+	scanner := &MarkerScanner{
+		InputDirs:            inputDirs,
+		TypedRegistry:        make(TypedFieldRegistry),
+		crdTypes:             make(map[string]string),
+		typeCache:            make(map[string]*ast.StructType),
+		upstreamReducedTypes: make(map[string]UpstreamReducedMapping),
+		verbose:              verbose,
 	}
+
+	// Initialize scheme and discover CRD types
+	if err := scanner.discoverCRDTypes(); err != nil {
+		return nil, fmt.Errorf("discovering CRD types: %w", err)
+	}
+
+	return scanner, nil
+}
+
+// discoverCRDTypes initializes the scheme and populates crdTypes map
+// Maps Kind name (e.g., "Cluster") to full GVK string (e.g., "hyperfleet.io/v1alpha1.Cluster")
+func (s *MarkerScanner) discoverCRDTypes() error {
+	scheme := runtime.NewScheme()
+	if err := hyperfleetv1alpha1.AddToScheme(scheme); err != nil {
+		return fmt.Errorf("adding v1alpha1 to scheme: %w", err)
+	}
+
+	// Discover all registered CRD types
+	for gvk := range scheme.AllKnownTypes() {
+		// Skip List types and empty kinds
+		if strings.HasSuffix(gvk.Kind, "List") || gvk.Kind == "" {
+			continue
+		}
+
+		// Store Kind → GVK string mapping (e.g., "Cluster" → "hyperfleet.io/v1alpha1.Cluster")
+		gvkStr := fmt.Sprintf("%s/%s.%s", gvk.Group, gvk.Version, gvk.Kind)
+		s.crdTypes[gvk.Kind] = gvkStr
+		s.logf("discovered CRD type: %s → %s", gvk.Kind, gvkStr)
+	}
+
+	return nil
+}
+
+// inferOwnerFromPassthrough infers the owner CRD and its GVK from a passthrough type name
+// Parses passthrough naming convention to find the owner CRD Kind
+// Examples: "HostedClusterSpecPassthrough" embeds in Cluster.Spec.HostedCluster
+//
+//	"NodePoolSpecPassthrough" embeds in NodePool.Spec.NodePool
+//
+// Uses simple heuristics: match against known CRD types by substring, selecting the most specific match
+func (s *MarkerScanner) inferOwnerFromPassthrough(passthroughType string) (ownerKind string, gvk string) {
+	// Collect and sort kinds for deterministic, specific matching
+	var kinds []string
+	for kind := range s.crdTypes {
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+
+	// Match against known CRD types, preferring the longest (most specific) match
+	var bestMatch string
+	for _, kind := range kinds {
+		// For "HostedClusterSpecPassthrough": "Cluster" matches via substring in "HostedCluster"
+		// For "NodePoolSpecPassthrough": "NodePool" matches
+		if strings.Contains(passthroughType, kind) && len(kind) > len(bestMatch) {
+			bestMatch = kind
+		}
+	}
+
+	if bestMatch != "" {
+		return bestMatch, s.crdTypes[bestMatch]
+	}
+	return "", ""
 }
 
 // logf writes a formatted log line to stderr when verbose mode is enabled.
@@ -43,7 +112,12 @@ func (s *MarkerScanner) Scan() error {
 			return fmt.Errorf("scanning directory %s: %w", dir, err)
 		}
 	}
-	s.logf("scan complete: %d fields in registry", len(s.Registry))
+	// Count total fields across all owner types
+	totalFields := 0
+	for _, fields := range s.TypedRegistry {
+		totalFields += len(fields)
+	}
+	s.logf("scan complete: %d fields in typed registry", totalFields)
 	return nil
 }
 
@@ -80,6 +154,19 @@ func (s *MarkerScanner) scanDir(dir string) error {
 					return true
 				}
 				dirCache[typeSpec.Name.Name] = structType
+
+				// Extract upstream-reduced-object marker if present
+				if typeSpec.Doc != nil {
+					docText := typeSpec.Doc.Text()
+					if matches := upstreamReducedObjectPattern.FindStringSubmatch(docText); len(matches) > 1 {
+						s.upstreamReducedTypes[typeSpec.Name.Name] = UpstreamReducedMapping{
+							LocalType:    typeSpec.Name.Name,
+							UpstreamType: matches[1],
+						}
+						s.logf("  found upstream-reduced type: %s → %s", typeSpec.Name.Name, matches[1])
+					}
+				}
+
 				return true
 			})
 		}
@@ -91,12 +178,19 @@ func (s *MarkerScanner) scanDir(dir string) error {
 
 	// Second pass: process root types once with the full cache available
 	for typeName, structType := range dirCache {
-		if isRootType(typeName) {
+		if s.isRootType(typeName) {
 			visited := make(map[string]bool)
 			visited[typeName] = true
 			prefix := rootTypePrefix(typeName)
-			s.logf("  root type: %s (prefix=%q)", typeName, prefix)
-			s.processStruct(typeName, structType, prefix, visited)
+			// Get GVK for this CRD type, or infer from passthrough type name
+			gvk := s.crdTypes[typeName]
+			ownerKind := typeName
+			if gvk == "" && strings.HasSuffix(typeName, "Passthrough") {
+				// Infer owner from passthrough type name
+				ownerKind, gvk = s.inferOwnerFromPassthrough(typeName)
+			}
+			s.logf("  root type: %s (prefix=%q, gvk=%q)", typeName, prefix, gvk)
+			s.processStruct(typeName, structType, prefix, visited, ownerKind, gvk)
 		}
 	}
 
@@ -122,11 +216,22 @@ func rootTypePrefix(typeName string) string {
 }
 
 // isRootType returns true for types that are entry points for marker scanning.
-// Passthrough types ARE root types since they carry curated markers.
-func isRootType(typeName string) bool {
+// Uses the scheme to determine if a type is a registered CRD (no hardcoded names).
+// Passthrough types are also root types since they carry curated markers.
+// For testing and special cases, types that don't end with Spec, Status, List, or ClusterReference are root types.
+func (s *MarkerScanner) isRootType(typeName string) bool {
+	// Check if type is a registered CRD in the scheme
+	if s.crdTypes[typeName] != "" {
+		return true
+	}
+
+	// Passthrough types are scanned as roots because they carry curated markers
 	if strings.HasSuffix(typeName, "Passthrough") {
 		return true
 	}
+
+	// Fallback for testing and special types: use the original heuristic
+	// This handles types that are not registered CRDs but should still be scanned as roots
 	return !strings.HasSuffix(typeName, "Spec") &&
 		!strings.HasSuffix(typeName, "Status") &&
 		!strings.HasSuffix(typeName, "List") &&
@@ -134,14 +239,16 @@ func isRootType(typeName string) bool {
 }
 
 // processStruct walks struct fields and extracts markers
-func (s *MarkerScanner) processStruct(_ string, structType *ast.StructType, parentPath string, visited map[string]bool) {
+// ownerKind is the Kind of the CRD that owns these fields (e.g., "Cluster", "NodePool")
+// ownerGVK is the full GVK string (e.g., "hyperfleet.openshift.io/v1alpha1.Cluster")
+func (s *MarkerScanner) processStruct(_ string, structType *ast.StructType, parentPath string, visited map[string]bool, ownerKind string, ownerGVK string) {
 	for _, field := range structType.Fields.List {
-		s.processField(field, parentPath, visited)
+		s.processField(field, parentPath, visited, ownerKind, ownerGVK)
 	}
 }
 
 // processField extracts markers from a single field
-func (s *MarkerScanner) processField(field *ast.Field, parentPath string, visited map[string]bool) {
+func (s *MarkerScanner) processField(field *ast.Field, parentPath string, visited map[string]bool, ownerKind string, ownerGVK string) {
 	// Get JSON tag to determine field path
 	jsonName := getJSONName(field)
 	if jsonName == "" || jsonName == "-" {
@@ -159,43 +266,59 @@ func (s *MarkerScanner) processField(field *ast.Field, parentPath string, visite
 	// Extract markers from comments
 	meta := s.extractMarkers(field, fieldPath)
 	if meta != nil {
-		s.logf("    field: %s  write-mode=%s  hidden=%v  gate=%s", fieldPath, meta.WriteMode, meta.Hidden, meta.FeatureGate)
-		s.Registry[fieldPath] = *meta
+		// Set owner context
+		meta.OwnerType = ownerKind
+		meta.OwnerGVK = ownerGVK
+		s.logf("    field: %s  owner=%s  write-mode=%s  hidden=%v  gate=%s", fieldPath, ownerKind, meta.WriteMode, meta.Hidden, meta.FeatureGate)
+
+		// Add to typed registry
+		if s.TypedRegistry[ownerKind] == nil {
+			s.TypedRegistry[ownerKind] = make(map[string]FieldMeta)
+		}
+		s.TypedRegistry[ownerKind][fieldPath] = *meta
 	}
 
 	// Recursively process nested structs
-	s.processNestedType(field.Type, fieldPath, visited)
+	s.processNestedType(field.Type, fieldPath, visited, ownerKind, ownerGVK)
 }
 
 // processNestedType recursively handles nested struct types.
 // visited tracks named types already being traversed to prevent infinite
 // recursion on self-referential or mutually recursive structs.
-func (s *MarkerScanner) processNestedType(expr ast.Expr, fieldPath string, visited map[string]bool) {
+// ownerKind and ownerGVK are propagated through the recursion to track ownership.
+func (s *MarkerScanner) processNestedType(expr ast.Expr, fieldPath string, visited map[string]bool, ownerKind string, ownerGVK string) {
 	switch t := expr.(type) {
 	case *ast.StructType:
 		// Inline struct — no named type to track
-		s.processStruct("", t, fieldPath, visited)
+		s.processStruct("", t, fieldPath, visited, ownerKind, ownerGVK)
 	case *ast.StarExpr:
 		// Pointer to type
-		s.processNestedType(t.X, fieldPath, visited)
+		s.processNestedType(t.X, fieldPath, visited, ownerKind, ownerGVK)
 	case *ast.Ident:
-		// Named type - skip if already visited in this traversal
+		// Named type - skip if already visited in current path (prevents cycles)
+		// But allow re-processing the same type at different field paths with different owners
 		if visited[t.Name] {
 			return
 		}
 		if structType, ok := s.typeCache[t.Name]; ok {
-			visited[t.Name] = true
-			s.processStruct(t.Name, structType, fieldPath, visited)
-			delete(visited, t.Name)
+			// Create new visited scope for nested traversal
+			// Inherits cycle prevention from parent, but allows independent processing of shared types
+			nestedVisited := make(map[string]bool)
+			for k, v := range visited {
+				nestedVisited[k] = v
+			}
+			nestedVisited[t.Name] = true
+			s.processStruct(t.Name, structType, fieldPath, nestedVisited, ownerKind, ownerGVK)
+			// Don't delete from nestedVisited - it's a separate scope
 		}
 	case *ast.SelectorExpr:
 		// External type (e.g., metav1.Time) - skip
 	case *ast.ArrayType:
 		// Array/slice - process element type
-		s.processNestedType(t.Elt, fieldPath, visited)
+		s.processNestedType(t.Elt, fieldPath, visited, ownerKind, ownerGVK)
 	case *ast.MapType:
 		// Map - process value type
-		s.processNestedType(t.Value, fieldPath, visited)
+		s.processNestedType(t.Value, fieldPath, visited, ownerKind, ownerGVK)
 	}
 }
 
@@ -305,10 +428,22 @@ func (r FieldRegistry) Validate() error {
 	return nil
 }
 
-// ValidateAllFields checks that ALL struct fields (not just those with markers) meet requirements
-// This is more strict and should be used in CI
-func (s *MarkerScanner) ValidateAllFields() error {
-	// This would require re-scanning and checking all fields, not just those with markers
-	// For now, just validate what's in the registry
-	return s.Registry.Validate()
+// ValidateTyped checks that all fields in the typed registry have required markers
+func (t TypedFieldRegistry) Validate() error {
+	var errors []string
+
+	for owner, fields := range t {
+		for path, meta := range fields {
+			// All visible fields must have a write mode
+			if !meta.Hidden && meta.WriteMode == "" {
+				errors = append(errors, fmt.Sprintf("%s.%s is missing +hyperfleet:write-mode marker", owner, path))
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("validation failed:\n  %s", strings.Join(errors, "\n  "))
+	}
+
+	return nil
 }

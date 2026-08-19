@@ -11,21 +11,24 @@ import (
 func FilterCRDFields(featureSet FeatureSet) []string {
 	var includedFields []string
 
-	for fieldPath, meta := range registry.FieldRegistry {
-		// Skip hidden fields - they never appear in CRDs
-		if meta.Hidden {
-			continue
-		}
+	// Iterate through all types in the typed registry
+	for _, fields := range registry.FieldRegistry {
+		for fieldPath, meta := range fields {
+			// Skip hidden fields - they never appear in CRDs
+			if meta.Hidden {
+				continue
+			}
 
-		// If field has no gate, it's always included (GA)
-		if meta.FeatureGate == "" {
-			includedFields = append(includedFields, fieldPath)
-			continue
-		}
+			// If field has no gate, it's always included (GA)
+			if meta.FeatureGate == "" {
+				includedFields = append(includedFields, fieldPath)
+				continue
+			}
 
-		// Check if this feature gate is enabled for the feature set
-		if IsGateEnabled(meta.FeatureGate, featureSet) {
-			includedFields = append(includedFields, fieldPath)
+			// Check if this feature gate is enabled for the feature set
+			if IsGateEnabled(meta.FeatureGate, featureSet) {
+				includedFields = append(includedFields, fieldPath)
+			}
 		}
 	}
 
@@ -36,21 +39,24 @@ func FilterCRDFields(featureSet FeatureSet) []string {
 func FieldsForFeatureSet(featureSet FeatureSet) map[string]registry.FieldMeta {
 	result := make(map[string]registry.FieldMeta)
 
-	for fieldPath, meta := range registry.FieldRegistry {
-		// Skip hidden fields
-		if meta.Hidden {
-			continue
-		}
+	// Iterate through all types in the typed registry
+	for _, fields := range registry.FieldRegistry {
+		for fieldPath, meta := range fields {
+			// Skip hidden fields
+			if meta.Hidden {
+				continue
+			}
 
-		// If field has no gate, it's always included (GA)
-		if meta.FeatureGate == "" {
-			result[fieldPath] = meta
-			continue
-		}
+			// If field has no gate, it's always included (GA)
+			if meta.FeatureGate == "" {
+				result[fieldPath] = meta
+				continue
+			}
 
-		// Check if this feature gate is enabled for the feature set
-		if IsGateEnabled(meta.FeatureGate, featureSet) {
-			result[fieldPath] = meta
+			// Check if this feature gate is enabled for the feature set
+			if IsGateEnabled(meta.FeatureGate, featureSet) {
+				result[fieldPath] = meta
+			}
 		}
 	}
 

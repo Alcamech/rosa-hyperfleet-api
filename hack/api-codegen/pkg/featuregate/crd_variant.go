@@ -18,8 +18,16 @@ type CRDVariantGenerator struct {
 
 // NewCRDVariantGenerator creates a new CRD variant generator
 func NewCRDVariantGenerator() *CRDVariantGenerator {
+	// Build a flat field registry from the typed registry
+	flatRegistry := make(map[string]registry.FieldMeta)
+	for _, typeFields := range registry.FieldRegistry {
+		for path, meta := range typeFields {
+			flatRegistry[path] = meta
+		}
+	}
+
 	return &CRDVariantGenerator{
-		fieldRegistry: registry.FieldRegistry,
+		fieldRegistry: flatRegistry,
 	}
 }
 

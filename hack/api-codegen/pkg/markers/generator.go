@@ -23,6 +23,7 @@ import (
 type WriteMode = markers.WriteMode
 type FieldMeta = markers.FieldMeta
 type FeatureGateWriteMode = markers.FeatureGateWriteMode
+type TypedFieldRegistry = markers.TypedFieldRegistry
 
 const (
 	Mutable    = markers.Mutable
@@ -30,25 +31,32 @@ const (
 	ServiceSet = markers.ServiceSet
 )
 
-// FieldRegistry maps field paths to their metadata
-var FieldRegistry = map[string]FieldMeta{
-{{- range .Fields }}
-	"{{ .FieldPath }}": {
-		FieldPath: "{{ .FieldPath }}",
-		{{- if .WriteMode }}
-		WriteMode: {{ .WriteMode }},
-		{{- end }}
-		{{- if .FeatureGate }}
-		FeatureGate: "{{ .FeatureGate }}",
-		{{- end }}
-		{{- if .Hidden }}
-		Hidden: true,
-		{{- end }}
-		{{- if .GatedWriteModes }}
-		FeatureGateAwareWriteModes: []FeatureGateWriteMode{
-			{{- range .GatedWriteModes }}
-			{FeatureGate: "{{ .FeatureGate }}", WriteMode: {{ .WriteMode }}},
+// FieldRegistry is a per-CRD-type field registry that allows different validation rules
+// for the same field path in different resource types (e.g., Cluster vs NodePool)
+var FieldRegistry = TypedFieldRegistry{
+{{- range $owner := .SortedOwners }}
+	"{{ $owner }}": {
+		{{- range $field := index $.ByOwner $owner }}
+		"{{ $field.FieldPath }}": {
+			FieldPath: "{{ $field.FieldPath }}",
+			{{- if $field.WriteMode }}
+			WriteMode: {{ $field.WriteMode }},
 			{{- end }}
+			{{- if $field.FeatureGate }}
+			FeatureGate: "{{ $field.FeatureGate }}",
+			{{- end }}
+			{{- if $field.Hidden }}
+			Hidden: true,
+			{{- end }}
+			{{- if $field.GatedWriteModes }}
+			FeatureGateAwareWriteModes: []FeatureGateWriteMode{
+				{{- range $gated := $field.GatedWriteModes }}
+				{FeatureGate: "{{ $gated.FeatureGate }}", WriteMode: {{ $gated.WriteMode }}},
+				{{- end }}
+			},
+			{{- end }}
+			OwnerType: "{{ $field.OwnerType }}",
+			OwnerGVK: "{{ $field.OwnerGVK }}",
 		},
 		{{- end }}
 	},
@@ -57,7 +65,8 @@ var FieldRegistry = map[string]FieldMeta{
 `
 
 type templateData struct {
-	Fields []templateField
+	ByOwner      map[string][]templateField
+	SortedOwners []string
 }
 
 type templateField struct {
@@ -66,6 +75,8 @@ type templateField struct {
 	FeatureGate     string
 	Hidden          bool
 	GatedWriteModes []templateGatedWriteMode
+	OwnerType       string
+	OwnerGVK        string
 }
 
 type templateGatedWriteMode struct {
@@ -83,53 +94,72 @@ func (s *MarkerScanner) Generate(outputFile string) error {
 
 	// Prepare template data
 	data := templateData{
-		Fields: make([]templateField, 0, len(s.Registry)),
+		ByOwner: make(map[string][]templateField),
 	}
 
-	// Sort fields for deterministic output
-	var paths []string
-	for path := range s.Registry {
-		paths = append(paths, path)
+	// Collect all owner types
+	var owners []string
+	for owner := range s.TypedRegistry {
+		owners = append(owners, owner)
 	}
-	sort.Strings(paths)
+	sort.Strings(owners)
 
-	for _, path := range paths {
-		meta := s.Registry[path]
-		field := templateField{
-			FieldPath:   meta.FieldPath,
-			FeatureGate: meta.FeatureGate,
-			Hidden:      meta.Hidden,
+	// Process each owner type and its fields
+	for _, owner := range owners {
+		fields := s.TypedRegistry[owner]
+
+		// Collect and sort field paths for this owner
+		var paths []string
+		for path := range fields {
+			paths = append(paths, path)
 		}
+		sort.Strings(paths)
 
-		// Convert WriteMode to const reference
-		switch meta.WriteMode {
-		case Mutable:
-			field.WriteMode = "Mutable"
-		case Immutable:
-			field.WriteMode = "Immutable"
-		case ServiceSet:
-			field.WriteMode = "ServiceSet"
-		}
-
-		// Convert FeatureGateAwareWriteModes
-		for _, gated := range meta.FeatureGateAwareWriteModes {
-			var writeModeStr string
-			switch gated.WriteMode {
-			case Mutable:
-				writeModeStr = "Mutable"
-			case Immutable:
-				writeModeStr = "Immutable"
-			case ServiceSet:
-				writeModeStr = "ServiceSet"
+		// Process each field
+		for _, path := range paths {
+			meta := fields[path]
+			field := templateField{
+				FieldPath:   meta.FieldPath,
+				FeatureGate: meta.FeatureGate,
+				Hidden:      meta.Hidden,
+				OwnerType:   meta.OwnerType,
+				OwnerGVK:    meta.OwnerGVK,
 			}
-			field.GatedWriteModes = append(field.GatedWriteModes, templateGatedWriteMode{
-				FeatureGate: gated.FeatureGate,
-				WriteMode:   writeModeStr,
-			})
-		}
 
-		data.Fields = append(data.Fields, field)
+			// Convert WriteMode to const reference
+			switch meta.WriteMode {
+			case Mutable:
+				field.WriteMode = "Mutable"
+			case Immutable:
+				field.WriteMode = "Immutable"
+			case ServiceSet:
+				field.WriteMode = "ServiceSet"
+			}
+
+			// Convert FeatureGateAwareWriteModes
+			for _, gated := range meta.FeatureGateAwareWriteModes {
+				var writeModeStr string
+				switch gated.WriteMode {
+				case Mutable:
+					writeModeStr = "Mutable"
+				case Immutable:
+					writeModeStr = "Immutable"
+				case ServiceSet:
+					writeModeStr = "ServiceSet"
+				}
+				field.GatedWriteModes = append(field.GatedWriteModes, templateGatedWriteMode{
+					FeatureGate: gated.FeatureGate,
+					WriteMode:   writeModeStr,
+				})
+			}
+
+			// Populate ByOwner map for typed registry
+			data.ByOwner[owner] = append(data.ByOwner[owner], field)
+		}
 	}
+
+	// Set sorted owners for template
+	data.SortedOwners = owners
 
 	// Execute template
 	tmpl, err := template.New("registry").Parse(registryTemplate)

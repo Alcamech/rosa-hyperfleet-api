@@ -16,32 +16,52 @@ func (s *MarkerScanner) GenerateJSON(outputFile string) error {
 		return fmt.Errorf("creating output directory: %w", err)
 	}
 
-	// Convert registry to sorted slice for deterministic output
+	// Convert typed registry to sorted structure for deterministic output
 	type jsonField struct {
 		FieldPath                  string                 `json:"fieldPath"`
 		WriteMode                  string                 `json:"writeMode,omitempty"`
 		FeatureGate                string                 `json:"featureGate,omitempty"`
 		Hidden                     bool                   `json:"hidden,omitempty"`
 		FeatureGateAwareWriteModes []FeatureGateWriteMode `json:"featureGateAwareWriteModes,omitempty"`
+		OwnerType                  string                 `json:"ownerType"`
+		OwnerGVK                   string                 `json:"ownerGVK"`
 	}
 
+	// Collect all fields with their owners
 	var fields []jsonField
-	var paths []string
-	for path := range s.Registry {
-		paths = append(paths, path)
-	}
-	sort.Strings(paths)
 
-	for _, path := range paths {
-		meta := s.Registry[path]
-		field := jsonField{
-			FieldPath:                  meta.FieldPath,
-			WriteMode:                  string(meta.WriteMode),
-			FeatureGate:                meta.FeatureGate,
-			Hidden:                     meta.Hidden,
-			FeatureGateAwareWriteModes: meta.FeatureGateAwareWriteModes,
+	// Sort owners for deterministic output
+	var owners []string
+	for owner := range s.TypedRegistry {
+		owners = append(owners, owner)
+	}
+	sort.Strings(owners)
+
+	// Process each owner type
+	for _, owner := range owners {
+		ownerFields := s.TypedRegistry[owner]
+
+		// Sort field paths for this owner
+		var paths []string
+		for path := range ownerFields {
+			paths = append(paths, path)
 		}
-		fields = append(fields, field)
+		sort.Strings(paths)
+
+		// Add each field to the output
+		for _, path := range paths {
+			meta := ownerFields[path]
+			field := jsonField{
+				FieldPath:                  meta.FieldPath,
+				WriteMode:                  string(meta.WriteMode),
+				FeatureGate:                meta.FeatureGate,
+				Hidden:                     meta.Hidden,
+				FeatureGateAwareWriteModes: meta.FeatureGateAwareWriteModes,
+				OwnerType:                  meta.OwnerType,
+				OwnerGVK:                   meta.OwnerGVK,
+			}
+			fields = append(fields, field)
+		}
 	}
 
 	// Marshal to JSON with indentation

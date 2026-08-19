@@ -7,6 +7,7 @@ import (
 // ClusterConfiguration specifies configuration for individual OCP components in the cluster.
 // This is a HyperFleet-owned mirror of hypershiftv1beta1.ClusterConfiguration that allows
 // us to add granular markers to nested fields like kubelet config.
+// +hyperfleet:upstream-reduced-object=hypershiftv1beta1.ClusterConfiguration
 type ClusterConfiguration struct {
 	// apiServer contains advanced network settings for the API server.
 	// +k8s:openapi-gen=false
@@ -63,6 +64,7 @@ type ClusterConfiguration struct {
 }
 
 // KubeletConfig specifies kubelet configuration with granular markers for customer control.
+// +hyperfleet:upstream-reduced-object=hypershiftv1beta1.KubeletConfig
 type KubeletConfig struct {
 	// +hyperfleet:write-mode=mutable
 	MaxPods *int32 `json:"maxPods,omitempty"`
@@ -175,6 +177,7 @@ type SchedulerConfiguration struct{}
 type ProxyConfiguration struct{}
 
 // MachineConfigSpec specifies machine-level configuration.
+// +hyperfleet:upstream-reduced-object=hypershiftv1beta1.MachineConfigSpec
 type MachineConfigSpec struct {
 	// +openshift:enable:FeatureGate=HyperFleetMachineConfig
 	// +hyperfleet:write-mode=immutable

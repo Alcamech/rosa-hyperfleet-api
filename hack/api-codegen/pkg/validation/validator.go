@@ -83,8 +83,16 @@ type Validator struct {
 
 // NewValidator creates a validator using the generated field registry
 func NewValidator() *Validator {
+	// Build a flat field registry from the typed registry
+	flatRegistry := make(map[string]registry.FieldMeta)
+	for _, typeFields := range registry.FieldRegistry {
+		for path, meta := range typeFields {
+			flatRegistry[path] = meta
+		}
+	}
+
 	return &Validator{
-		registry: registry.FieldRegistry,
+		registry: flatRegistry,
 	}
 }
 

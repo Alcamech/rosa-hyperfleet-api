@@ -42,21 +42,49 @@ type FieldMeta struct {
 	// FeatureGateAwareWriteModes allows write-mode to vary based on enabled feature gates
 	// Empty FeatureGate in an entry means "default" (when no gates are enabled)
 	FeatureGateAwareWriteModes []FeatureGateWriteMode `json:"featureGateAwareWriteModes,omitempty"`
+
+	// OwnerType is the Kind of the CRD that owns this field (e.g., "Cluster", "NodePool")
+	// For shared config types, this is the specific CRD context where the field appears
+	OwnerType string `json:"ownerType"`
+
+	// OwnerGVK is the GroupVersionKind of the CRD that owns this field
+	// (e.g., "hyperfleet.io/v1alpha1.Cluster")
+	OwnerGVK string `json:"ownerGVK"`
 }
 
-// FieldRegistry is a map from field path to its metadata
+// FieldRegistry is a map from field path to its metadata (flat, for backward compatibility during migration)
 type FieldRegistry map[string]FieldMeta
+
+// TypedFieldRegistry maps CRD type kinds to their field metadata
+// Maps: Kind (e.g., "Cluster") → {FieldPath → FieldMeta}
+// This allows per-CRD-type field metadata while supporting different rules for the same field in different contexts
+type TypedFieldRegistry map[string]map[string]FieldMeta
+
+// UpstreamReducedMapping tracks local types that mirror upstream types
+type UpstreamReducedMapping struct {
+	// LocalType is the name of the local reduced type (e.g., "ClusterConfiguration")
+	LocalType string
+	// UpstreamType is the upstream type reference (e.g., "hypershiftv1beta1.ClusterConfiguration")
+	UpstreamType string
+}
 
 // MarkerScanner extracts markers from Go source files
 type MarkerScanner struct {
 	// InputDirs are the directories to scan for Go files
 	InputDirs []string
 
-	// Registry is the collected field metadata
-	Registry FieldRegistry
+	// TypedRegistry is the per-CRD-type field metadata
+	TypedRegistry TypedFieldRegistry
+
+	// crdTypes maps Kind names to their GroupVersionKind (populated from scheme)
+	crdTypes map[string]string
 
 	// typeCache maps type names to their struct definitions
 	typeCache map[string]*ast.StructType
+
+	// upstreamReducedTypes maps local type names to their upstream equivalents
+	// Used to identify types that need special handling for nested path generation
+	upstreamReducedTypes map[string]UpstreamReducedMapping
 
 	// verbose enables detailed logging to stderr
 	verbose bool

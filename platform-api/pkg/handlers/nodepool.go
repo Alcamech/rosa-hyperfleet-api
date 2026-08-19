@@ -27,7 +27,7 @@ type NodePoolHandler struct {
 func NewNodePoolHandler(db *hyperfleetdb.Client, logger *slog.Logger) *NodePoolHandler {
 	return &NodePoolHandler{
 		db:        db,
-		validator: validation.NewFieldValidator(),
+		validator: validation.NewFieldValidator("NodePool"),
 		logger:    logger,
 	}
 }
