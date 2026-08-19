@@ -36,7 +36,7 @@ func NewClusterHandler(db *hyperfleetdb.Client, oidcIssuerBaseURL string, defaul
 		db:                       db,
 		oidcIssuerBaseURL:        oidcIssuerBaseURL,
 		defaultClusterExpiration: defaultClusterExpiration,
-		validator:                validation.NewFieldValidator(),
+		validator:                validation.NewFieldValidator("Cluster"),
 		logger:                   logger,
 		generateID:               func() string { return uuid.New().String() },
 	}

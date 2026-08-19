@@ -12,7 +12,7 @@ func TestLoadHyperShiftTypes(t *testing.T) {
 	gen, err := NewGeneratorFromImportPath(
 		"github.com/openshift/hypershift/api/hypershift/v1beta1",
 		[]string{"HostedClusterSpec"},
-		make(markers.FieldRegistry),
+		make(markers.TypedFieldRegistry),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create generator: %v", err)
@@ -30,34 +30,40 @@ func TestLoadHyperShiftTypes(t *testing.T) {
 }
 
 func TestGetMarkersForField_WithRegistry(t *testing.T) {
-	registry := markers.FieldRegistry{
-		"spec.hostedCluster.autoNode": markers.FieldMeta{
-			FieldPath: "spec.hostedCluster.autoNode",
-			WriteMode: markers.ServiceSet,
-			Hidden:    false,
-		},
-		"spec.hostedCluster.release": markers.FieldMeta{
-			FieldPath: "spec.hostedCluster.release",
-			WriteMode: markers.ServiceSet,
-			Hidden:    true,
-		},
-		"spec.hostedCluster.configuration": markers.FieldMeta{
-			FieldPath: "spec.hostedCluster.configuration",
-			WriteMode: markers.ServiceSet,
-			Hidden:    false,
-		},
-		"spec.hostedCluster.etcd": markers.FieldMeta{
-			FieldPath:   "spec.hostedCluster.etcd",
-			WriteMode:   markers.Mutable,
-			FeatureGate: "HyperFleetEtcd",
-			Hidden:      false,
+	registry := markers.TypedFieldRegistry{
+		"Cluster": {
+			"spec.hostedCluster.autoNode": markers.FieldMeta{
+				FieldPath: "spec.hostedCluster.autoNode",
+				WriteMode: markers.ServiceSet,
+				Hidden:    false,
+				OwnerType: "Cluster",
+			},
+			"spec.hostedCluster.release": markers.FieldMeta{
+				FieldPath: "spec.hostedCluster.release",
+				WriteMode: markers.ServiceSet,
+				Hidden:    true,
+				OwnerType: "Cluster",
+			},
+			"spec.hostedCluster.configuration": markers.FieldMeta{
+				FieldPath: "spec.hostedCluster.configuration",
+				WriteMode: markers.ServiceSet,
+				Hidden:    false,
+				OwnerType: "Cluster",
+			},
+			"spec.hostedCluster.etcd": markers.FieldMeta{
+				FieldPath:   "spec.hostedCluster.etcd",
+				WriteMode:   markers.Mutable,
+				FeatureGate: "HyperFleetEtcd",
+				Hidden:      false,
+				OwnerType:   "Cluster",
+			},
 		},
 	}
 
 	gen := &Generator{
-		Registry:    registry,
-		FieldPrefix: "spec.hostedCluster",
-		parsedFiles: make(map[string]*ast.File),
+		TypedRegistry: registry,
+		FieldPrefix:   "spec.hostedCluster",
+		parsedFiles:   make(map[string]*ast.File),
 	}
 
 	tests := []struct {
@@ -127,17 +133,20 @@ func TestGetMarkersForField_WithRegistry(t *testing.T) {
 }
 
 func TestGetMarkersForField_NoPrefix(t *testing.T) {
-	registry := markers.FieldRegistry{
-		"autoNode": markers.FieldMeta{
-			FieldPath: "autoNode",
-			WriteMode: markers.ServiceSet,
-			Hidden:    false,
+	registry := markers.TypedFieldRegistry{
+		"Cluster": {
+			"autoNode": markers.FieldMeta{
+				FieldPath: "autoNode",
+				WriteMode: markers.ServiceSet,
+				Hidden:    false,
+				OwnerType: "Cluster",
+			},
 		},
 	}
 
 	gen := &Generator{
-		Registry:    registry,
-		parsedFiles: make(map[string]*ast.File),
+		TypedRegistry: registry,
+		parsedFiles:   make(map[string]*ast.File),
 	}
 
 	m := gen.getMarkersForField("autoNode")
@@ -170,7 +179,7 @@ func TestGenerateTypeDef(t *testing.T) {
 	gen, err := NewGeneratorFromImportPath(
 		"github.com/openshift/hypershift/api/hypershift/v1beta1",
 		[]string{"HostedClusterSpec"},
-		make(markers.FieldRegistry),
+		make(markers.TypedFieldRegistry),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create generator: %v", err)

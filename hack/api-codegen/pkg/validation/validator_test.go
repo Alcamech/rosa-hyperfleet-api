@@ -76,20 +76,24 @@ func TestValidator_Validate_WriteMode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a test validator with a single field
+			// Create a test validator with a single field for Cluster resource type
 			v := &Validator{
-				registry: map[string]registry.FieldMeta{
-					tt.fieldPath: {
-						FieldPath: tt.fieldPath,
-						WriteMode: tt.writeMode,
+				registry: registry.TypedFieldRegistry{
+					"Cluster": {
+						tt.fieldPath: {
+							FieldPath: tt.fieldPath,
+							WriteMode: tt.writeMode,
+							OwnerType: "Cluster",
+						},
 					},
 				},
 			}
 
 			req := &Request{
-				Operation:  tt.operation,
-				Fields:     map[string]interface{}{tt.fieldPath: "test-value"},
-				FeatureSet: featuregate.Default,
+				Operation:    tt.operation,
+				ResourceType: "Cluster",
+				Fields:       map[string]interface{}{tt.fieldPath: "test-value"},
+				FeatureSet:   featuregate.Default,
 			}
 
 			if tt.existsInOld {
@@ -152,19 +156,23 @@ func TestValidator_Validate_FeatureGates(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			v := &Validator{
-				registry: map[string]registry.FieldMeta{
-					tt.fieldPath: {
-						FieldPath:   tt.fieldPath,
-						WriteMode:   registry.Mutable,
-						FeatureGate: tt.featureGate,
+				registry: registry.TypedFieldRegistry{
+					"Cluster": {
+						tt.fieldPath: {
+							FieldPath:   tt.fieldPath,
+							WriteMode:   registry.Mutable,
+							FeatureGate: tt.featureGate,
+							OwnerType:   "Cluster",
+						},
 					},
 				},
 			}
 
 			req := &Request{
-				Operation:  OperationCreate,
-				Fields:     map[string]interface{}{tt.fieldPath: "test-value"},
-				FeatureSet: tt.featureSet,
+				Operation:    OperationCreate,
+				ResourceType: "Cluster",
+				Fields:       map[string]interface{}{tt.fieldPath: "test-value"},
+				FeatureSet:   tt.featureSet,
 			}
 
 			err := v.Validate(req)
@@ -183,25 +191,31 @@ func TestValidator_Validate_FeatureGates(t *testing.T) {
 
 func TestValidator_Validate_MultipleErrors(t *testing.T) {
 	v := &Validator{
-		registry: map[string]registry.FieldMeta{
-			"spec.accountId": {
-				FieldPath: "spec.accountId",
-				WriteMode: registry.ServiceSet,
-			},
-			"spec.internalId": {
-				FieldPath: "spec.internalId",
-				WriteMode: registry.ServiceSet,
-			},
-			"spec.tags": {
-				FieldPath:   "spec.tags",
-				WriteMode:   registry.Mutable,
-				FeatureGate: "HyperFleetAutoScaling",
+		registry: registry.TypedFieldRegistry{
+			"Cluster": {
+				"spec.accountId": {
+					FieldPath: "spec.accountId",
+					WriteMode: registry.ServiceSet,
+					OwnerType: "Cluster",
+				},
+				"spec.internalId": {
+					FieldPath: "spec.internalId",
+					WriteMode: registry.ServiceSet,
+					OwnerType: "Cluster",
+				},
+				"spec.tags": {
+					FieldPath:   "spec.tags",
+					WriteMode:   registry.Mutable,
+					FeatureGate: "HyperFleetAutoScaling",
+					OwnerType:   "Cluster",
+				},
 			},
 		},
 	}
 
 	req := &Request{
-		Operation: OperationCreate,
+		Operation:    OperationCreate,
+		ResourceType: "Cluster",
 		Fields: map[string]interface{}{
 			"spec.accountId":  "test-account",
 			"spec.internalId": "test-id",
@@ -237,15 +251,19 @@ func TestValidator_Validate_MultipleErrors(t *testing.T) {
 
 func TestValidator_ValidateFieldAccess(t *testing.T) {
 	v := &Validator{
-		registry: map[string]registry.FieldMeta{
-			"spec.tags": {
-				FieldPath:   "spec.tags",
-				WriteMode:   registry.Mutable,
-				FeatureGate: "HyperFleetAutoScaling",
-			},
-			"spec.displayName": {
-				FieldPath: "spec.displayName",
-				WriteMode: registry.Mutable,
+		registry: registry.TypedFieldRegistry{
+			"Cluster": {
+				"spec.tags": {
+					FieldPath:   "spec.tags",
+					WriteMode:   registry.Mutable,
+					FeatureGate: "HyperFleetAutoScaling",
+					OwnerType:   "Cluster",
+				},
+				"spec.displayName": {
+					FieldPath: "spec.displayName",
+					WriteMode: registry.Mutable,
+					OwnerType: "Cluster",
+				},
 			},
 		},
 	}
@@ -284,7 +302,7 @@ func TestValidator_ValidateFieldAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := v.ValidateFieldAccess(tt.fieldPath, tt.featureSet)
+			err := v.ValidateFieldAccess("Cluster", tt.fieldPath, tt.featureSet)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateFieldAccess() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -294,16 +312,19 @@ func TestValidator_ValidateFieldAccess(t *testing.T) {
 
 func TestValidator_GetFieldMetadata(t *testing.T) {
 	v := &Validator{
-		registry: map[string]registry.FieldMeta{
-			"spec.name": {
-				FieldPath: "spec.name",
-				WriteMode: registry.Immutable,
+		registry: registry.TypedFieldRegistry{
+			"Cluster": {
+				"spec.name": {
+					FieldPath: "spec.name",
+					WriteMode: registry.Immutable,
+					OwnerType: "Cluster",
+				},
 			},
 		},
 	}
 
 	// Field exists
-	meta, exists := v.GetFieldMetadata("spec.name")
+	meta, exists := v.GetFieldMetadata("Cluster", "spec.name")
 	if !exists {
 		t.Error("expected field to exist")
 	}
@@ -312,7 +333,7 @@ func TestValidator_GetFieldMetadata(t *testing.T) {
 	}
 
 	// Field doesn't exist
-	_, exists = v.GetFieldMetadata("spec.unknown")
+	_, exists = v.GetFieldMetadata("Cluster", "spec.unknown")
 	if exists {
 		t.Error("expected field to not exist")
 	}
@@ -326,9 +347,9 @@ func TestNewValidator_UsesGeneratedRegistry(t *testing.T) {
 
 	// Verify it's using the real generated registry by checking a known field
 	// This tests that the integration with pkg/registry works
-	meta, exists := v.GetFieldMetadata("spec.displayName")
+	meta, exists := v.GetFieldMetadata("Cluster", "spec.displayName")
 	if !exists {
-		t.Error("expected spec.displayName to exist in generated registry")
+		t.Error("expected spec.displayName to exist in generated registry for Cluster")
 	}
 	if meta.WriteMode != registry.Mutable {
 		t.Errorf("expected spec.displayName to be Mutable, got %v", meta.WriteMode)

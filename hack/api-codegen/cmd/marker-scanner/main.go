@@ -37,28 +37,48 @@ func main() {
 	}
 
 	// Create scanner and scan directories
-	scanner := markers.NewScanner(dirs, verbose)
+	scanner, err := markers.NewScanner(dirs, verbose)
+	if err != nil {
+		panic(fmt.Sprintf("Error creating scanner: %v", err))
+	}
 
 	log.Printf("Scanning directories: %v", dirs)
 	if err := scanner.Scan(); err != nil {
 		log.Fatalf("Error scanning: %v", err)
 	}
 
-	log.Printf("Found %d fields with markers", len(scanner.Registry))
+	// Count total fields across all owner types
+	totalFields := 0
+	for _, fields := range scanner.TypedRegistry {
+		totalFields += len(fields)
+	}
+	log.Printf("Found %d fields with markers across %d CRD types", totalFields, len(scanner.TypedRegistry))
 
 	// Show scanned fields if verbose
 	if verbose {
-		fmt.Println()
-		fmt.Println("=== Scanned Fields ===")
-		fmt.Println()
-		printRegistryTable(scanner.Registry)
-		printRegistryStats(scanner.Registry)
-		fmt.Println()
+		if _, err := fmt.Println(); err != nil {
+			log.Fatalf("Output error: %v", err)
+		}
+		if _, err := fmt.Println("=== Scanned Fields ==="); err != nil {
+			log.Fatalf("Output error: %v", err)
+		}
+		if _, err := fmt.Println(); err != nil {
+			log.Fatalf("Output error: %v", err)
+		}
+		if err := printTypedRegistryTable(scanner.TypedRegistry); err != nil {
+			log.Fatalf("Output error: %v", err)
+		}
+		if err := printTypedRegistryStats(scanner.TypedRegistry); err != nil {
+			log.Fatalf("Output error: %v", err)
+		}
+		if _, err := fmt.Println(); err != nil {
+			log.Fatalf("Output error: %v", err)
+		}
 	}
 
 	// Validate if requested
 	if validate {
-		if err := scanner.Registry.Validate(); err != nil {
+		if err := scanner.TypedRegistry.Validate(); err != nil {
 			log.Fatalf("Validation failed: %v", err)
 		}
 		log.Println("Validation passed")
@@ -83,87 +103,150 @@ func main() {
 
 	// Show what was generated if verbose
 	if verbose {
-		fmt.Println()
-		fmt.Println("=== Generated Registry Contents ===")
-		fmt.Printf("File: %s\n", outputFile)
-		fmt.Printf("Package: registry\n")
-		fmt.Printf("Exported: FieldRegistry map[string]FieldMeta\n")
-		fmt.Println()
-		fmt.Println("The generated file contains:")
-		printRegistryTable(scanner.Registry)
-		printRegistryStats(scanner.Registry)
+		if _, err := fmt.Println(); err != nil {
+			log.Fatalf("Output error: %v", err)
+		}
+		if _, err := fmt.Println("=== Generated Registry Contents ==="); err != nil {
+			log.Fatalf("Output error: %v", err)
+		}
+		if _, err := fmt.Printf("File: %s\n", outputFile); err != nil {
+			log.Fatalf("Output error: %v", err)
+		}
+		if _, err := fmt.Printf("Package: registry\n"); err != nil {
+			log.Fatalf("Output error: %v", err)
+		}
+		if _, err := fmt.Printf("Exported: FieldRegistry TypedFieldRegistry (map[string]map[string]FieldMeta)\n"); err != nil {
+			log.Fatalf("Output error: %v", err)
+		}
+		if _, err := fmt.Println(); err != nil {
+			log.Fatalf("Output error: %v", err)
+		}
+		if _, err := fmt.Println("The generated file contains:"); err != nil {
+			log.Fatalf("Output error: %v", err)
+		}
+		if err := printTypedRegistryTable(scanner.TypedRegistry); err != nil {
+			log.Fatalf("Output error: %v", err)
+		}
+		if err := printTypedRegistryStats(scanner.TypedRegistry); err != nil {
+			log.Fatalf("Output error: %v", err)
+		}
 	}
 }
 
-// printRegistryTable displays the field registry as a formatted table
-func printRegistryTable(registry markers.FieldRegistry) {
-	// Sort field paths
-	var paths []string
-	for path := range registry {
-		paths = append(paths, path)
+// printTypedRegistryTable displays the typed field registry as a formatted table
+func printTypedRegistryTable(registry markers.TypedFieldRegistry) error {
+	// Sort owner types
+	var owners []string
+	for owner := range registry {
+		owners = append(owners, owner)
 	}
-	sort.Strings(paths)
+	sort.Strings(owners)
 
 	// Create table writer
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "FIELD PATH\tWRITE MODE\tFEATURE GATE\tHIDDEN")
-	_, _ = fmt.Fprintln(w, "----------\t----------\t------------\t------")
-
-	// Print each field
-	for _, path := range paths {
-		meta := registry[path]
-
-		writeMode := string(meta.WriteMode)
-		if writeMode == "" {
-			writeMode = "-"
-		}
-
-		featureGate := meta.FeatureGate
-		if featureGate == "" {
-			featureGate = "-"
-		}
-
-		hidden := "no"
-		if meta.Hidden {
-			hidden = "yes"
-		}
-
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", path, writeMode, featureGate, hidden)
+	if _, err := fmt.Fprintln(w, "OWNER TYPE\tFIELD PATH\tWRITE MODE\tFEATURE GATE\tGATED WRITE MODES\tHIDDEN"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "-----------\t-----------\t-----------\t-----------\t-----------\t------"); err != nil {
+		return err
 	}
 
-	_ = w.Flush()
+	// Print each owner type and its fields
+	for _, owner := range owners {
+		fields := registry[owner]
+
+		// Sort field paths
+		var paths []string
+		for path := range fields {
+			paths = append(paths, path)
+		}
+		sort.Strings(paths)
+
+		// Print each field
+		for _, path := range paths {
+			meta := fields[path]
+
+			writeMode := string(meta.WriteMode)
+			if writeMode == "" {
+				writeMode = "-"
+			}
+
+			featureGate := meta.FeatureGate
+			if featureGate == "" {
+				featureGate = "-"
+			}
+
+			gatedWriteModes := "-"
+			if len(meta.FeatureGateAwareWriteModes) > 0 {
+				var modes []string
+				for _, gated := range meta.FeatureGateAwareWriteModes {
+					modes = append(modes, fmt.Sprintf("%s:%s", gated.FeatureGate, gated.WriteMode))
+				}
+				gatedWriteModes = strings.Join(modes, ";")
+			}
+
+			hidden := "no"
+			if meta.Hidden {
+				hidden = "yes"
+			}
+
+			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", owner, path, writeMode, featureGate, gatedWriteModes, hidden); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	return nil
 }
 
-// printRegistryStats displays summary statistics about the registry
-func printRegistryStats(registry markers.FieldRegistry) {
+// printTypedRegistryStats displays summary statistics about the typed registry
+func printTypedRegistryStats(registry markers.TypedFieldRegistry) error {
 	var (
-		mutable    int
-		immutable  int
-		serviceSet int
-		hidden     int
-		gated      int
+		totalFields int
+		mutable     int
+		immutable   int
+		serviceSet  int
+		hidden      int
+		gated       int
 	)
 
-	for _, meta := range registry {
-		switch meta.WriteMode {
-		case markers.Mutable:
-			mutable++
-		case markers.Immutable:
-			immutable++
-		case markers.ServiceSet:
-			serviceSet++
-		}
-		if meta.Hidden {
-			hidden++
-		}
-		if meta.FeatureGate != "" {
-			gated++
+	for _, fields := range registry {
+		for _, meta := range fields {
+			totalFields++
+			switch meta.WriteMode {
+			case markers.Mutable:
+				mutable++
+			case markers.Immutable:
+				immutable++
+			case markers.ServiceSet:
+				serviceSet++
+			}
+			if meta.Hidden {
+				hidden++
+			}
+			if meta.FeatureGate != "" || len(meta.FeatureGateAwareWriteModes) > 0 {
+				gated++
+			}
 		}
 	}
 
-	fmt.Println()
-	fmt.Printf("Summary: %d total fields\n", len(registry))
-	fmt.Printf("  Write Modes: %d mutable, %d immutable, %d service-set\n", mutable, immutable, serviceSet)
-	fmt.Printf("  Visibility:  %d visible, %d hidden\n", len(registry)-hidden, hidden)
-	fmt.Printf("  Gating:      %d gated, %d ungated\n", gated, len(registry)-gated)
+	if _, err := fmt.Println(); err != nil {
+		return err
+	}
+	if _, err := fmt.Printf("Summary: %d total fields across %d CRD types\n", totalFields, len(registry)); err != nil {
+		return err
+	}
+	if _, err := fmt.Printf("  Write Modes: %d mutable, %d immutable, %d service-set\n", mutable, immutable, serviceSet); err != nil {
+		return err
+	}
+	if _, err := fmt.Printf("  Visibility:  %d visible, %d hidden\n", totalFields-hidden, hidden); err != nil {
+		return err
+	}
+	if _, err := fmt.Printf("  Gating:      %d gated, %d ungated\n", gated, totalFields-gated); err != nil {
+		return err
+	}
+	return nil
 }

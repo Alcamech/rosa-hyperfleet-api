@@ -40,12 +40,18 @@ func (e ValidationErrors) Error() string {
 }
 
 type FieldValidator struct {
-	registry map[string]registry.FieldMeta
+	// typedRegistry maps resource type (CRD Kind) to field metadata map
+	typedRegistry registry.TypedFieldRegistry
+	// resourceType is the CRD Kind this validator is for (e.g., "Cluster", "NodePool")
+	resourceType string
 }
 
-func NewFieldValidator() *FieldValidator {
+// NewFieldValidator creates a validator for a specific CRD resource type
+// This enables per-type field metadata with different rules for the same field in different CRDs
+func NewFieldValidator(resourceType string) *FieldValidator {
 	return &FieldValidator{
-		registry: registry.FieldRegistry,
+		typedRegistry: registry.FieldRegistry,
+		resourceType:  resourceType,
 	}
 }
 
@@ -76,8 +82,11 @@ func (v *FieldValidator) ValidateUpdate(newSpec, existingSpec any, fs featuregat
 func (v *FieldValidator) validate(fields, existingFields map[string]any, op Operation, fs featuregate.FeatureSet) ValidationErrors {
 	var errs ValidationErrors
 
+	// Get the field metadata map for this resource type
+	fieldMetaMap := v.typedRegistry[v.resourceType]
+
 	for fieldPath := range fields {
-		meta, exists := v.registry[fieldPath]
+		meta, exists := fieldMetaMap[fieldPath]
 		if !exists {
 			continue
 		}

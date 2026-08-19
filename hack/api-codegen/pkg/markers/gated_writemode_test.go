@@ -38,13 +38,20 @@ type Spec struct {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	scanner := NewScanner([]string{tmpDir}, false)
+	scanner, err := NewScanner([]string{tmpDir}, false)
+	if err != nil {
+		t.Fatalf("Failed to create scanner: %v", err)
+	}
 	if err := scanner.Scan(); err != nil {
 		t.Fatalf("Scan failed: %v", err)
 	}
 
-	// Test releaseChannel field
-	releaseMeta, found := scanner.Registry["spec.releaseChannel"]
+	// Test releaseChannel field (in "Root" owner type)
+	releaseFields, found := scanner.TypedRegistry["Root"]
+	if !found {
+		t.Fatal("Root type not found in typed registry")
+	}
+	releaseMeta, found := releaseFields["spec.releaseChannel"]
 	if !found {
 		t.Fatal("spec.releaseChannel not found in registry")
 	}
@@ -73,8 +80,8 @@ type Spec struct {
 		t.Errorf("Second override WriteMode = %v, want %v", releaseMeta.FeatureGateAwareWriteModes[1].WriteMode, Mutable)
 	}
 
-	// Test etcd field
-	etcdMeta, found := scanner.Registry["spec.etcd"]
+	// Test etcd field (same "Root" owner type)
+	etcdMeta, found := releaseFields["spec.etcd"]
 	if !found {
 		t.Fatal("spec.etcd not found in registry")
 	}

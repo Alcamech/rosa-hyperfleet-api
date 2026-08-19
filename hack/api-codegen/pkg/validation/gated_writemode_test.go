@@ -131,11 +131,14 @@ func TestValidator_FeatureGateAwareWriteMode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a validator with a custom registry for this test
 			validator := &Validator{
-				registry: map[string]registry.FieldMeta{
-					tt.fieldPath: {
-						FieldPath:                  tt.fieldPath,
-						WriteMode:                  tt.baseMode,
-						FeatureGateAwareWriteModes: tt.gatedModes,
+				registry: registry.TypedFieldRegistry{
+					"Cluster": {
+						tt.fieldPath: {
+							FieldPath:                  tt.fieldPath,
+							WriteMode:                  tt.baseMode,
+							FeatureGateAwareWriteModes: tt.gatedModes,
+							OwnerType:                  "Cluster",
+						},
 					},
 				},
 			}
@@ -143,6 +146,7 @@ func TestValidator_FeatureGateAwareWriteMode(t *testing.T) {
 			// Create request
 			req := &Request{
 				Operation:    tt.operation,
+				ResourceType: "Cluster",
 				Fields:       map[string]interface{}{tt.fieldPath: "test-value"},
 				FeatureSet:   featuregate.Default,
 				EnabledGates: tt.enabledGates,

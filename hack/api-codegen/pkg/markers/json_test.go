@@ -6,14 +6,14 @@ import (
 	"testing"
 )
 
-func TestLoadRegistryFromJSON_NonexistentFile(t *testing.T) {
-	_, err := LoadRegistryFromJSON("/nonexistent/file.json")
+func TestLoadTypedRegistryFromJSON_NonexistentFile(t *testing.T) {
+	_, err := LoadTypedRegistryFromJSON("/nonexistent/file.json")
 	if err == nil {
-		t.Error("LoadRegistryFromJSON() with nonexistent file should return error")
+		t.Error("LoadTypedRegistryFromJSON() with nonexistent file should return error")
 	}
 }
 
-func TestLoadRegistryFromJSON_InvalidJSON(t *testing.T) {
+func TestLoadTypedRegistryFromJSON_InvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	invalidFile := filepath.Join(tmpDir, "invalid.json")
 
@@ -23,27 +23,38 @@ func TestLoadRegistryFromJSON_InvalidJSON(t *testing.T) {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	_, err = LoadRegistryFromJSON(invalidFile)
+	_, err = LoadTypedRegistryFromJSON(invalidFile)
 	if err == nil {
-		t.Error("LoadRegistryFromJSON() with invalid JSON should return error")
+		t.Error("LoadTypedRegistryFromJSON() with invalid JSON should return error")
 	}
 }
 
-func TestLoadRegistryFromJSON_ValidFile(t *testing.T) {
+func TestLoadTypedRegistryFromJSON_ValidFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	validFile := filepath.Join(tmpDir, "valid.json")
 
-	// Write valid JSON (array format)
+	// Write valid JSON (typed format with owners)
 	jsonContent := `[
 		{
 			"fieldPath": "spec.name",
 			"writeMode": "immutable",
-			"hidden": false
+			"hidden": false,
+			"ownerType": "Cluster",
+			"ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
 		},
 		{
 			"fieldPath": "spec.accountId",
 			"writeMode": "service-set",
-			"hidden": true
+			"hidden": true,
+			"ownerType": "Cluster",
+			"ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
+		},
+		{
+			"fieldPath": "spec.accountId",
+			"writeMode": "mutable",
+			"hidden": false,
+			"ownerType": "NodePool",
+			"ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
 		}
 	]`
 
@@ -52,41 +63,37 @@ func TestLoadRegistryFromJSON_ValidFile(t *testing.T) {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	loaded, err := LoadRegistryFromJSON(validFile)
+	loaded, err := LoadTypedRegistryFromJSON(validFile)
 	if err != nil {
-		t.Fatalf("LoadRegistryFromJSON() error = %v", err)
+		t.Fatalf("LoadTypedRegistryFromJSON() error = %v", err)
 	}
 
-	if len(loaded) != 2 {
-		t.Errorf("LoadRegistryFromJSON() loaded %d fields, want 2", len(loaded))
+	// Check Cluster owner has 2 fields
+	if clusterFields, exists := loaded["Cluster"]; !exists {
+		t.Error("Cluster owner not found in loaded registry")
+	} else if len(clusterFields) != 2 {
+		t.Errorf("Cluster has %d fields, want 2", len(clusterFields))
 	}
 
-	// Check specific field
-	if meta, exists := loaded["spec.name"]; exists {
-		if string(meta.WriteMode) != "immutable" {
-			t.Errorf("spec.name WriteMode = %s, want immutable", meta.WriteMode)
-		}
-		if meta.Hidden {
-			t.Error("spec.name should not be hidden")
-		}
-	} else {
-		t.Error("spec.name not found in loaded registry")
+	// Check NodePool owner has 1 field
+	if nodePoolFields, exists := loaded["NodePool"]; !exists {
+		t.Error("NodePool owner not found in loaded registry")
+	} else if len(nodePoolFields) != 1 {
+		t.Errorf("NodePool has %d fields, want 1", len(nodePoolFields))
 	}
 
-	// Check hidden field
-	if meta, exists := loaded["spec.accountId"]; exists {
-		if string(meta.WriteMode) != "service-set" {
-			t.Errorf("spec.accountId WriteMode = %s, want service-set", meta.WriteMode)
-		}
-		if !meta.Hidden {
-			t.Error("spec.accountId should be hidden")
-		}
-	} else {
-		t.Error("spec.accountId not found in loaded registry")
+	// Check spec.accountId differs between owners (no collision)
+	clusterAccountId := loaded["Cluster"]["spec.accountId"]
+	nodePoolAccountId := loaded["NodePool"]["spec.accountId"]
+	if clusterAccountId.WriteMode != ServiceSet {
+		t.Errorf("Cluster.spec.accountId WriteMode = %s, want service-set", clusterAccountId.WriteMode)
+	}
+	if nodePoolAccountId.WriteMode != Mutable {
+		t.Errorf("NodePool.spec.accountId WriteMode = %s, want mutable", nodePoolAccountId.WriteMode)
 	}
 }
 
-func TestLoadRegistryFromJSON_EmptyArray(t *testing.T) {
+func TestLoadTypedRegistryFromJSON_EmptyArray(t *testing.T) {
 	tmpDir := t.TempDir()
 	emptyFile := filepath.Join(tmpDir, "empty.json")
 
@@ -96,27 +103,29 @@ func TestLoadRegistryFromJSON_EmptyArray(t *testing.T) {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	loaded, err := LoadRegistryFromJSON(emptyFile)
+	loaded, err := LoadTypedRegistryFromJSON(emptyFile)
 	if err != nil {
-		t.Fatalf("LoadRegistryFromJSON() error = %v", err)
+		t.Fatalf("LoadTypedRegistryFromJSON() error = %v", err)
 	}
 
 	if len(loaded) != 0 {
-		t.Errorf("Expected empty registry, got %d fields", len(loaded))
+		t.Errorf("Expected empty registry, got %d owners", len(loaded))
 	}
 }
 
-func TestLoadRegistryFromJSON_WithFeatureGates(t *testing.T) {
+func TestLoadTypedRegistryFromJSON_WithFeatureGates(t *testing.T) {
 	tmpDir := t.TempDir()
 	gatedFile := filepath.Join(tmpDir, "gated.json")
 
-	// Write JSON with feature-gated field (array format)
+	// Write JSON with feature-gated field
 	jsonContent := `[
 		{
 			"fieldPath": "spec.etcd",
 			"writeMode": "mutable",
 			"featureGate": "HyperFleetEtcdConfig",
-			"hidden": false
+			"hidden": false,
+			"ownerType": "Cluster",
+			"ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
 		}
 	]`
 
@@ -125,16 +134,21 @@ func TestLoadRegistryFromJSON_WithFeatureGates(t *testing.T) {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	loaded, err := LoadRegistryFromJSON(gatedFile)
+	loaded, err := LoadTypedRegistryFromJSON(gatedFile)
 	if err != nil {
-		t.Fatalf("LoadRegistryFromJSON() error = %v", err)
+		t.Fatalf("LoadTypedRegistryFromJSON() error = %v", err)
 	}
 
-	if meta, exists := loaded["spec.etcd"]; exists {
+	clusterFields, exists := loaded["Cluster"]
+	if !exists {
+		t.Fatal("Cluster owner not found")
+	}
+
+	if meta, exists := clusterFields["spec.etcd"]; exists {
 		if meta.FeatureGate != "HyperFleetEtcdConfig" {
 			t.Errorf("spec.etcd FeatureGate = %s, want HyperFleetEtcdConfig", meta.FeatureGate)
 		}
 	} else {
-		t.Error("spec.etcd not found in loaded registry")
+		t.Error("spec.etcd not found in Cluster fields")
 	}
 }

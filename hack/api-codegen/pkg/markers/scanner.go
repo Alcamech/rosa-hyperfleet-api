@@ -7,7 +7,11 @@ import (
 	"go/token"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
+
+	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 var (
@@ -16,16 +20,82 @@ var (
 	writeModePattern                 = regexp.MustCompile(`\+hyperfleet:write-mode=(mutable|immutable|service-set)`)
 	featureGatePattern               = regexp.MustCompile(`\+openshift:enable:FeatureGate=(\w+)`)
 	featureGateAwareWriteModePattern = regexp.MustCompile(`\+hyperfleet:validation:FeatureGateAwareWriteMode:featureGate="([^"]*)",writeMode="(mutable|immutable|service-set)"`)
+	upstreamReducedObjectPattern     = regexp.MustCompile(`\+hyperfleet:upstream-reduced-object=([^\s]+)`)
 )
 
 // NewScanner creates a new marker scanner
-func NewScanner(inputDirs []string, verbose bool) *MarkerScanner {
-	return &MarkerScanner{
-		InputDirs: inputDirs,
-		Registry:  make(FieldRegistry),
-		typeCache: make(map[string]*ast.StructType),
-		verbose:   verbose,
+func NewScanner(inputDirs []string, verbose bool) (*MarkerScanner, error) {
+	scanner := &MarkerScanner{
+		InputDirs:             inputDirs,
+		TypedRegistry:         make(TypedFieldRegistry),
+		crdTypes:              make(map[string]string),
+		typeCache:             make(map[string]*ast.StructType),
+		upstreamReducedTypes:  make(map[string]UpstreamReducedMapping),
+		embeddedUpstreamTypes: make(map[string]EmbeddedUpstreamType),
+		verbose:               verbose,
 	}
+
+	// Initialize scheme and discover CRD types
+	if err := scanner.discoverCRDTypes(); err != nil {
+		return nil, fmt.Errorf("discovering CRD types: %w", err)
+	}
+
+	return scanner, nil
+}
+
+// discoverCRDTypes initializes the scheme and populates crdTypes map
+// Maps Kind name (e.g., "Cluster") to full GVK string (e.g., "hyperfleet.io/v1alpha1.Cluster")
+func (s *MarkerScanner) discoverCRDTypes() error {
+	scheme := runtime.NewScheme()
+	if err := hyperfleetv1alpha1.AddToScheme(scheme); err != nil {
+		return fmt.Errorf("adding v1alpha1 to scheme: %w", err)
+	}
+
+	// Discover all registered CRD types
+	for gvk := range scheme.AllKnownTypes() {
+		// Skip List types and empty kinds
+		if strings.HasSuffix(gvk.Kind, "List") || gvk.Kind == "" {
+			continue
+		}
+
+		// Store Kind → GVK string mapping (e.g., "Cluster" → "hyperfleet.io/v1alpha1.Cluster")
+		gvkStr := fmt.Sprintf("%s/%s.%s", gvk.Group, gvk.Version, gvk.Kind)
+		s.crdTypes[gvk.Kind] = gvkStr
+		s.logf("discovered CRD type: %s → %s", gvk.Kind, gvkStr)
+	}
+
+	return nil
+}
+
+// inferOwnerFromPassthrough infers the owner CRD and its GVK from a passthrough type name
+// Parses passthrough naming convention to find the owner CRD Kind
+// Examples: "HostedClusterSpecPassthrough" embeds in Cluster.Spec.HostedCluster
+//
+//	"NodePoolSpecPassthrough" embeds in NodePool.Spec.NodePool
+//
+// Uses simple heuristics: match against known CRD types by substring, selecting the most specific match
+func (s *MarkerScanner) inferOwnerFromPassthrough(passthroughType string) (ownerKind string, gvk string) {
+	// Collect and sort kinds for deterministic, specific matching
+	var kinds []string
+	for kind := range s.crdTypes {
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+
+	// Match against known CRD types, preferring the longest (most specific) match
+	var bestMatch string
+	for _, kind := range kinds {
+		// For "HostedClusterSpecPassthrough": "Cluster" matches via substring in "HostedCluster"
+		// For "NodePoolSpecPassthrough": "NodePool" matches
+		if strings.Contains(passthroughType, kind) && len(kind) > len(bestMatch) {
+			bestMatch = kind
+		}
+	}
+
+	if bestMatch != "" {
+		return bestMatch, s.crdTypes[bestMatch]
+	}
+	return "", ""
 }
 
 // logf writes a formatted log line to stderr when verbose mode is enabled.
@@ -43,7 +113,12 @@ func (s *MarkerScanner) Scan() error {
 			return fmt.Errorf("scanning directory %s: %w", dir, err)
 		}
 	}
-	s.logf("scan complete: %d fields in registry", len(s.Registry))
+	// Count total fields across all owner types
+	totalFields := 0
+	for _, fields := range s.TypedRegistry {
+		totalFields += len(fields)
+	}
+	s.logf("scan complete: %d fields in typed registry", totalFields)
 	return nil
 }
 
@@ -70,18 +145,36 @@ func (s *MarkerScanner) scanDir(dir string) error {
 	// First pass: cache all struct types across all files in this package
 	for _, pkg := range pkgs {
 		for _, file := range pkg.Files {
-			ast.Inspect(file, func(n ast.Node) bool {
-				typeSpec, ok := n.(*ast.TypeSpec)
+			for _, decl := range file.Decls {
+				gd, ok := decl.(*ast.GenDecl)
 				if !ok {
-					return true
+					continue
 				}
-				structType, ok := typeSpec.Type.(*ast.StructType)
-				if !ok {
-					return true
+
+				for _, spec := range gd.Specs {
+					typeSpec, ok := spec.(*ast.TypeSpec)
+					if !ok {
+						continue
+					}
+					structType, ok := typeSpec.Type.(*ast.StructType)
+					if !ok {
+						continue
+					}
+					dirCache[typeSpec.Name.Name] = structType
+
+					// Extract upstream-reduced-object marker from the GenDecl comment
+					if gd.Doc != nil {
+						docText := gd.Doc.Text()
+						if matches := upstreamReducedObjectPattern.FindStringSubmatch(docText); len(matches) > 1 {
+							s.upstreamReducedTypes[typeSpec.Name.Name] = UpstreamReducedMapping{
+								LocalType:    typeSpec.Name.Name,
+								UpstreamType: matches[1],
+							}
+							s.logf("  found upstream-reduced type: %s → %s", typeSpec.Name.Name, matches[1])
+						}
+					}
 				}
-				dirCache[typeSpec.Name.Name] = structType
-				return true
-			})
+			}
 		}
 	}
 
@@ -91,12 +184,19 @@ func (s *MarkerScanner) scanDir(dir string) error {
 
 	// Second pass: process root types once with the full cache available
 	for typeName, structType := range dirCache {
-		if isRootType(typeName) {
+		if s.isRootType(typeName) {
 			visited := make(map[string]bool)
 			visited[typeName] = true
 			prefix := rootTypePrefix(typeName)
-			s.logf("  root type: %s (prefix=%q)", typeName, prefix)
-			s.processStruct(typeName, structType, prefix, visited)
+			// Get GVK for this CRD type, or infer from passthrough type name
+			gvk := s.crdTypes[typeName]
+			ownerKind := typeName
+			if gvk == "" && strings.HasSuffix(typeName, "Passthrough") {
+				// Infer owner from passthrough type name
+				ownerKind, gvk = s.inferOwnerFromPassthrough(typeName)
+			}
+			s.logf("  root type: %s (prefix=%q, gvk=%q)", typeName, prefix, gvk)
+			s.processStruct(typeName, structType, prefix, visited, ownerKind, gvk)
 		}
 	}
 
@@ -122,11 +222,22 @@ func rootTypePrefix(typeName string) string {
 }
 
 // isRootType returns true for types that are entry points for marker scanning.
-// Passthrough types ARE root types since they carry curated markers.
-func isRootType(typeName string) bool {
+// Uses the scheme to determine if a type is a registered CRD (no hardcoded names).
+// Passthrough types are also root types since they carry curated markers.
+// For testing and special cases, types that don't end with Spec, Status, List, or ClusterReference are root types.
+func (s *MarkerScanner) isRootType(typeName string) bool {
+	// Check if type is a registered CRD in the scheme
+	if s.crdTypes[typeName] != "" {
+		return true
+	}
+
+	// Passthrough types are scanned as roots because they carry curated markers
 	if strings.HasSuffix(typeName, "Passthrough") {
 		return true
 	}
+
+	// Fallback for testing and special types: use the original heuristic
+	// This handles types that are not registered CRDs but should still be scanned as roots
 	return !strings.HasSuffix(typeName, "Spec") &&
 		!strings.HasSuffix(typeName, "Status") &&
 		!strings.HasSuffix(typeName, "List") &&
@@ -134,14 +245,16 @@ func isRootType(typeName string) bool {
 }
 
 // processStruct walks struct fields and extracts markers
-func (s *MarkerScanner) processStruct(_ string, structType *ast.StructType, parentPath string, visited map[string]bool) {
+// ownerKind is the Kind of the CRD that owns these fields (e.g., "Cluster", "NodePool")
+// ownerGVK is the full GVK string (e.g., "hyperfleet.io/v1alpha1.Cluster")
+func (s *MarkerScanner) processStruct(_ string, structType *ast.StructType, parentPath string, visited map[string]bool, ownerKind string, ownerGVK string) {
 	for _, field := range structType.Fields.List {
-		s.processField(field, parentPath, visited)
+		s.processField(field, parentPath, visited, ownerKind, ownerGVK)
 	}
 }
 
 // processField extracts markers from a single field
-func (s *MarkerScanner) processField(field *ast.Field, parentPath string, visited map[string]bool) {
+func (s *MarkerScanner) processField(field *ast.Field, parentPath string, visited map[string]bool, ownerKind string, ownerGVK string) {
 	// Get JSON tag to determine field path
 	jsonName := getJSONName(field)
 	if jsonName == "" || jsonName == "-" {
@@ -156,46 +269,94 @@ func (s *MarkerScanner) processField(field *ast.Field, parentPath string, visite
 		fieldPath = parentPath + "." + jsonName
 	}
 
-	// Extract markers from comments
-	meta := s.extractMarkers(field, fieldPath)
-	if meta != nil {
-		s.logf("    field: %s  write-mode=%s  hidden=%v  gate=%s", fieldPath, meta.WriteMode, meta.Hidden, meta.FeatureGate)
-		s.Registry[fieldPath] = *meta
+	// Check if this field's type is an upstream-reduced type
+	// If so, mark it for synthetic path generation
+	fieldTypeName := s.extractTypeName(field.Type)
+	isUpstreamReduced := false
+	var localType string
+
+	if fieldTypeName != "" {
+		localType = s.getLocalTypeForUpstream(fieldTypeName)
+		if localType != "" {
+			isUpstreamReduced = true
+			// Store the embedding info for synthetic path generation (with deduplication via map key)
+			key := ownerKind + "." + fieldPath + "." + localType
+			if _, exists := s.embeddedUpstreamTypes[key]; !exists {
+				s.embeddedUpstreamTypes[key] = EmbeddedUpstreamType{
+					ContainerFieldPath: fieldPath,
+					LocalType:          localType,
+					UpstreamType:       fieldTypeName,
+					CRDOwner:           ownerKind,
+					CRDOwnerGVK:        ownerGVK,
+				}
+				s.logf("      (recording embedding for synthetic path generation: %s → %s)", fieldPath, localType)
+			}
+		}
 	}
 
-	// Recursively process nested structs
-	s.processNestedType(field.Type, fieldPath, visited)
+	// Extract markers for the field
+	meta := s.extractMarkers(field, fieldPath)
+	if meta != nil && !isUpstreamReduced {
+		// Only add non-upstream-reduced fields to registry
+		// Upstream-reduced fields will be synth added via synthetic paths
+		meta.OwnerType = ownerKind
+		meta.OwnerGVK = ownerGVK
+		s.logf("    field: %s  owner=%s  write-mode=%s  hidden=%v  gate=%s", fieldPath, ownerKind, meta.WriteMode, meta.Hidden, meta.FeatureGate)
+
+		// Add to typed registry
+		if s.TypedRegistry[ownerKind] == nil {
+			s.TypedRegistry[ownerKind] = make(map[string]FieldMeta)
+		}
+		s.TypedRegistry[ownerKind][fieldPath] = *meta
+	} else if meta != nil && isUpstreamReduced {
+		// For upstream-reduced container fields, just log the markers but don't add to registry
+		meta.OwnerType = ownerKind
+		meta.OwnerGVK = ownerGVK
+		s.logf("    field: %s (container for upstream-reduced type) owner=%s write-mode=%s", fieldPath, ownerKind, meta.WriteMode)
+		// Container field markers will be reflected in synthetic paths
+	}
+
+	// Recursively process nested structs (including upstream-reduced types for deeper embeddings)
+	s.processNestedType(field.Type, fieldPath, visited, ownerKind, ownerGVK)
 }
 
 // processNestedType recursively handles nested struct types.
 // visited tracks named types already being traversed to prevent infinite
 // recursion on self-referential or mutually recursive structs.
-func (s *MarkerScanner) processNestedType(expr ast.Expr, fieldPath string, visited map[string]bool) {
+// ownerKind and ownerGVK are propagated through the recursion to track ownership.
+func (s *MarkerScanner) processNestedType(expr ast.Expr, fieldPath string, visited map[string]bool, ownerKind string, ownerGVK string) {
 	switch t := expr.(type) {
 	case *ast.StructType:
 		// Inline struct — no named type to track
-		s.processStruct("", t, fieldPath, visited)
+		s.processStruct("", t, fieldPath, visited, ownerKind, ownerGVK)
 	case *ast.StarExpr:
 		// Pointer to type
-		s.processNestedType(t.X, fieldPath, visited)
+		s.processNestedType(t.X, fieldPath, visited, ownerKind, ownerGVK)
 	case *ast.Ident:
-		// Named type - skip if already visited in this traversal
+		// Named type - skip if already visited in current path (prevents cycles)
+		// But allow re-processing the same type at different field paths with different owners
 		if visited[t.Name] {
 			return
 		}
 		if structType, ok := s.typeCache[t.Name]; ok {
-			visited[t.Name] = true
-			s.processStruct(t.Name, structType, fieldPath, visited)
-			delete(visited, t.Name)
+			// Create new visited scope for nested traversal
+			// Inherits cycle prevention from parent, but allows independent processing of shared types
+			nestedVisited := make(map[string]bool)
+			for k, v := range visited {
+				nestedVisited[k] = v
+			}
+			nestedVisited[t.Name] = true
+			s.processStruct(t.Name, structType, fieldPath, nestedVisited, ownerKind, ownerGVK)
+			// Don't delete from nestedVisited - it's a separate scope
 		}
 	case *ast.SelectorExpr:
 		// External type (e.g., metav1.Time) - skip
 	case *ast.ArrayType:
 		// Array/slice - process element type
-		s.processNestedType(t.Elt, fieldPath, visited)
+		s.processNestedType(t.Elt, fieldPath, visited, ownerKind, ownerGVK)
 	case *ast.MapType:
 		// Map - process value type
-		s.processNestedType(t.Value, fieldPath, visited)
+		s.processNestedType(t.Value, fieldPath, visited, ownerKind, ownerGVK)
 	}
 }
 
@@ -287,14 +448,16 @@ func parseStructTag(tag, key string) string {
 	return ""
 }
 
-// Validate checks that all fields in the registry have required markers
-func (r FieldRegistry) Validate() error {
+// Validate checks that all fields in the typed registry have required markers
+func (t TypedFieldRegistry) Validate() error {
 	var errors []string
 
-	for path, meta := range r {
-		// All visible fields must have a write mode
-		if !meta.Hidden && meta.WriteMode == "" {
-			errors = append(errors, fmt.Sprintf("field %s is missing +hyperfleet:write-mode marker", path))
+	for owner, fields := range t {
+		for path, meta := range fields {
+			// All visible fields must have a write mode
+			if !meta.Hidden && meta.WriteMode == "" {
+				errors = append(errors, fmt.Sprintf("%s.%s is missing +hyperfleet:write-mode marker", owner, path))
+			}
 		}
 	}
 
@@ -305,10 +468,160 @@ func (r FieldRegistry) Validate() error {
 	return nil
 }
 
-// ValidateAllFields checks that ALL struct fields (not just those with markers) meet requirements
-// This is more strict and should be used in CI
-func (s *MarkerScanner) ValidateAllFields() error {
-	// This would require re-scanning and checking all fields, not just those with markers
-	// For now, just validate what's in the registry
-	return s.Registry.Validate()
+// generateSyntheticPaths creates full nested paths for upstream-reduced types embedded in CRDs.
+// For example: if Cluster embeds ClusterConfiguration which maps to hypershiftv1beta1.ClusterConfiguration,
+// this duplicates all ClusterConfiguration fields under Cluster with full paths like
+// spec.hostedCluster.configuration.kubelet.maxPods
+func (s *MarkerScanner) generateSyntheticPaths(byOwner map[string][]templateField) {
+	s.logf("  generating synthetic paths for upstream-reduced types")
+	s.logf("    embedded upstream-reduced types found: %d", len(s.embeddedUpstreamTypes))
+
+	// For each embedded upstream-reduced type, generate synthetic paths
+	for _, embedding := range s.embeddedUpstreamTypes {
+		s.logf("    processing embedding: %s.%s (local: %s, upstream: %s)", embedding.CRDOwner, embedding.ContainerFieldPath, embedding.LocalType, embedding.UpstreamType)
+
+		// Get the fields from the local type
+		localFields, ok := byOwner[embedding.LocalType]
+		if !ok {
+			s.logf("      (no fields found for local type %s)", embedding.LocalType)
+			continue
+		}
+
+		// Build a map of existing field paths for deduplication
+		existingPaths := make(map[string]bool)
+		if crdFields, ok := byOwner[embedding.CRDOwner]; ok {
+			for _, field := range crdFields {
+				existingPaths[field.FieldPath] = true
+			}
+		}
+
+		// Generate synthetic paths for each field in the local type
+		// e.g., containerPath="spec.hostedCluster.configuration", field="kubelet.maxPods" → "spec.hostedCluster.configuration.kubelet.maxPods"
+		for _, field := range localFields {
+			syntheticPath := embedding.ContainerFieldPath + "." + field.FieldPath
+
+			// Skip if this path already exists (e.g., when the container field itself has been processed)
+			if existingPaths[syntheticPath] {
+				s.logf("      synthetic (skipped, already exists): %s", syntheticPath)
+				continue
+			}
+
+			syntheticField := field
+			syntheticField.FieldPath = syntheticPath
+			// Update owner context to the CRD that embeds this type
+			syntheticField.OwnerType = embedding.CRDOwner
+			syntheticField.OwnerGVK = embedding.CRDOwnerGVK
+
+			// Add to CRD owner's field list
+			byOwner[embedding.CRDOwner] = append(byOwner[embedding.CRDOwner], syntheticField)
+
+			s.logf("      synthetic: %s", syntheticPath)
+		}
+	}
+
+	// Sort each owner's fields by path after adding synthetic ones
+	for owner := range byOwner {
+		sort.Slice(byOwner[owner], func(i, j int) bool {
+			return byOwner[owner][i].FieldPath < byOwner[owner][j].FieldPath
+		})
+	}
+}
+
+// updateRegistryWithSyntheticPaths adds synthetic paths from data.ByOwner back to the TypedRegistry
+// This ensures they're included in both Go and JSON output
+func (s *MarkerScanner) updateRegistryWithSyntheticPaths(byOwner map[string][]templateField) {
+	for owner, templateFields := range byOwner {
+		// Get current registry fields for this owner
+		registryFields, ok := s.TypedRegistry[owner]
+		if !ok {
+			registryFields = make(map[string]FieldMeta)
+			s.TypedRegistry[owner] = registryFields
+		}
+
+		// Collect current field paths to detect which ones are synthetic (new)
+		existingPaths := make(map[string]bool)
+		for path := range registryFields {
+			existingPaths[path] = true
+		}
+
+		// Add any new fields (synthetic paths) back to the registry
+		for _, tfield := range templateFields {
+			if !existingPaths[tfield.FieldPath] {
+				// This is a synthetic field, convert it back to FieldMeta and add to registry
+				writeMode := WriteMode("")
+				switch tfield.WriteMode {
+				case "Mutable":
+					writeMode = Mutable
+				case "Immutable":
+					writeMode = Immutable
+				case "ServiceSet":
+					writeMode = ServiceSet
+				}
+
+				var gatedModes []FeatureGateWriteMode
+				for _, gated := range tfield.GatedWriteModes {
+					gateModeVal := WriteMode("")
+					switch gated.WriteMode {
+					case "Mutable":
+						gateModeVal = Mutable
+					case "Immutable":
+						gateModeVal = Immutable
+					case "ServiceSet":
+						gateModeVal = ServiceSet
+					}
+					gatedModes = append(gatedModes, FeatureGateWriteMode{
+						FeatureGate: gated.FeatureGate,
+						WriteMode:   gateModeVal,
+					})
+				}
+
+				meta := FieldMeta{
+					FieldPath:                  tfield.FieldPath,
+					WriteMode:                  writeMode,
+					FeatureGate:                tfield.FeatureGate,
+					Hidden:                     tfield.Hidden,
+					FeatureGateAwareWriteModes: gatedModes,
+					OwnerType:                  tfield.OwnerType,
+					OwnerGVK:                   tfield.OwnerGVK,
+				}
+
+				registryFields[tfield.FieldPath] = meta
+			}
+		}
+	}
+}
+
+// extractTypeName extracts the type name from an ast.Expr (handling pointers, etc.)
+func (s *MarkerScanner) extractTypeName(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.StarExpr:
+		return s.extractTypeName(t.X)
+	case *ast.SelectorExpr:
+		// For selector expressions like hypershiftv1beta1.ClusterConfiguration,
+		// return the full qualified name
+		if sel, ok := t.X.(*ast.Ident); ok {
+			return sel.Name + "." + t.Sel.Name
+		}
+		return ""
+	default:
+		return ""
+	}
+}
+
+// getLocalTypeForUpstream returns the local type for an upstream type if we have a mapped equivalent
+func (s *MarkerScanner) getLocalTypeForUpstream(upstreamType string) string {
+	// upstreamType might be "hypershiftv1beta1.ClusterConfiguration" or just "ClusterConfiguration"
+	// Check for exact match in the mappings
+	for localType, mapping := range s.upstreamReducedTypes {
+		if mapping.UpstreamType == upstreamType {
+			return localType
+		}
+		// Also match if upstreamType is just the simple name and mapping.UpstreamType ends with it
+		if !strings.Contains(upstreamType, ".") && strings.HasSuffix(mapping.UpstreamType, "."+upstreamType) {
+			return localType
+		}
+	}
+	return ""
 }

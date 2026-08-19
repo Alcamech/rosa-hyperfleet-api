@@ -294,7 +294,18 @@ func (g *Generator) parseField(typeName string, field *ast.Field, name *ast.Iden
 	}
 
 	fieldPath := g.buildFieldPath(typeName, jsonName)
-	meta, exists := registry.FieldRegistry[fieldPath]
+
+	// Look up field metadata from all types in the registry
+	// (we don't know the CRD owner type during conversion code generation)
+	var meta registry.FieldMeta
+	exists := false
+	for _, typeFields := range registry.FieldRegistry {
+		if m, ok := typeFields[fieldPath]; ok {
+			meta = m
+			exists = true
+			break
+		}
+	}
 
 	fi := &fieldInfo{
 		GoName:   goName,
@@ -1010,18 +1021,21 @@ func (g *Generator) generateServiceSetFields() error {
 	}
 
 	fieldsMap := make(map[string]ssField)
-	for path, meta := range registry.FieldRegistry {
-		if meta.WriteMode == registry.ServiceSet {
-			goName := g.pathToGoName(path)
-			goType := g.inferTypeFromPath(path)
-			jsonTag := g.pathToJSONTag(path)
+	// Iterate through all types in the typed registry
+	for _, fields := range registry.FieldRegistry {
+		for path, meta := range fields {
+			if meta.WriteMode == registry.ServiceSet {
+				goName := g.pathToGoName(path)
+				goType := g.inferTypeFromPath(path)
+				jsonTag := g.pathToJSONTag(path)
 
-			if existing, exists := fieldsMap[jsonTag]; exists {
-				if len(goType) > len(existing.GoType) {
+				if existing, exists := fieldsMap[jsonTag]; exists {
+					if len(goType) > len(existing.GoType) {
+						fieldsMap[jsonTag] = ssField{GoName: goName, GoType: goType, JSONTag: jsonTag, FieldPath: path}
+					}
+				} else {
 					fieldsMap[jsonTag] = ssField{GoName: goName, GoType: goType, JSONTag: jsonTag, FieldPath: path}
 				}
-			} else {
-				fieldsMap[jsonTag] = ssField{GoName: goName, GoType: goType, JSONTag: jsonTag, FieldPath: path}
 			}
 		}
 	}

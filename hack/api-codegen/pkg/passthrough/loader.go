@@ -242,24 +242,28 @@ func (g *Generator) getMarkersForField(jsonTagName string) []string {
 		lookupKey = g.FieldPrefix + "." + jsonTagName
 	}
 
-	if meta, found := g.Registry[lookupKey]; found {
-		var markers []string
+	// Try each owner type in the typed registry to find this field
+	// The field exists in only one owner's registry, look it up there
+	for _, registryForOwner := range g.TypedRegistry {
+		if meta, found := registryForOwner[lookupKey]; found {
+			var markers []string
 
-		if meta.Hidden {
-			markers = append(markers, "+k8s:openapi-gen=false")
-		} else {
-			markers = append(markers, "+k8s:openapi-gen=true")
+			if meta.Hidden {
+				markers = append(markers, "+k8s:openapi-gen=false")
+			} else {
+				markers = append(markers, "+k8s:openapi-gen=true")
+			}
+
+			if meta.WriteMode != "" {
+				markers = append(markers, fmt.Sprintf("+hyperfleet:write-mode=%s", meta.WriteMode))
+			}
+
+			if meta.FeatureGate != "" {
+				markers = append(markers, fmt.Sprintf("+openshift:enable:FeatureGate=%s", meta.FeatureGate))
+			}
+
+			return markers
 		}
-
-		if meta.WriteMode != "" {
-			markers = append(markers, fmt.Sprintf("+hyperfleet:write-mode=%s", meta.WriteMode))
-		}
-
-		if meta.FeatureGate != "" {
-			markers = append(markers, fmt.Sprintf("+openshift:enable:FeatureGate=%s", meta.FeatureGate))
-		}
-
-		return markers
 	}
 
 	// Apply safe defaults for new fields not in the registry

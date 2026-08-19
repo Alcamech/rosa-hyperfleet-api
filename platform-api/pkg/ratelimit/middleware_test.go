@@ -439,7 +439,7 @@ func TestMiddleware_PrometheusMetrics_Allowed(t *testing.T) {
 func TestMiddleware_PrometheusMetrics_Denied(t *testing.T) {
 	cfg := &Config{
 		Enabled:      true,
-		RedisTimeout: 10,
+		RedisTimeout: 100,
 		Default:      RouteLimit{Rate: 1, Burst: 1, Window: 60},
 		exemptSet:    map[string]struct{}{},
 	}

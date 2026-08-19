@@ -175,9 +175,12 @@ var typeToRegistryPrefix = map[string]string{
 // hidden registry entries is an error (the mapping was forgotten).
 func filterHiddenFields(definitions map[string]apiextensionsv1.JSONSchemaProps) error {
 	hiddenPaths := make(map[string]bool)
-	for path, meta := range registry.FieldRegistry {
-		if meta.Hidden {
-			hiddenPaths[path] = true
+	// Collect hidden field paths from all types in the typed registry
+	for _, fields := range registry.FieldRegistry {
+		for path, meta := range fields {
+			if meta.Hidden {
+				hiddenPaths[path] = true
+			}
 		}
 	}
 

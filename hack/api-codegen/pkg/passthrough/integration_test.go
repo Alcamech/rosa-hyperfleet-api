@@ -15,7 +15,7 @@ import (
 // TestGenerateFromHyperShiftModule verifies passthrough generation from go.mod dependency
 func TestGenerateFromHyperShiftModule(t *testing.T) {
 	// Create generator from import path (resolves via go.mod)
-	registry := make(markers.FieldRegistry)
+	registry := make(markers.TypedFieldRegistry)
 	types := []string{"HostedClusterSpec", "NodePoolSpec"}
 
 	gen, err := passthrough.NewGeneratorFromImportPath(

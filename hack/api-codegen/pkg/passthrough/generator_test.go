@@ -13,7 +13,7 @@ func TestGenerate(t *testing.T) {
 	gen, err := NewGeneratorFromImportPath(
 		"github.com/openshift/hypershift/api/hypershift/v1beta1",
 		[]string{"HostedClusterSpec"},
-		make(markers.FieldRegistry),
+		make(markers.TypedFieldRegistry),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create generator: %v", err)

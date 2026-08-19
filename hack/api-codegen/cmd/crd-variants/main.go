@@ -15,6 +15,7 @@ func main() {
 		inputFile           = flag.String("input", "", "Input CRD YAML file")
 		outputDir           = flag.String("output-dir", "config/crd/variants", "Output directory for CRD variants")
 		baseName            = flag.String("base-name", "", "Base name for output files (e.g., 'cluster' produces cluster_default.yaml)")
+		resourceType        = flag.String("resource-type", "", "Resource type Kind (e.g., Cluster, NodePool) for field metadata lookup")
 		featureSet          = flag.String("feature-set", "", "Generate only one feature set variant (default, techpreview, devpreview)")
 		stripPassthroughCEL = flag.Bool("strip-passthrough-cel", false, "Strip x-kubernetes-validations from passthrough subtrees detected in --api-dir")
 		apiDir              = flag.String("api-dir", "", "Go source directory to scan for passthrough types (used with --strip-passthrough-cel)")
@@ -60,12 +61,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	if *resourceType == "" {
+		fmt.Fprintln(os.Stderr, "Error: --resource-type is required (e.g., Cluster, NodePool)")
+		flag.Usage()
+		os.Exit(1)
+	}
+
 	// Create output directory
 	if err := os.MkdirAll(*outputDir, 0755); err != nil {
 		log.Fatalf("Creating output directory: %v", err)
 	}
 
-	g := featuregate.NewCRDVariantGenerator()
+	g := featuregate.NewCRDVariantGenerator(*resourceType)
 
 	if *featureSet != "" {
 		// Generate single variant

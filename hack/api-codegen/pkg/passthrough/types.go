@@ -17,8 +17,8 @@ type Generator struct {
 	// OutputPackage is the package name for generated code
 	OutputPackage string
 
-	// Registry contains existing field markers to preserve
-	Registry markers.FieldRegistry
+	// TypedRegistry contains existing field markers indexed by owner type
+	TypedRegistry markers.TypedFieldRegistry
 
 	// SourcePackage is the import path of the source package (e.g., "github.com/openshift/hypershift/api/hypershift/v1beta1")
 	SourcePackage string
@@ -75,12 +75,12 @@ type FieldDef struct {
 }
 
 // NewGenerator creates a new passthrough generator
-func NewGenerator(sourceDir string, sourceTypes []string, registry markers.FieldRegistry) *Generator {
+func NewGenerator(sourceDir string, sourceTypes []string, registry markers.TypedFieldRegistry) *Generator {
 	return &Generator{
 		SourceDir:     sourceDir,
 		SourceTypes:   sourceTypes,
 		OutputPackage: "v1alpha1",
-		Registry:      registry,
+		TypedRegistry: registry,
 		parsedFiles:   make(map[string]*ast.File),
 	}
 }

@@ -11,29 +11,36 @@ import (
 
 func TestCRDVariantGenerator_shouldIncludeField(t *testing.T) {
 	g := &CRDVariantGenerator{
-		fieldRegistry: map[string]registry.FieldMeta{
-			"spec.tags": {
-				FieldPath:   "spec.tags",
-				WriteMode:   registry.Mutable,
-				FeatureGate: "HyperFleetAutoScaling", // TechPreview gate
-			},
-			"spec.displayName": {
-				FieldPath: "spec.displayName",
-				WriteMode: registry.Mutable,
-				// No feature gate
-			},
-			"spec.creatorARN": {
-				FieldPath: "spec.creatorARN",
-				WriteMode: registry.ServiceSet,
-				Hidden:    true,
-			},
-			"spec.hiddenGated": {
-				FieldPath:   "spec.hiddenGated",
-				WriteMode:   registry.ServiceSet,
-				Hidden:      true,
-				FeatureGate: "HyperFleetAutoScaling",
+		fieldRegistry: registry.TypedFieldRegistry{
+			"Cluster": {
+				"spec.tags": {
+					FieldPath:   "spec.tags",
+					WriteMode:   registry.Mutable,
+					FeatureGate: "HyperFleetAutoScaling", // TechPreview gate
+					OwnerType:   "Cluster",
+				},
+				"spec.displayName": {
+					FieldPath: "spec.displayName",
+					WriteMode: registry.Mutable,
+					// No feature gate
+					OwnerType: "Cluster",
+				},
+				"spec.creatorARN": {
+					FieldPath: "spec.creatorARN",
+					WriteMode: registry.ServiceSet,
+					Hidden:    true,
+					OwnerType: "Cluster",
+				},
+				"spec.hiddenGated": {
+					FieldPath:   "spec.hiddenGated",
+					WriteMode:   registry.ServiceSet,
+					Hidden:      true,
+					FeatureGate: "HyperFleetAutoScaling",
+					OwnerType:   "Cluster",
+				},
 			},
 		},
+		resourceType: "Cluster",
 	}
 
 	tests := []struct {
@@ -147,19 +154,24 @@ spec:
 		t.Fatalf("closing temp file: %v", err)
 	}
 
-	// Create generator with test registry
+	// Create generator with test registry for Cluster
 	g := &CRDVariantGenerator{
-		fieldRegistry: map[string]registry.FieldMeta{
-			"spec.tags": {
-				FieldPath:   "spec.tags",
-				WriteMode:   registry.Mutable,
-				FeatureGate: "HyperFleetAutoScaling", // TechPreview
-			},
-			"spec.displayName": {
-				FieldPath: "spec.displayName",
-				WriteMode: registry.Mutable,
+		fieldRegistry: registry.TypedFieldRegistry{
+			"Cluster": {
+				"spec.tags": {
+					FieldPath:   "spec.tags",
+					WriteMode:   registry.Mutable,
+					FeatureGate: "HyperFleetAutoScaling", // TechPreview
+					OwnerType:   "Cluster",
+				},
+				"spec.displayName": {
+					FieldPath: "spec.displayName",
+					WriteMode: registry.Mutable,
+					OwnerType: "Cluster",
+				},
 			},
 		},
+		resourceType: "Cluster",
 	}
 
 	tests := []struct {
@@ -236,7 +248,7 @@ spec:
 	// Create temp output directory
 	tmpDir := t.TempDir()
 
-	g := NewCRDVariantGenerator()
+	g := NewCRDVariantGenerator("Test")
 
 	// Generate all variants
 	if err := g.GenerateAllVariants(tmpFile.Name(), tmpDir, "test"); err != nil {
@@ -259,7 +271,7 @@ spec:
 }
 
 func TestNewCRDVariantGenerator(t *testing.T) {
-	g := NewCRDVariantGenerator()
+	g := NewCRDVariantGenerator("Cluster")
 	if g == nil {
 		t.Fatal("NewCRDVariantGenerator() returned nil")
 	}
@@ -269,9 +281,17 @@ func TestNewCRDVariantGenerator(t *testing.T) {
 		t.Error("fieldRegistry is nil")
 	}
 
-	// Check that a known field exists
-	_, exists := g.fieldRegistry["spec.displayName"]
+	// Check that resourceType was set
+	if g.resourceType != "Cluster" {
+		t.Errorf("expected resourceType=Cluster, got %s", g.resourceType)
+	}
+
+	// Check that a known field exists in the Cluster registry
+	clusterFields, exists := g.fieldRegistry["Cluster"]
 	if !exists {
-		t.Error("expected spec.displayName to exist in registry")
+		t.Error("expected Cluster fields to exist in registry")
+	}
+	if len(clusterFields) == 0 {
+		t.Error("expected Cluster fields to be non-empty")
 	}
 }

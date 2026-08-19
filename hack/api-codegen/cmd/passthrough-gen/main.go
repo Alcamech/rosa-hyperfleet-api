@@ -53,11 +53,16 @@ func main() {
 
 	// Load registry
 	log.Printf("Loading field registry from: %s", registryFile)
-	registry, err := markers.LoadRegistryFromJSON(registryFile)
+	registry, err := markers.LoadTypedRegistryFromJSON(registryFile)
 	if err != nil {
 		log.Fatalf("Failed to load registry: %v", err)
 	}
-	log.Printf("Loaded %d field markers from registry", len(registry))
+
+	totalFields := 0
+	for _, fields := range registry {
+		totalFields += len(fields)
+	}
+	log.Printf("Loaded %d field markers across %d CRD types", totalFields, len(registry))
 
 	// Create generator
 	var gen *passthrough.Generator

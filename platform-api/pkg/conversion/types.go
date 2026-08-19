@@ -40,8 +40,6 @@ type ServiceSetFields struct {
 	ClusterID string `json:"clusterID"`
 	// Config is service-set (platform-managed, hidden from API)
 	Config []corev1.LocalObjectReference `json:"config"`
-	// Configuration is service-set (platform-managed, hidden from API)
-	Configuration *hypershiftv1beta1.ClusterConfiguration `json:"configuration"`
 	// ControlPlaneRelease is service-set (platform-managed, hidden from API)
 	ControlPlaneRelease *hypershiftv1beta1.Release `json:"controlPlaneRelease"`
 	// ControllerAvailabilityPolicy is service-set (platform-managed, hidden from API)
@@ -90,12 +88,8 @@ type ServiceSetFields struct {
 	KernelType *string `json:"kernelType"`
 	// KubeAPIServerDNSName is service-set (platform-managed, hidden from API)
 	KubeAPIServerDNSName string `json:"kubeAPIServerDNSName"`
-	// Kubelet is service-set (platform-managed, hidden from API)
-	Kubelet *v1alpha1.KubeletConfig `json:"kubelet"`
 	// Labels is service-set (platform-managed, hidden from API)
 	Labels map[string]string `json:"labels"`
-	// MachineConfig is service-set (platform-managed, hidden from API)
-	MachineConfig *v1alpha1.MachineConfigSpec `json:"machineConfig"`
 	// Management is service-set (platform-managed, hidden from API)
 	Management hypershiftv1beta1.NodePoolManagement `json:"management"`
 	// MemoryThrottlingFactor is service-set (platform-managed, hidden from API)

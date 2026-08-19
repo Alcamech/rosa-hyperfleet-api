@@ -41,7 +41,7 @@ func ResolvePackageDir(importPath string) (string, error) {
 //	    []string{"HostedClusterSpec", "NodePoolSpec"},
 //	    registry,
 //	)
-func NewGeneratorFromImportPath(importPath string, sourceTypes []string, registry markers.FieldRegistry) (*Generator, error) {
+func NewGeneratorFromImportPath(importPath string, sourceTypes []string, registry markers.TypedFieldRegistry) (*Generator, error) {
 	sourceDir, err := ResolvePackageDir(importPath)
 	if err != nil {
 		return nil, fmt.Errorf("resolving import path %s: %w", importPath, err)
@@ -55,7 +55,7 @@ func NewGeneratorFromImportPath(importPath string, sourceTypes []string, registr
 		SourceDir:          sourceDir,
 		SourceTypes:        sourceTypes,
 		OutputPackage:      "v1alpha1",
-		Registry:           registry,
+		TypedRegistry:      registry,
 		SourcePackage:      importPath,
 		SourcePackageAlias: packageAlias,
 		parsedFiles:        make(map[string]*ast.File),

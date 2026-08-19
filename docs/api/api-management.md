@@ -197,26 +197,34 @@ The goal is to adopt the [openshift/api codegen tooling](https://github.com/open
 
 ### Runtime Enforcement
 
-The marker scanner produces a **field metadata registry**: generated Go code mapping every field path to its write mode and feature gate. The Platform API imports this registry and uses it to validate every mutation generically, with no field-specific code.
+The marker scanner produces a **field metadata registry**: generated Go code mapping CRD types to their field metadata. The registry is indexed by CRD Kind first (e.g., "Cluster", "NodePool"), then by field path. This per-CRD-type structure allows different validation rules for the same field in different resource contexts (e.g., `spec.accountId` may be immutable in Cluster but mutable in NodePool). The Platform API imports this registry and uses it to validate every mutation generically, with no field-specific code.
 
 ```go
 // Generated from markers. Platform API imports this.
-var FieldRegistry = map[string]FieldMeta{
-    "spec.name":                  {WriteMode: Immutable},
-    "spec.region":                {WriteMode: ServiceSet},
-    "spec.deleteProtection":      {WriteMode: Mutable},
-    "spec.accountId":             {WriteMode: ServiceSet},
-    "spec.hostedCluster.release": {WriteMode: Immutable},
-    "spec.hostedCluster.etcd":    {WriteMode: Immutable, Gate: "HyperFleetEtcdConfig"},
-    // ...
+// TypedFieldRegistry maps Kind → {FieldPath → FieldMeta}
+var FieldRegistry = TypedFieldRegistry{
+    "Cluster": {
+        "spec.name":                  {WriteMode: Immutable, OwnerType: "Cluster", ...},
+        "spec.region":                {WriteMode: ServiceSet, OwnerType: "Cluster", ...},
+        "spec.deleteProtection":      {WriteMode: Mutable, OwnerType: "Cluster", ...},
+        "spec.accountId":             {WriteMode: ServiceSet, OwnerType: "Cluster", ...},
+        "spec.hostedCluster.release": {WriteMode: Immutable, OwnerType: "Cluster", ...},
+        "spec.hostedCluster.etcd":    {WriteMode: Immutable, Gate: "HyperFleetEtcdConfig", OwnerType: "Cluster", ...},
+        // ...
+    },
+    "NodePool": {
+        "spec.replicas":              {WriteMode: Mutable, OwnerType: "NodePool", ...},
+        "spec.accountId":             {WriteMode: Mutable, OwnerType: "NodePool", ...},
+        // ...
+    },
 }
 ```
 
-On every write request, the Platform API walks the fields in the request body and checks each one against this registry:
+On every write request, the Platform API walks the fields in the request body and checks each one against this registry by looking up the appropriate CRD type:
 
 ```go
 for fieldPath, value := range req.Fields() {
-    meta := FieldRegistry[fieldPath]
+    meta := FieldRegistry[req.ResourceType][fieldPath]
 
     if meta.Gate != "" && !customerHasGate(customer, meta.Gate) {
         // 400: field 'hostedCluster.etcd' requires gate 'HyperFleetEtcdConfig'
