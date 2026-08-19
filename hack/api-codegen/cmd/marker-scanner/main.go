@@ -114,8 +114,8 @@ func printTypedRegistryTable(registry markers.TypedFieldRegistry) {
 
 	// Create table writer
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "OWNER TYPE\tFIELD PATH\tWRITE MODE\tFEATURE GATE\tHIDDEN")
-	_, _ = fmt.Fprintln(w, "-----------\t-----------\t-----------\t-----------\t------")
+	_, _ = fmt.Fprintln(w, "OWNER TYPE\tFIELD PATH\tWRITE MODE\tFEATURE GATE\tGATED WRITE MODES\tHIDDEN")
+	_, _ = fmt.Fprintln(w, "-----------\t-----------\t-----------\t-----------\t-----------\t------")
 
 	// Print each owner type and its fields
 	for _, owner := range owners {
@@ -142,12 +142,21 @@ func printTypedRegistryTable(registry markers.TypedFieldRegistry) {
 				featureGate = "-"
 			}
 
+			gatedWriteModes := "-"
+			if len(meta.FeatureGateAwareWriteModes) > 0 {
+				var modes []string
+				for _, gated := range meta.FeatureGateAwareWriteModes {
+					modes = append(modes, fmt.Sprintf("%s:%s", gated.FeatureGate, gated.WriteMode))
+				}
+				gatedWriteModes = strings.Join(modes, ";")
+			}
+
 			hidden := "no"
 			if meta.Hidden {
 				hidden = "yes"
 			}
 
-			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", owner, path, writeMode, featureGate, hidden)
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", owner, path, writeMode, featureGate, gatedWriteModes, hidden)
 		}
 	}
 
@@ -179,7 +188,7 @@ func printTypedRegistryStats(registry markers.TypedFieldRegistry) {
 			if meta.Hidden {
 				hidden++
 			}
-			if meta.FeatureGate != "" {
+			if meta.FeatureGate != "" || len(meta.FeatureGateAwareWriteModes) > 0 {
 				gated++
 			}
 		}
