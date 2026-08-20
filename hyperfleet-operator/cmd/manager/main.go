@@ -20,7 +20,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log/slog"
 	"net/url"
 	"os"
 	"strconv"
@@ -29,8 +28,8 @@ import (
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodbstreams"
 	hyperfleetdb "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db"
+	hd "github.com/rrp-bot/rosa-hyperfleet-kube-applier/hyperfleet-dynamo/dynamodb"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -57,6 +56,9 @@ func main() {
 	var maxConcurrentReconciles int
 	var oidcS3Bucket string
 	var oidcIssuerBaseURL string
+	var watcherPollInterval time.Duration
+	var watcherRelistInterval time.Duration
+	var watcherMaxLookback time.Duration
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metrics endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -66,6 +68,12 @@ func main() {
 		"Maximum number of concurrent reconciles per controller.")
 	flag.StringVar(&oidcS3Bucket, "oidc-s3-bucket", "", "S3 bucket for OIDC discovery documents and JWKS (required).")
 	flag.StringVar(&oidcIssuerBaseURL, "oidc-issuer-base-url", "", "Base URL for OIDC issuers, e.g. CloudFront distribution URL (required).")
+	flag.DurationVar(&watcherPollInterval, "dynamo-poll-interval", 0,
+		"How often the DynamoDB GSI fast poller runs (0 uses the default: 15s).")
+	flag.DurationVar(&watcherRelistInterval, "dynamo-relist-interval", 0,
+		"How often the DynamoDB full consistent relist runs (0 uses the default: 5m).")
+	flag.DurationVar(&watcherMaxLookback, "dynamo-max-lookback", 0,
+		"Maximum lookback window for the GSI fast poller (0 defaults to --dynamo-relist-interval).")
 
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
@@ -150,7 +158,6 @@ func main() {
 
 	dynamoDBClient := dynamodb.NewFromConfig(awsCfg)
 	dynamoClient := dynamo.NewClient(dynamoDBClient)
-	streamsClient := dynamodbstreams.NewFromConfig(awsCfg)
 
 	rcfg := render.RegionalConfig{
 		BaseDomain: baseDomain,
@@ -229,11 +236,14 @@ func main() {
 
 	streamMgr := statusstream.NewManager(
 		dynamoDBClient,
-		streamsClient,
 		mgr.GetClient(),
 		[]string{dynamo.TableSuffixStatusApplyDesires, dynamo.TableSuffixStatusReadDesires},
-		func(documentID string) { eventRouter.Dispatch(documentID) },
-		slog.Default().With("component", "statusstream"),
+		func(documentID string, _ hd.Item) { eventRouter.Dispatch(documentID) },
+		ctrl.Log.WithName("statusstream"),		hd.Options{
+			PollInterval:      watcherPollInterval,
+			RelistInterval:    watcherRelistInterval,
+			MaxLookbackWindow: watcherMaxLookback,
+		},
 	)
 	watchCtx, watchCancel := context.WithCancel(context.Background())
 	defer watchCancel()
