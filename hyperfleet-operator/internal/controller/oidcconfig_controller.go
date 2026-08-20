@@ -73,17 +73,18 @@ func (r *OidcConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			}
 			return ctrl.Result{}, fmt.Errorf("add finalizer: %w", err)
 		}
-		return ctrl.Result{Requeue: true}, nil
+		// The Update above triggers a new reconcile via the watch on this
+		// object, so no explicit requeue is needed here.
+		return ctrl.Result{}, nil
 	}
 
 	switch oc.Spec.Type {
-	case "managed":
+	case hyperfleetv1alpha1.OidcConfigTypeManaged:
 		return r.reconcileManaged(ctx, &oc)
-	case "unmanaged":
+	case hyperfleetv1alpha1.OidcConfigTypeUnmanaged:
 		return r.reconcileUnmanaged(ctx, &oc)
 	default:
-		r.setReadyCondition(ctx, &oc, "InvalidType", "unknown type: "+oc.Spec.Type)
-		r.setPhase(ctx, &oc, hyperfleetv1alpha1.OidcConfigPhaseError)
+		r.setReadyConditionAndPhase(ctx, &oc, "InvalidType", "unknown type: "+oc.Spec.Type, hyperfleetv1alpha1.OidcConfigPhaseError)
 		return ctrl.Result{}, nil
 	}
 }
@@ -131,7 +132,9 @@ func (r *OidcConfigReconciler) reconcileManaged(ctx context.Context, oc *hyperfl
 			return ctrl.Result{}, fmt.Errorf("set issuerUrl: %w", err)
 		}
 
-		return ctrl.Result{Requeue: true}, nil
+		// The issuerUrl update above triggers a new reconcile via the watch
+		// on this object, so no explicit requeue is needed here.
+		return ctrl.Result{}, nil
 	}
 
 	return r.finalizeReady(ctx, oc)
@@ -160,8 +163,7 @@ func (r *OidcConfigReconciler) reconcileUnmanaged(ctx context.Context, oc *hyper
 		}
 
 		if err := oidc.ValidateRSAPrivateKey(keyData); err != nil {
-			r.setReadyCondition(ctx, oc, "InvalidPrivateKey", err.Error())
-			r.setPhase(ctx, oc, hyperfleetv1alpha1.OidcConfigPhaseError)
+			r.setReadyConditionAndPhase(ctx, oc, "InvalidPrivateKey", err.Error(), hyperfleetv1alpha1.OidcConfigPhaseError)
 			return ctrl.Result{}, nil
 		}
 
@@ -178,8 +180,9 @@ func (r *OidcConfigReconciler) reconcileUnmanaged(ctx context.Context, oc *hyper
 func (r *OidcConfigReconciler) finalizeReady(ctx context.Context, oc *hyperfleetv1alpha1.OidcConfig) (ctrl.Result, error) {
 	thumbprint, err := r.OIDC.ComputeThumbprint(ctx, oc.Spec.IssuerUrl)
 	if err != nil {
-		r.setReadyCondition(ctx, oc, "ThumbprintFailed", err.Error())
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		// Returning the error lets controller-runtime's rate limiter apply exponential backoff
+		r.setReadyConditionAndPhase(ctx, oc, "ThumbprintFailed", err.Error(), hyperfleetv1alpha1.OidcConfigPhaseError)
+		return ctrl.Result{}, fmt.Errorf("compute thumbprint: %w", err)
 	}
 
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -191,9 +194,10 @@ func (r *OidcConfigReconciler) finalizeReady(ctx context.Context, oc *hyperfleet
 			return err
 		}
 		meta.SetStatusCondition(&latest.Status.Conditions, metav1.Condition{
-			Type:   "Ready",
-			Status: metav1.ConditionTrue,
-			Reason: "OIDCConfigured",
+			Type:    "Ready",
+			Status:  metav1.ConditionTrue,
+			Reason:  "OIDCConfigured",
+			Message: "OIDC infrastructure is configured and ready",
 		})
 		latest.Status.Phase = hyperfleetv1alpha1.OidcConfigPhaseReady
 		latest.Status.Thumbprint = thumbprint
@@ -216,14 +220,14 @@ func (r *OidcConfigReconciler) reconcileDelete(ctx context.Context, oc *hyperfle
 	configID := oc.Name
 	log.Info("OidcConfig deleting", "config", configID, "type", oc.Spec.Type)
 
-	if oc.Spec.Type == "managed" {
+	if oc.Spec.Type == hyperfleetv1alpha1.OidcConfigTypeManaged {
 		if err := r.OIDC.DeleteOIDCDocuments(ctx, configID); err != nil {
-			log.Error(err, "Failed to delete OIDC documents from S3")
+			return ctrl.Result{}, fmt.Errorf("delete OIDC documents: %w", err)
 		}
 	}
 
 	if err := r.OIDC.DeletePrivateKey(ctx, configID); err != nil {
-		log.Error(err, "Failed to delete private key from Secrets Manager")
+		return ctrl.Result{}, fmt.Errorf("delete private key: %w", err)
 	}
 
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -286,6 +290,30 @@ func (r *OidcConfigReconciler) setReadyCondition(ctx context.Context, oc *hyperf
 		return r.Status().Update(ctx, &latest)
 	}); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to update Ready condition")
+	}
+}
+
+// setReadyConditionAndPhase updates the Ready condition and the phase together in a single Get + Status().Update retry loop
+func (r *OidcConfigReconciler) setReadyConditionAndPhase(ctx context.Context, oc *hyperfleetv1alpha1.OidcConfig, reason, message string, phase hyperfleetv1alpha1.OidcConfigPhase) {
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var latest hyperfleetv1alpha1.OidcConfig
+		if err := r.Get(ctx, client.ObjectKeyFromObject(oc), &latest); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		meta.SetStatusCondition(&latest.Status.Conditions, metav1.Condition{
+			Type:    "Ready",
+			Status:  metav1.ConditionFalse,
+			Reason:  reason,
+			Message: message,
+		})
+		latest.Status.Phase = phase
+		latest.Status.ObservedGeneration = latest.Generation
+		return r.Status().Update(ctx, &latest)
+	}); err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to update Ready condition and phase", "phase", phase)
 	}
 }
 

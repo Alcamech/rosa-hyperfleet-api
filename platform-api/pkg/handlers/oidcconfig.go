@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
+	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
@@ -107,6 +108,22 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	if req.Spec.Type == "" {
 		writeAPIError(w, ErrOidcConfigCreateMissingFields, h.logger)
+		return
+	}
+
+	if req.Spec.Type != hyperfleetv1alpha1.OidcConfigTypeManaged && req.Spec.Type != hyperfleetv1alpha1.OidcConfigTypeUnmanaged {
+		writeAPIError(w, ErrOidcConfigCreateInvalidType, h.logger)
+		return
+	}
+
+	if req.Spec.Type == hyperfleetv1alpha1.OidcConfigTypeManaged {
+		req.Spec.IssuerUrl = ""
+		if req.Spec.SecretArn != "" || req.Spec.InstallerRoleArn != "" {
+			writeAPIError(w, ErrOidcConfigCreateInvalidFields, h.logger)
+			return
+		}
+	} else if req.Spec.SecretArn == "" || req.Spec.InstallerRoleArn == "" || req.Spec.IssuerUrl == "" {
+		writeAPIError(w, ErrOidcConfigCreateInvalidFields, h.logger)
 		return
 	}
 

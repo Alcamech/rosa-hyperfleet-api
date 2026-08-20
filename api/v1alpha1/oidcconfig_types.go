@@ -31,6 +31,12 @@ const (
 	OidcConfigPhaseError   OidcConfigPhase = "Error"
 )
 
+// OidcConfigSpec.Type values.
+const (
+	OidcConfigTypeManaged   = "managed"
+	OidcConfigTypeUnmanaged = "unmanaged"
+)
+
 // OidcConfigSpec defines the desired state of an OidcConfig.
 // +kubebuilder:validation:XValidation:rule="self.type != 'managed' || (self.secretArn == '' && self.installerRoleArn == '')",message="managed type must not set secretArn or installerRoleArn"
 // +kubebuilder:validation:XValidation:rule="self.type != 'unmanaged' || (self.secretArn != '' && self.installerRoleArn != '' && self.issuerUrl != '')",message="unmanaged type requires secretArn, installerRoleArn, and issuerUrl"
@@ -54,12 +60,14 @@ type OidcConfigSpec struct {
 	// Required for unmanaged configs; must be empty for managed configs.
 	// +hyperfleet:write-mode=immutable
 	// +optional
+	// +kubebuilder:validation:Pattern=`^(arn:aws:secretsmanager:.*)?$`
 	SecretArn string `json:"secretArn"`
 
 	// InstallerRoleArn is the ARN of the cross-account IAM role used to read the customer's secret.
 	// Required for unmanaged configs; must be empty for managed configs.
 	// +hyperfleet:write-mode=immutable
 	// +optional
+	// +kubebuilder:validation:Pattern=`^(arn:aws:iam::.*)?$`
 	InstallerRoleArn string `json:"installerRoleArn"`
 
 	// AccountID is the AWS account that owns this OIDC config.

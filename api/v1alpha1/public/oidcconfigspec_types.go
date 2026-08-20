@@ -23,10 +23,12 @@ type OidcConfigSpec struct {
 	// Required for unmanaged configs; must be empty for managed configs.
 	// +hyperfleet:write-mode=immutable
 	// +optional
+	// +kubebuilder:validation:Pattern=`^(arn:aws:secretsmanager:.*)?$`
 	SecretArn string `json:"secretArn"`
 	// InstallerRoleArn is the ARN of the cross-account IAM role used to read the customer's secret.
 	// Required for unmanaged configs; must be empty for managed configs.
 	// +hyperfleet:write-mode=immutable
 	// +optional
+	// +kubebuilder:validation:Pattern=`^(arn:aws:iam::.*)?$`
 	InstallerRoleArn string `json:"installerRoleArn"`
 }

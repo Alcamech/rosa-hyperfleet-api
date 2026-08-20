@@ -26,7 +26,7 @@ func ClusterCRToPlatform(cr *hyperfleetv1alpha1.Cluster) *types.Cluster {
 		ResourceVersion: cr.ResourceVersion,
 		Spec:            cr.Spec,
 		CreatedAt:       cr.CreationTimestamp.Time,
-		UpdatedAt:       metaTime(cr),
+		UpdatedAt:       latestTransitionTime(cr, cr.Status.Conditions),
 	}
 
 	if cr.Spec.CreatorARN != "" {
@@ -45,7 +45,7 @@ func ClusterCRToPlatform(cr *hyperfleetv1alpha1.Cluster) *types.Cluster {
 			Phase:                string(phase),
 			ControlPlaneEndpoint: apiEndpointFromCR(cr.Status.ControlPlaneEndpoint),
 			Version:              cr.Status.Version,
-			LastUpdateTime:       metaTime(cr),
+			LastUpdateTime:       latestTransitionTime(cr, cr.Status.Conditions),
 		}
 
 		if pr := cr.Status.PlacementRef; pr != nil {
@@ -122,7 +122,7 @@ func NodePoolCRToPlatform(cr *hyperfleetv1alpha1.NodePool) *types.NodePool {
 		ResourceVersion: cr.ResourceVersion,
 		Spec:            cr.Spec,
 		CreatedAt:       cr.CreationTimestamp.Time,
-		UpdatedAt:       metaTime(cr),
+		UpdatedAt:       latestTransitionTime(cr, cr.Status.Conditions),
 	}
 
 	// Sync top-level autoRepair → passthrough management.autoRepair so the
@@ -141,7 +141,7 @@ func NodePoolCRToPlatform(cr *hyperfleetv1alpha1.NodePool) *types.NodePool {
 		np.Status = &types.NodePoolStatusInfo{
 			ObservedGeneration: cr.Status.ObservedGeneration,
 			Phase:              string(phase),
-			LastUpdateTime:     metaTime(cr),
+			LastUpdateTime:     latestTransitionTime(cr, cr.Status.Conditions),
 		}
 		if len(cr.Status.Conditions) > 0 {
 			np.Status.Conditions = make([]types.Condition, 0, len(cr.Status.Conditions))
@@ -199,7 +199,7 @@ func OidcConfigCRToPlatform(cr *hyperfleetv1alpha1.OidcConfig) *types.OidcConfig
 		ResourceVersion: cr.ResourceVersion,
 		Spec:            projected.Spec,
 		CreatedAt:       cr.CreationTimestamp.Time,
-		UpdatedAt:       metaTime(cr),
+		UpdatedAt:       latestTransitionTime(cr, cr.Status.Conditions),
 	}
 
 	if phase := cr.Status.Phase; phase != "" {
@@ -207,7 +207,7 @@ func OidcConfigCRToPlatform(cr *hyperfleetv1alpha1.OidcConfig) *types.OidcConfig
 			ObservedGeneration: cr.Status.ObservedGeneration,
 			Phase:              string(phase),
 			Thumbprint:         cr.Status.Thumbprint,
-			LastUpdateTime:     metaTime(cr),
+			LastUpdateTime:     latestTransitionTime(cr, cr.Status.Conditions),
 		}
 
 		if cr.Status.LastUsedTimestamp != nil {
@@ -262,6 +262,17 @@ func metaTime(obj metav1.Object) time.Time {
 		return t.Time
 	}
 	return obj.GetCreationTimestamp().Time
+}
+
+// latestTransitionTime returns the most recent condition LastTransitionTime
+func latestTransitionTime(obj metav1.Object, conditions []metav1.Condition) time.Time {
+	latest := metaTime(obj)
+	for _, c := range conditions {
+		if c.LastTransitionTime.After(latest) {
+			latest = c.LastTransitionTime.Time
+		}
+	}
+	return latest
 }
 
 const clusterNSPrefix = "cluster-"

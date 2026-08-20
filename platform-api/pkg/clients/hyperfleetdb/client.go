@@ -285,9 +285,8 @@ func setAccountLabel(obj client.Object, accountID string) {
 }
 
 var (
-	clusterGR    = hyperfleetv1alpha1.GroupVersion.WithResource("clusters").GroupResource()
-	nodePoolGR   = hyperfleetv1alpha1.GroupVersion.WithResource("nodepools").GroupResource()
-	oidcConfigGR = hyperfleetv1alpha1.GroupVersion.WithResource("oidcconfigs").GroupResource()
+	clusterGR  = hyperfleetv1alpha1.GroupVersion.WithResource("clusters").GroupResource()
+	nodePoolGR = hyperfleetv1alpha1.GroupVersion.WithResource("nodepools").GroupResource()
 )
 
 const accountNSPrefix = "account-"

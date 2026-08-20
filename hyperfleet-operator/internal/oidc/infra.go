@@ -34,6 +34,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -46,6 +47,7 @@ import (
 
 const (
 	keyBits      = 4096
+	minKeyBits   = 2048
 	secretPrefix = "hyperfleet/oidc/"
 
 	discoveryPath = ".well-known/openid-configuration"
@@ -66,21 +68,29 @@ type InfraClient interface {
 	ComputeThumbprint(ctx context.Context, issuerURL string) (string, error)
 }
 
-// ValidateRSAPrivateKey checks that pemData is a valid PEM-encoded RSA private key.
+// ValidateRSAPrivateKey checks that pemData is a valid PEM-encoded RSA private key with a modulus of at least minKeyBits
 func ValidateRSAPrivateKey(pemData []byte) error {
 	block, _ := pem.Decode(pemData)
 	if block == nil {
 		return fmt.Errorf("no PEM block found")
 	}
-	if _, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
-		return nil
+	if key, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+		return checkRSAKeySize(key)
 	}
 	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
 		return fmt.Errorf("not a valid RSA private key: %w", err)
 	}
-	if _, ok := key.(*rsa.PrivateKey); !ok {
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	if !ok {
 		return fmt.Errorf("key is not RSA")
+	}
+	return checkRSAKeySize(rsaKey)
+}
+
+func checkRSAKeySize(key *rsa.PrivateKey) error {
+	if bits := key.N.BitLen(); bits < minKeyBits {
+		return fmt.Errorf("RSA key size %d bits is below the minimum of %d bits", bits, minKeyBits)
 	}
 	return nil
 }
@@ -98,17 +108,34 @@ type AWSClient struct {
 	sts    *sts.Client
 	awsCfg aws.Config
 	config Config
+
+	mu              sync.Mutex
+	assumeRoleCache map[string]*aws.CredentialsCache
 }
 
 // NewAWSClient creates a new AWSClient.
 func NewAWSClient(awsCfg aws.Config, config Config) *AWSClient {
 	return &AWSClient{
-		s3:     s3.NewFromConfig(awsCfg),
-		sm:     secretsmanager.NewFromConfig(awsCfg),
-		sts:    sts.NewFromConfig(awsCfg),
-		awsCfg: awsCfg,
-		config: config,
+		s3:              s3.NewFromConfig(awsCfg),
+		sm:              secretsmanager.NewFromConfig(awsCfg),
+		sts:             sts.NewFromConfig(awsCfg),
+		awsCfg:          awsCfg,
+		config:          config,
+		assumeRoleCache: make(map[string]*aws.CredentialsCache),
 	}
+}
+
+// assumeRoleCredentials returns a cached credentials provider for roleARN, creating and caching one on first use.
+func (c *AWSClient) assumeRoleCredentials(roleARN string) *aws.CredentialsCache {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if creds, ok := c.assumeRoleCache[roleARN]; ok {
+		return creds
+	}
+	creds := aws.NewCredentialsCache(stscreds.NewAssumeRoleProvider(c.sts, roleARN))
+	c.assumeRoleCache[roleARN] = creds
+	return creds
 }
 
 func (c *AWSClient) GenerateKeyPair() ([]byte, []byte, error) {
@@ -132,7 +159,10 @@ func (c *AWSClient) GenerateKeyPair() ([]byte, []byte, error) {
 
 func (c *AWSClient) UploadOIDCDocuments(ctx context.Context, configID string, jwksDoc []byte) error {
 	issuer := c.IssuerURL(configID)
-	discovery := buildDiscoveryDocument(issuer)
+	discovery, err := buildDiscoveryDocument(issuer)
+	if err != nil {
+		return fmt.Errorf("build discovery document: %w", err)
+	}
 
 	discoKey := configID + "/" + discoveryPath
 	if _, err := c.s3.PutObject(ctx, &s3.PutObjectInput{
@@ -174,6 +204,8 @@ func (c *AWSClient) DeleteOIDCDocuments(ctx context.Context, configID string) er
 	return errors.Join(errs...)
 }
 
+// StorePrivateKey creates the Secrets Manager secret holding the OIDC
+// signing key, or overwrites it if one already exists.
 func (c *AWSClient) StorePrivateKey(ctx context.Context, configID string, privateKeyPEM []byte) error {
 	secretName := secretPrefix + configID
 	_, err := c.sm.CreateSecret(ctx, &secretsmanager.CreateSecretInput{
@@ -183,10 +215,15 @@ func (c *AWSClient) StorePrivateKey(ctx context.Context, configID string, privat
 	})
 	if err != nil {
 		var existsErr *smtypes.ResourceExistsException
-		if errors.As(err, &existsErr) {
-			return nil
+		if !errors.As(err, &existsErr) {
+			return fmt.Errorf("create secret: %w", err)
 		}
-		return fmt.Errorf("create secret: %w", err)
+		if _, err := c.sm.PutSecretValue(ctx, &secretsmanager.PutSecretValueInput{
+			SecretId:     aws.String(secretName),
+			SecretString: aws.String(string(privateKeyPEM)),
+		}); err != nil {
+			return fmt.Errorf("update secret: %w", err)
+		}
 	}
 	return nil
 }
@@ -207,9 +244,8 @@ func (c *AWSClient) PrivateKeyExists(ctx context.Context, configID string) (bool
 }
 
 func (c *AWSClient) ReadCrossAccountSecret(ctx context.Context, secretARN, roleARN string) ([]byte, error) {
-	creds := stscreds.NewAssumeRoleProvider(c.sts, roleARN)
 	crossSM := secretsmanager.NewFromConfig(c.awsCfg, func(o *secretsmanager.Options) {
-		o.Credentials = aws.NewCredentialsCache(creds)
+		o.Credentials = c.assumeRoleCredentials(roleARN)
 	})
 
 	result, err := crossSM.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
@@ -256,23 +292,36 @@ func (c *AWSClient) ComputeThumbprint(ctx context.Context, issuerURL string) (st
 		port = "443"
 	}
 
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
-	conn, err := tls.DialWithDialer(dialer, "tcp", host+":"+port, &tls.Config{
-		MinVersion: tls.VersionTLS12,
-	})
+	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	tlsDialer := &tls.Dialer{
+		NetDialer: &net.Dialer{Timeout: 10 * time.Second},
+		Config: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
+	}
+	conn, err := tlsDialer.DialContext(dialCtx, "tcp", host+":"+port)
 	if err != nil {
 		return "", fmt.Errorf("TLS dial %s: %w", host, err)
 	}
 	defer conn.Close()
 
-	certs := conn.ConnectionState().PeerCertificates
+	tlsConn, ok := conn.(*tls.Conn)
+	if !ok {
+		return "", fmt.Errorf("unexpected connection type for %s", host)
+	}
+
+	certs := tlsConn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		return "", fmt.Errorf("no TLS certificates from %s", host)
 	}
 
 	// Use the root CA certificate (last in chain) per AWS IAM OIDC provider convention.
 	root := certs[len(certs)-1]
-	fingerprint := sha1.Sum(root.Raw)
+	// AWS IAM OIDC providers require the thumbprint to be a SHA-1 fingerprint of
+	// the root CA certificate; this is an API contract, not a security choice.
+	fingerprint := sha1.Sum(root.Raw) //nolint:gosec // SHA-1 required by AWS IAM OIDC provider API contract
 	return fmt.Sprintf("%x", fingerprint[:]), nil
 }
 
@@ -322,7 +371,7 @@ type oidcDiscoveryDocument struct {
 	ClaimsSupported                  []string `json:"claims_supported"`
 }
 
-func buildDiscoveryDocument(issuerURL string) []byte {
+func buildDiscoveryDocument(issuerURL string) ([]byte, error) {
 	doc := oidcDiscoveryDocument{
 		Issuer:                           issuerURL,
 		JWKSURI:                          issuerURL + "/" + jwksPath,
@@ -332,6 +381,9 @@ func buildDiscoveryDocument(issuerURL string) []byte {
 		IDTokenSigningAlgValuesSupported: []string{"RS256"},
 		ClaimsSupported:                  []string{"sub", "iss"},
 	}
-	data, _ := json.MarshalIndent(doc, "", "  ")
-	return data
+	data, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal discovery document: %w", err)
+	}
+	return data, nil
 }

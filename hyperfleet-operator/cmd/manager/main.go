@@ -21,6 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -86,6 +87,10 @@ func main() {
 	}
 	if oidcIssuerBaseURL == "" {
 		setupLog.Error(nil, "--oidc-issuer-base-url is required")
+		os.Exit(1)
+	}
+	if parsed, err := url.Parse(oidcIssuerBaseURL); err != nil || !parsed.IsAbs() || parsed.Scheme != "https" || parsed.Host == "" {
+		setupLog.Error(err, "--oidc-issuer-base-url must be an absolute HTTPS URL", "value", oidcIssuerBaseURL)
 		os.Exit(1)
 	}
 
