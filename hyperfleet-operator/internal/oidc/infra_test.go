@@ -17,6 +17,7 @@ limitations under the License.
 package oidc
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -48,4 +49,42 @@ func TestValidateRSAPrivateKey(t *testing.T) {
 			t.Error("expected an error for a key below the minimum size, got nil")
 		}
 	})
+}
+
+func TestResolveIssuerHost(t *testing.T) {
+	// IP literals resolve without a real DNS lookup, so these cases don't
+	// require network access.
+	tests := []struct {
+		name      string
+		issuerURL string
+		wantErr   bool
+		wantAddr  string
+	}{
+		{"rejects non-https scheme", "http://93.184.216.34", true, ""},
+		{"rejects loopback", "https://127.0.0.1", true, ""},
+		{"rejects IPv6 loopback", "https://[::1]", true, ""},
+		{"rejects link-local (cloud metadata)", "https://169.254.169.254", true, ""},
+		{"rejects private range", "https://10.0.0.1", true, ""},
+		{"rejects unspecified", "https://0.0.0.0", true, ""},
+		{"accepts a public address", "https://93.184.216.34", false, "93.184.216.34:443"},
+		{"accepts a public address with explicit port", "https://93.184.216.34:8443", false, "93.184.216.34:8443"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, dialAddr, err := resolveIssuerHost(context.Background(), tt.issuerURL)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error for %q, got nil", tt.issuerURL)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected no error for %q, got %v", tt.issuerURL, err)
+			}
+			if dialAddr != tt.wantAddr {
+				t.Errorf("expected dial address %q, got %q", tt.wantAddr, dialAddr)
+			}
+		})
+	}
 }

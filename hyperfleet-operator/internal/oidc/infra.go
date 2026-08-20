@@ -281,40 +281,35 @@ func (c *AWSClient) IssuerURL(configID string) string {
 }
 
 func (c *AWSClient) ComputeThumbprint(ctx context.Context, issuerURL string) (string, error) {
-	u, err := url.Parse(issuerURL)
-	if err != nil {
-		return "", fmt.Errorf("parse issuer URL: %w", err)
-	}
-
-	host := u.Hostname()
-	port := u.Port()
-	if port == "" {
-		port = "443"
-	}
-
 	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
+
+	hostname, dialAddr, err := resolveIssuerHost(dialCtx, issuerURL)
+	if err != nil {
+		return "", err
+	}
 
 	tlsDialer := &tls.Dialer{
 		NetDialer: &net.Dialer{Timeout: 10 * time.Second},
 		Config: &tls.Config{
 			MinVersion: tls.VersionTLS12,
+			ServerName: hostname,
 		},
 	}
-	conn, err := tlsDialer.DialContext(dialCtx, "tcp", host+":"+port)
+	conn, err := tlsDialer.DialContext(dialCtx, "tcp", dialAddr)
 	if err != nil {
-		return "", fmt.Errorf("TLS dial %s: %w", host, err)
+		return "", fmt.Errorf("TLS dial %s: %w", hostname, err)
 	}
 	defer conn.Close()
 
 	tlsConn, ok := conn.(*tls.Conn)
 	if !ok {
-		return "", fmt.Errorf("unexpected connection type for %s", host)
+		return "", fmt.Errorf("unexpected connection type for %s", hostname)
 	}
 
 	certs := tlsConn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
-		return "", fmt.Errorf("no TLS certificates from %s", host)
+		return "", fmt.Errorf("no TLS certificates from %s", hostname)
 	}
 
 	// Use the root CA certificate (last in chain) per AWS IAM OIDC provider convention.
@@ -323,6 +318,65 @@ func (c *AWSClient) ComputeThumbprint(ctx context.Context, issuerURL string) (st
 	// the root CA certificate; this is an API contract, not a security choice.
 	fingerprint := sha1.Sum(root.Raw) //nolint:gosec // SHA-1 required by AWS IAM OIDC provider API contract
 	return fmt.Sprintf("%x", fingerprint[:]), nil
+}
+
+// resolveIssuerHost validates issuerURL against SSRF and resolves it to a
+// concrete dial address. issuerURL is customer-controlled for unmanaged
+// OidcConfigs, so it must not be allowed to reach loopback, link-local
+// (including the 169.254.169.254 cloud metadata endpoint), private, or
+// other non-public addresses.
+//
+// The hostname is resolved here and the resulting IP is used directly for
+// the TLS dial in ComputeThumbprint, rather than letting the dialer
+// re-resolve the hostname. This closes the DNS-rebinding TOCTOU window
+// where a second lookup could return a different, unvalidated address.
+// The original hostname is still returned for TLS SNI and certificate
+// hostname verification.
+func resolveIssuerHost(ctx context.Context, issuerURL string) (hostname, dialAddr string, err error) {
+	u, err := url.Parse(issuerURL)
+	if err != nil {
+		return "", "", fmt.Errorf("parse issuer URL: %w", err)
+	}
+	if u.Scheme != "https" {
+		return "", "", fmt.Errorf("issuer URL must use https scheme, got %q", u.Scheme)
+	}
+
+	hostname = u.Hostname()
+	if hostname == "" {
+		return "", "", fmt.Errorf("issuer URL has no host")
+	}
+	port := u.Port()
+	if port == "" {
+		port = "443"
+	}
+
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, hostname)
+	if err != nil {
+		return "", "", fmt.Errorf("resolve issuer host %s: %w", hostname, err)
+	}
+	if len(addrs) == 0 {
+		return "", "", fmt.Errorf("issuer host %s did not resolve to any address", hostname)
+	}
+	for _, addr := range addrs {
+		if isDisallowedIssuerIP(addr.IP) {
+			return "", "", fmt.Errorf("issuer host %s resolves to disallowed address %s", hostname, addr.IP)
+		}
+	}
+
+	return hostname, net.JoinHostPort(addrs[0].IP.String(), port), nil
+}
+
+// isDisallowedIssuerIP rejects loopback, link-local, private, unspecified,
+// and multicast addresses to prevent the operator from being used as an
+// SSRF proxy against internal infrastructure or the cloud metadata service.
+func isDisallowedIssuerIP(ip net.IP) bool {
+	return ip.IsLoopback() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsInterfaceLocalMulticast() ||
+		ip.IsMulticast() ||
+		ip.IsPrivate() ||
+		ip.IsUnspecified()
 }
 
 // --- JWKS / discovery document helpers ---
