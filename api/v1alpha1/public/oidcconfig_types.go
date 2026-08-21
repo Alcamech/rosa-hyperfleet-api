@@ -8,9 +8,19 @@ import (
 
 // OidcConfig is the Schema for the oidcconfigs API.
 // It represents a reusable OIDC configuration for cluster identity.
+// metadata.Name is the config ID; metadata.Namespace is account-<accountID>.
+// Not exposed to REST clients — the platform API is flat (/oidc_configs) and
+// derives the account from the caller's identity, not a URL parameter.
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:subresource:status
+// +genclient
+// +genclient:nonNamespaced
+// +bridge:field=id,meta=name
+// +bridge:field=resource_version,meta=resourceVersion
+// +bridge:field=generation,meta=generation
+// +bridge:watch=disabled
+// +bridge:wait
 type OidcConfig struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
