@@ -324,27 +324,3 @@ func (h *ClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// GetStatus handles GET /api/v0/clusters/{id}/statuses
-func (h *ClusterHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	accountID := middleware.GetAccountID(ctx)
-	vars := mux.Vars(r)
-	clusterID := vars["id"]
-
-	h.logger.Info("getting cluster status", "account_id", accountID, "cluster_id", clusterID)
-
-	cr, err := h.db.GetCluster(ctx, accountID, clusterID)
-	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
-			writeAPIError(w, ErrClusterStatusNotFound, h.logger)
-			return
-		}
-		h.logger.Error("failed to get cluster status", "error", err, "account_id", accountID, "cluster_id", clusterID)
-		writeAPIError(w, ErrClusterStatusFailed, h.logger)
-		return
-	}
-
-	if err := api.Write(w, http.StatusOK, hyperfleetdb.InternalToPublicCluster(cr)); err != nil {
-		h.logger.Error("failed to write response", "error", err)
-	}
-}

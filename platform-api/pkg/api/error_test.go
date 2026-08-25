@@ -229,6 +229,43 @@ func TestWrite_StructuredError_CausesInDetails(t *testing.T) {
 	}
 }
 
+// TestWrite_FieldValidatorError verifies that validation errors carrying only
+// field+reason (as emitted by FieldValidator) surface the reason text as the
+// cause message rather than leaving it blank.
+func TestWrite_FieldValidatorError(t *testing.T) {
+	// FieldValidator produces ValidationError{Field, Reason} — no Detail/Message.
+	type validationError struct {
+		Field  string `json:"field"`
+		Reason string `json:"reason"`
+	}
+	errs := []validationError{
+		{Field: "spec.accountId", Reason: "service-set field may not be set by the user"},
+	}
+	def := base.WithErrors(errs)
+	w := write(def)
+	resp := decode(t, w)
+
+	details, ok := resp["details"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected details object, got %v", resp["details"])
+	}
+	causes, ok := details["causes"].([]any)
+	if !ok || len(causes) == 0 {
+		t.Fatalf("expected causes in details, got %v", details)
+	}
+	cause := causes[0].(map[string]any)
+	if cause["field"] != "spec.accountId" {
+		t.Errorf("cause.field = %v, want spec.accountId", cause["field"])
+	}
+	if cause["message"] != "service-set field may not be set by the user" {
+		t.Errorf("cause.message = %v, want reason text", cause["message"])
+	}
+	// metav1.StatusCause.Type serializes as "reason" in JSON.
+	if cause["reason"] != "FieldValueInvalid" {
+		t.Errorf("cause.reason = %v, want FieldValueInvalid", cause["reason"])
+	}
+}
+
 // --- Write: no errors ---
 
 func TestWrite_NoErrors_NoDetails(t *testing.T) {

@@ -210,7 +210,7 @@ paths:
 
         Possible error codes:
         - CLUSTERS-MGMT-CREATE-001: Invalid request body
-        - CLUSTERS-MGMT-CREATE-002: Invalid cluster spec
+        - CLUSTERS-MGMT-CREATE-002: Missing required fields (metadata.name and non-empty spec)
         - CLUSTERS-MGMT-CREATE-003: Failed to create cluster
         - CLUSTERS-MGMT-CREATE-004: Failed to validate cluster name
         - CLUSTERS-MGMT-CREATE-005: Duplicate cluster name
@@ -222,14 +222,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Cluster"
+              $ref: "#/components/schemas/ClusterStatusView"
       responses:
         "201":
           description: Cluster created successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Cluster"
+                $ref: "#/components/schemas/ClusterStatusView"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -260,7 +260,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Cluster"
+                $ref: "#/components/schemas/ClusterStatusView"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -283,14 +283,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Cluster"
+              $ref: "#/components/schemas/ClusterStatusView"
       responses:
         "200":
           description: Cluster updated successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Cluster"
+                $ref: "#/components/schemas/ClusterStatusView"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -313,14 +313,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Cluster"
+              $ref: "#/components/schemas/ClusterStatusView"
       responses:
         "200":
           description: Cluster updated successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Cluster"
+                $ref: "#/components/schemas/ClusterStatusView"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -361,40 +361,6 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
-  /clusters/{id}/statuses:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-        description: Cluster ID
-
-    get:
-      summary: Get cluster statuses
-      description: Retrieve cluster status and controller statuses (user must own the cluster)
-      operationId: getUserClusterStatus
-      tags:
-        - Clusters
-      responses:
-        "200":
-          description: Cluster status
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Cluster"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
-
-  # NodePool Management Endpoints
   /nodepools:
     get:
       summary: List nodepools
@@ -548,39 +514,6 @@ paths:
                     type: string
                   nodepool_id:
                     type: string
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
-
-  /nodepools/{id}/status:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-        description: NodePool ID
-
-    get:
-      summary: Get nodepool status
-      description: Retrieve nodepool status (user must own the cluster)
-      operationId: getUserNodePoolStatus
-      tags:
-        - NodePools
-      responses:
-        "200":
-          description: NodePool status
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/NodePool"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -22564,20 +22497,6 @@ components:
       required:
           - type
       type: object
-      x-kubernetes-validations:
-          - message: managed type must not set secretArn or installerRoleArn
-            rule: self.type != 'managed' || (self.secretArn == '' && self.installerRoleArn == '')
-          - message: unmanaged type requires secretArn, installerRoleArn, and issuerUrl
-            rule: self.type != 'unmanaged' || (self.secretArn != '' && self.installerRoleArn != '' && self.issuerUrl != '')
-          - message: spec.type is immutable
-            rule: self.type == oldSelf.type
-          - message: spec.secretArn is immutable
-            rule: self.secretArn == oldSelf.secretArn
-          - message: spec.installerRoleArn is immutable
-            rule: self.installerRoleArn == oldSelf.installerRoleArn
-          - message: spec.issuerUrl is immutable once set
-            rule: oldSelf.issuerUrl == '' || self.issuerUrl == oldSelf.issuerUrl
-  responses:
     BadRequest:
       description: Bad request
       content:

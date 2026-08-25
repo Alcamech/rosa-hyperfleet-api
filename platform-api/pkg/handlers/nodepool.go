@@ -92,7 +92,8 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // Create handles POST /api/v0/nodepools
 // Request body: public.NodePool (K8s-native). Name comes from metadata.name;
-// cluster association comes from metadata.namespace (the cluster UUID).
+// cluster association comes from metadata.namespace which must be the canonical
+// "cluster-<uuid>" form (e.g. "cluster-550e8400-e29b-41d4-a716-446655440000").
 func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
@@ -279,26 +280,3 @@ func (h *NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *NodePoolHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	accountID := middleware.GetAccountID(ctx)
-	vars := mux.Vars(r)
-	nodepoolID := vars["id"]
-
-	h.logger.Info("getting nodepool status", "account_id", accountID, "nodepool_id", nodepoolID)
-
-	cr, err := h.db.GetNodePool(ctx, accountID, nodepoolID)
-	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
-			writeAPIError(w, ErrNodePoolStatusNotFound, h.logger)
-			return
-		}
-		h.logger.Error("failed to get nodepool status", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
-		writeAPIError(w, ErrNodePoolStatusFailed, h.logger)
-		return
-	}
-
-	if err := api.Write(w, http.StatusOK, hyperfleetdb.InternalToPublicNodePool(cr)); err != nil {
-		h.logger.Error("failed to write response", "error", err)
-	}
-}

@@ -331,10 +331,17 @@ func TestClusterHandler_Create_NameTooLong(t *testing.T) {
 }
 
 func TestClusterHandler_Get_Success(t *testing.T) {
+	cr := testClusterCR("cluster-123", "test-cluster", testAccountID)
+	cr.Status = hyperfleetv1alpha1.ClusterStatus{
+		ObservedGeneration: 1,
+		Phase:              "Ready",
+		Conditions: []metav1.Condition{
+			{Type: "Available", Status: metav1.ConditionTrue, Reason: "AsExpected"},
+		},
+	}
 	scheme := newTestScheme()
-	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
-		testClusterCR("cluster-123", "test-cluster", testAccountID),
-	).Build()
+	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).
+		WithStatusSubresource(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
 
@@ -357,6 +364,11 @@ func TestClusterHandler_Get_Success(t *testing.T) {
 	}
 	if name := metaField(result, "name"); name != "test-cluster" {
 		t.Errorf("expected metadata.name=test-cluster, got %v", name)
+	}
+	// Status is included in GET — no separate /statuses endpoint.
+	status, _ := result["status"].(map[string]any)
+	if status["phase"] != "Ready" {
+		t.Errorf("expected status.phase=Ready, got %v", status["phase"])
 	}
 }
 
@@ -426,62 +438,6 @@ func TestClusterHandler_Delete_NotFound(t *testing.T) {
 	}
 }
 
-func TestClusterHandler_GetStatus_Success(t *testing.T) {
-	cr := testClusterCR("cluster-123", "test-cluster", testAccountID)
-	cr.Status = hyperfleetv1alpha1.ClusterStatus{
-		ObservedGeneration: 1,
-		Phase:              "Ready",
-		Conditions: []metav1.Condition{
-			{
-				Type:   "Ready",
-				Status: metav1.ConditionTrue,
-				Reason: "ClusterReady",
-			},
-		},
-	}
-
-	scheme := newTestScheme()
-	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).
-		WithStatusSubresource(cr).Build()
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/cluster-123/statuses", nil)
-	req = req.WithContext(testContext(testAccountID))
-	req = mux.SetURLVars(req, map[string]string{"id": "cluster-123"})
-
-	w := httptest.NewRecorder()
-	handler.GetStatus(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	// GetStatus returns the full public.Cluster; verify via metadata.uid.
-	var result map[string]any
-	_ = json.NewDecoder(w.Body).Decode(&result)
-	if uid := metaField(result, "uid"); uid != "cluster-123" {
-		t.Errorf("expected metadata.uid=cluster-123, got %v", uid)
-	}
-}
-
-func TestClusterHandler_GetStatus_NotFound(t *testing.T) {
-	scheme := newTestScheme()
-	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/no-such/statuses", nil)
-	req = req.WithContext(testContext(testAccountID))
-	req = mux.SetURLVars(req, map[string]string{"id": "no-such"})
-
-	w := httptest.NewRecorder()
-	handler.GetStatus(w, req)
-
-	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", w.Code)
-	}
-}
 
 func TestClusterHandler_Update_Success(t *testing.T) {
 	scheme := newTestScheme()

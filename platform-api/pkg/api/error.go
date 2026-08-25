@@ -121,14 +121,18 @@ func errorsToStatusDetails(errs any) *metav1.StatusDetails {
 		if hasContent {
 			sc := make([]metav1.StatusCause, 0, len(causes))
 			for _, c := range causes {
+				// Prefer explicit detail/message; fall back to reason for
+				// validators (e.g. FieldValidator) that only populate field+reason.
 				msg := c.Detail
 				if msg == "" {
 					msg = c.Message
 				}
-				reason := metav1.CauseType(c.Reason)
-				if reason == "" {
-					reason = metav1.CauseTypeFieldValueInvalid
+				if msg == "" {
+					msg = c.Reason
 				}
+				// Type is a machine-readable CauseType constant; default to
+				// FieldValueInvalid since our reason strings are human-readable text.
+				reason := metav1.CauseTypeFieldValueInvalid
 				sc = append(sc, metav1.StatusCause{
 					Type:    reason,
 					Message: msg,
