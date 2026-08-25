@@ -2,7 +2,7 @@
 	build-hyperfleet-db build-operator build-api build-api-codegen \
 	test-hyperfleet-db test-operator test-operator-int test-api test-api-codegen test-clientset \
 	coverage-api-codegen \
-	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz test-e2e-sdk \
+	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz test-e2e-sdk test-e2e-rosa-cli \
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
 	fmt vet verify verify-mod deps mod-tidy \
 	manifests generate generate-deepcopy generate-clientset verify-clientset setup-envtest \
@@ -30,6 +30,14 @@ AWS_PROFILE ?=
 AWS_REGION  ?=
 FOCUS       ?=
 SKIP        ?= Authz
+
+ROSA_REPO_URL          ?= https://github.com/openshift/rosa
+ROSA_REPO_BRANCH       ?= hyperfleet-v2
+ROSA_MAKE_TARGET       ?= e2e-hyperfleet
+ROSA_BUILD_TARGET      ?= install
+ROSA_GINKGO_FOCUS      ?=
+ROSA_GINKGO_SKIP       ?=
+ROSA_GINKGO_LABEL_FILTER ?=
 
 CONTAINER_ENGINE ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 
@@ -103,6 +111,8 @@ help:
 	@echo "  test-e2e-cli         E2E CLI"
 	@echo "  test-e2e-zoa         E2E ZOA"
 	@echo "  test-e2e-sdk         E2E SDK (Go clientset lifecycle)"
+	@echo "  test-e2e-rosa-cli    E2E rosa CLI (clones rosa repo, builds CLI, runs hyperfleet tests)"
+	@echo "                       Supports ROSA_GINKGO_FOCUS, ROSA_GINKGO_SKIP, ROSA_GINKGO_LABEL_FILTER"
 	@echo "  test-e2e-platform-monitoring  E2E monitoring"
 	@echo ""
 	@echo "  coverage-api-codegen Coverage report for codegen (hack/api-codegen)"
@@ -234,6 +244,34 @@ test-e2e-sdk: $(GINKGO)
 	HYPERFLEET_VERSION="$${HYPERFLEET_VERSION}" \
 	$(GINKGO) -vv --timeout=3h --junit-report=junit-sdk.xml \
 		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-sdk
+
+test-e2e-rosa-cli:
+	@echo "Cloning rosa repo into temporary directory..."
+	@ROSA_TMPDIR=$$(mktemp -d) && \
+	trap "rm -rf $$ROSA_TMPDIR" EXIT && \
+	echo "Temporary directory: $$ROSA_TMPDIR" && \
+	git clone --depth=1 --branch $(ROSA_REPO_BRANCH) $(ROSA_REPO_URL) $$ROSA_TMPDIR && \
+	echo "Building rosa CLI..." && \
+	cd $$ROSA_TMPDIR && $(MAKE) $(ROSA_BUILD_TARGET) && \
+	export PATH="$$PWD:$$PATH" && \
+	echo "Running rosa hyperfleet E2E tests..." && \
+	name=$${CLUSTER_NAME:-hf-e2e-$$(date +%s)} && \
+	export HYPERFLEET_URL="$${HYPERFLEET_URL}" && \
+	export CLUSTER_NAME="$$name" && \
+	export OPERATOR_ROLES_PREFIX="$${OPERATOR_ROLES_PREFIX:-$$name}" && \
+	export AWS_DEFAULT_REGION="$${AWS_DEFAULT_REGION:-$${AWS_REGION}}" && \
+	if [ -n "$(ROSA_GINKGO_FOCUS)$(ROSA_GINKGO_SKIP)$(ROSA_GINKGO_LABEL_FILTER)" ]; then \
+		echo "Running with custom ginkgo filters..." && \
+		ginkgo run -v --timeout 3h \
+			$(if $(ROSA_GINKGO_FOCUS),--focus="$(ROSA_GINKGO_FOCUS)") \
+			$(if $(ROSA_GINKGO_SKIP),--skip="$(ROSA_GINKGO_SKIP)") \
+			$(if $(ROSA_GINKGO_LABEL_FILTER),--label-filter="$(ROSA_GINKGO_LABEL_FILTER)") \
+			./tests/e2e/; \
+	else \
+		echo "Running default rosa e2e-hyperfleet target..." && \
+		$(MAKE) $(ROSA_MAKE_TARGET); \
+	fi
+
 
 # ── E2E Infrastructure ──────────────────────────────────────────────────
 
