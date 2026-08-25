@@ -525,6 +525,130 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  # OIDC Config Endpoints
+  /oidc_configs:
+    get:
+      summary: List OIDC configs
+      description: List OIDC configurations for the authenticated account
+      operationId: listOidcConfigs
+      tags:
+        - OidcConfigs
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: List of OIDC configs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OidcConfigList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    post:
+      summary: Create OIDC config
+      description: |
+        Create a new OIDC configuration. Specify spec.type as "managed" or "unmanaged".
+        Unmanaged configs require spec.secretArn, spec.installerRoleArn, and spec.issuerUrl.
+        Managed configs must not set those fields.
+
+        Possible error codes:
+        - OIDCCONFIGS-MGMT-CREATE-001: Invalid request body
+        - OIDCCONFIGS-MGMT-CREATE-002: Missing required fields (spec with type)
+        - OIDCCONFIGS-MGMT-CREATE-003: Failed to create OIDC config
+        - OIDCCONFIGS-MGMT-CREATE-004: Invalid type value
+        - OIDCCONFIGS-MGMT-CREATE-005: Invalid field combination for the given type
+      operationId: createOidcConfig
+      tags:
+        - OidcConfigs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OidcConfig"
+      responses:
+        "201":
+          description: OIDC config created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OidcConfig"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /oidc_configs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: OIDC config ID
+
+    get:
+      summary: Get OIDC config
+      description: Retrieve an OIDC configuration by ID
+      operationId: getOidcConfig
+      tags:
+        - OidcConfigs
+      responses:
+        "200":
+          description: OIDC config details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OidcConfig"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    delete:
+      summary: Delete OIDC config
+      description: Delete an OIDC configuration by ID
+      operationId: deleteOidcConfig
+      tags:
+        - OidcConfigs
+      responses:
+        "202":
+          description: OIDC config deletion initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  config_id:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /live:
     get:
       summary: Liveness probe
@@ -22533,3 +22657,687 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+
+    ClusterStatus:
+      description: ClusterStatus defines the observed state of a Cluster.
+      properties:
+          conditions:
+              description: |-
+                  Conditions represent the latest observations of the cluster's state.
+                  Known condition types: Synced, Available, Degraded, ControlPlaneUpgradeState.
+              items:
+                  description: Condition contains details for one aspect of the current state of this API Resource.
+                  properties:
+                      lastTransitionTime:
+                          description: |-
+                              lastTransitionTime is the last time the condition transitioned from one status to another.
+                              This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                          format: date-time
+                          type: string
+                      message:
+                          description: |-
+                              message is a human readable message indicating details about the transition.
+                              This may be an empty string.
+                          maxLength: 32768
+                          type: string
+                      observedGeneration:
+                          description: |-
+                              observedGeneration represents the .metadata.generation that the condition was set based upon.
+                              For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                              with respect to the current state of the instance.
+                          format: int64
+                          minimum: 0
+                          type: integer
+                      reason:
+                          description: |-
+                              reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                              Producers of specific condition types may define expected values and meanings for this field,
+                              and whether the values are considered a guaranteed API.
+                              The value should be a CamelCase string.
+                              This field may not be empty.
+                          maxLength: 1024
+                          minLength: 1
+                          pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                          type: string
+                      status:
+                          description: status of the condition, one of True, False, Unknown.
+                          enum:
+                              - "True"
+                              - "False"
+                              - Unknown
+                          type: string
+                      type:
+                          description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                          maxLength: 316
+                          pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                          type: string
+                  required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                  type: object
+              type: array
+              x-kubernetes-list-map-keys:
+                  - type
+              x-kubernetes-list-type: map
+          controlPlaneEndpoint:
+              description: ControlPlaneEndpoint is the API server endpoint for the hosted cluster.
+              properties:
+                  host:
+                      description: host is the hostname on which the API server is serving.
+                      maxLength: 255
+                      type: string
+                  port:
+                      description: port is the port on which the API server is serving.
+                      format: int32
+                      type: integer
+              required:
+                  - host
+                  - port
+              type: object
+          controlPlaneUpgradePolicy:
+              description: ControlPlaneUpgradePolicy summarizes the control plane upgrade policy status.
+              properties:
+                  nextRun:
+                      description: |-
+                          NextRun is the time when the control plane will upgrade.
+                          When the ScheduleType is "manual" it will match with the NextRun defined by the user.
+                          When the ScheduleType is "automatic" it will be calculated from the Schedule cron expression.
+                      format: date-time
+                      type: string
+              type: object
+          observedGeneration:
+              description: ObservedGeneration is the most recent generation observed by the controller.
+              format: int64
+              type: integer
+          phase:
+              description: Phase summarizes the cluster's lifecycle state.
+              enum:
+                  - WaitingForPlacement
+                  - Provisioning
+                  - Ready
+                  - Deleting
+              type: string
+          placementRef:
+              description: PlacementRef references the Placement that assigned this cluster to a management cluster.
+              properties:
+                  managementCluster:
+                      description: ManagementCluster is the target management cluster ID (e.g. mc01).
+                      type: string
+                  name:
+                      description: Name is the Placement CR name.
+                      type: string
+              required:
+                  - managementCluster
+                  - name
+              type: object
+          version:
+              description: Version is the running OpenShift version.
+              type: string
+      type: object
+
+    NodePoolStatus:
+      description: NodePoolStatus defines the observed state of a NodePool.
+      properties:
+          conditions:
+              description: |-
+                  Conditions represent the latest observations of the node pool's state.
+                  Known condition types: Synced, Ready.
+              items:
+                  description: Condition contains details for one aspect of the current state of this API Resource.
+                  properties:
+                      lastTransitionTime:
+                          description: |-
+                              lastTransitionTime is the last time the condition transitioned from one status to another.
+                              This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                          format: date-time
+                          type: string
+                      message:
+                          description: |-
+                              message is a human readable message indicating details about the transition.
+                              This may be an empty string.
+                          maxLength: 32768
+                          type: string
+                      observedGeneration:
+                          description: |-
+                              observedGeneration represents the .metadata.generation that the condition was set based upon.
+                              For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                              with respect to the current state of the instance.
+                          format: int64
+                          minimum: 0
+                          type: integer
+                      reason:
+                          description: |-
+                              reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                              Producers of specific condition types may define expected values and meanings for this field,
+                              and whether the values are considered a guaranteed API.
+                              The value should be a CamelCase string.
+                              This field may not be empty.
+                          maxLength: 1024
+                          minLength: 1
+                          pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                          type: string
+                      status:
+                          description: status of the condition, one of True, False, Unknown.
+                          enum:
+                              - "True"
+                              - "False"
+                              - Unknown
+                          type: string
+                      type:
+                          description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                          maxLength: 316
+                          pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                          type: string
+                  required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                  type: object
+              type: array
+              x-kubernetes-list-map-keys:
+                  - type
+              x-kubernetes-list-type: map
+          observedGeneration:
+              description: ObservedGeneration is the most recent generation observed by the controller.
+              format: int64
+              type: integer
+          phase:
+              description: Phase summarizes the node pool's lifecycle state.
+              enum:
+                  - WaitingForCluster
+                  - Provisioning
+                  - Ready
+                  - Deleting
+              type: string
+      type: object
+
+    OidcConfig:
+      description: |-
+          OidcConfig is the Schema for the oidcconfigs API.
+          It represents a reusable OIDC configuration for cluster identity.
+          metadata.Name is the config ID; metadata.Namespace is account-<accountID>.
+          Not exposed to REST clients — the platform API is flat (/oidc_configs) and
+          derives the account from the caller's identity, not a URL parameter.
+      properties:
+          apiVersion:
+              description: |-
+                  APIVersion defines the versioned schema of this representation of an object.
+                  Servers should convert recognized schemas to the latest internal value, and
+                  may reject unrecognized values.
+                  More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+              type: string
+          kind:
+              description: |-
+                  Kind is a string value representing the REST resource this object represents.
+                  Servers may infer this from the endpoint the client submits requests to.
+                  Cannot be updated.
+                  In CamelCase.
+                  More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+              type: string
+          metadata:
+              type: object
+          spec:
+              description: OidcConfigSpec defines the desired state of an OidcConfig.
+              properties:
+                  accountId:
+                      description: AccountID is the AWS account that owns this OIDC config.
+                      type: string
+                  installerRoleArn:
+                      description: |-
+                          InstallerRoleArn is the ARN of the cross-account IAM role used to read the customer's secret.
+                          Required for unmanaged configs; must be empty for managed configs.
+                      pattern: ^(arn:aws:iam::.*)?$
+                      type: string
+                  issuerUrl:
+                      description: |-
+                          IssuerUrl is the OIDC issuer URL.
+                          Required for unmanaged configs; set by the controller for managed configs.
+                      type: string
+                  secretArn:
+                      description: |-
+                          SecretArn is the ARN of the customer's Secrets Manager secret containing the RSA private key.
+                          Required for unmanaged configs; must be empty for managed configs.
+                      pattern: ^(arn:aws:secretsmanager:.*)?$
+                      type: string
+                  type:
+                      description: Type is the OIDC configuration mode.
+                      enum:
+                          - managed
+                          - unmanaged
+                      type: string
+              required:
+                  - type
+              type: object
+              x-kubernetes-validations:
+                  - message: managed type must not set secretArn or installerRoleArn
+                    rule: self.type != 'managed' || (self.secretArn == '' && self.installerRoleArn == '')
+                  - message: unmanaged type requires secretArn, installerRoleArn, and issuerUrl
+                    rule: self.type != 'unmanaged' || (self.secretArn != '' && self.installerRoleArn != '' && self.issuerUrl != '')
+                  - message: spec.type is immutable
+                    rule: self.type == oldSelf.type
+                  - message: spec.secretArn is immutable
+                    rule: self.secretArn == oldSelf.secretArn
+                  - message: spec.installerRoleArn is immutable
+                    rule: self.installerRoleArn == oldSelf.installerRoleArn
+                  - message: spec.issuerUrl is immutable once set
+                    rule: oldSelf.issuerUrl == '' || self.issuerUrl == oldSelf.issuerUrl
+          status:
+              description: OidcConfigStatus defines the observed state of an OidcConfig.
+              properties:
+                  conditions:
+                      description: |-
+                          Conditions represent the latest observations of the OIDC config's state.
+                          Known condition types: Ready.
+                      items:
+                          description: Condition contains details for one aspect of the current state of this API Resource.
+                          properties:
+                              lastTransitionTime:
+                                  description: |-
+                                      lastTransitionTime is the last time the condition transitioned from one status to another.
+                                      This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                                  format: date-time
+                                  type: string
+                              message:
+                                  description: |-
+                                      message is a human readable message indicating details about the transition.
+                                      This may be an empty string.
+                                  maxLength: 32768
+                                  type: string
+                              observedGeneration:
+                                  description: |-
+                                      observedGeneration represents the .metadata.generation that the condition was set based upon.
+                                      For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                                      with respect to the current state of the instance.
+                                  format: int64
+                                  minimum: 0
+                                  type: integer
+                              reason:
+                                  description: |-
+                                      reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                                      Producers of specific condition types may define expected values and meanings for this field,
+                                      and whether the values are considered a guaranteed API.
+                                      The value should be a CamelCase string.
+                                      This field may not be empty.
+                                  maxLength: 1024
+                                  minLength: 1
+                                  pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                                  type: string
+                              status:
+                                  description: status of the condition, one of True, False, Unknown.
+                                  enum:
+                                      - "True"
+                                      - "False"
+                                      - Unknown
+                                  type: string
+                              type:
+                                  description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                                  maxLength: 316
+                                  pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                                  type: string
+                          required:
+                              - lastTransitionTime
+                              - message
+                              - reason
+                              - status
+                              - type
+                          type: object
+                      type: array
+                      x-kubernetes-list-map-keys:
+                          - type
+                      x-kubernetes-list-type: map
+                  lastUsedTimestamp:
+                      description: LastUsedTimestamp records when a cluster last referenced this config.
+                      format: date-time
+                      type: string
+                  observedGeneration:
+                      description: ObservedGeneration is the most recent generation observed by the controller.
+                      format: int64
+                      type: integer
+                  phase:
+                      description: Phase summarizes the OIDC config's lifecycle state.
+                      enum:
+                          - Pending
+                          - Ready
+                          - Error
+                      type: string
+                  thumbprint:
+                      description: |-
+                          Thumbprint is the SHA-1 fingerprint of the OIDC issuer's TLS certificate.
+                          Computed by the controller and refreshed periodically.
+                      type: string
+              type: object
+      required:
+          - spec
+      type: object
+
+    OidcConfigList:
+      description: OidcConfigList contains a list of OidcConfig.
+      properties:
+          apiVersion:
+              description: |-
+                  APIVersion defines the versioned schema of this representation of an object.
+                  Servers should convert recognized schemas to the latest internal value, and
+                  may reject unrecognized values.
+                  More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+              type: string
+          items:
+              items:
+                  description: |-
+                      OidcConfig is the Schema for the oidcconfigs API.
+                      It represents a reusable OIDC configuration for cluster identity.
+                      metadata.Name is the config ID; metadata.Namespace is account-<accountID>.
+                      Not exposed to REST clients — the platform API is flat (/oidc_configs) and
+                      derives the account from the caller's identity, not a URL parameter.
+                  properties:
+                      apiVersion:
+                          description: |-
+                              APIVersion defines the versioned schema of this representation of an object.
+                              Servers should convert recognized schemas to the latest internal value, and
+                              may reject unrecognized values.
+                              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+                          type: string
+                      kind:
+                          description: |-
+                              Kind is a string value representing the REST resource this object represents.
+                              Servers may infer this from the endpoint the client submits requests to.
+                              Cannot be updated.
+                              In CamelCase.
+                              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                          type: string
+                      metadata:
+                          type: object
+                      spec:
+                          description: OidcConfigSpec defines the desired state of an OidcConfig.
+                          properties:
+                              accountId:
+                                  description: AccountID is the AWS account that owns this OIDC config.
+                                  type: string
+                              installerRoleArn:
+                                  description: |-
+                                      InstallerRoleArn is the ARN of the cross-account IAM role used to read the customer's secret.
+                                      Required for unmanaged configs; must be empty for managed configs.
+                                  pattern: ^(arn:aws:iam::.*)?$
+                                  type: string
+                              issuerUrl:
+                                  description: |-
+                                      IssuerUrl is the OIDC issuer URL.
+                                      Required for unmanaged configs; set by the controller for managed configs.
+                                  type: string
+                              secretArn:
+                                  description: |-
+                                      SecretArn is the ARN of the customer's Secrets Manager secret containing the RSA private key.
+                                      Required for unmanaged configs; must be empty for managed configs.
+                                  pattern: ^(arn:aws:secretsmanager:.*)?$
+                                  type: string
+                              type:
+                                  description: Type is the OIDC configuration mode.
+                                  enum:
+                                      - managed
+                                      - unmanaged
+                                  type: string
+                          required:
+                              - type
+                          type: object
+                          x-kubernetes-validations:
+                              - message: managed type must not set secretArn or installerRoleArn
+                                rule: self.type != 'managed' || (self.secretArn == '' && self.installerRoleArn == '')
+                              - message: unmanaged type requires secretArn, installerRoleArn, and issuerUrl
+                                rule: self.type != 'unmanaged' || (self.secretArn != '' && self.installerRoleArn != '' && self.issuerUrl != '')
+                              - message: spec.type is immutable
+                                rule: self.type == oldSelf.type
+                              - message: spec.secretArn is immutable
+                                rule: self.secretArn == oldSelf.secretArn
+                              - message: spec.installerRoleArn is immutable
+                                rule: self.installerRoleArn == oldSelf.installerRoleArn
+                              - message: spec.issuerUrl is immutable once set
+                                rule: oldSelf.issuerUrl == '' || self.issuerUrl == oldSelf.issuerUrl
+                      status:
+                          description: OidcConfigStatus defines the observed state of an OidcConfig.
+                          properties:
+                              conditions:
+                                  description: |-
+                                      Conditions represent the latest observations of the OIDC config's state.
+                                      Known condition types: Ready.
+                                  items:
+                                      description: Condition contains details for one aspect of the current state of this API Resource.
+                                      properties:
+                                          lastTransitionTime:
+                                              description: |-
+                                                  lastTransitionTime is the last time the condition transitioned from one status to another.
+                                                  This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                                              format: date-time
+                                              type: string
+                                          message:
+                                              description: |-
+                                                  message is a human readable message indicating details about the transition.
+                                                  This may be an empty string.
+                                              maxLength: 32768
+                                              type: string
+                                          observedGeneration:
+                                              description: |-
+                                                  observedGeneration represents the .metadata.generation that the condition was set based upon.
+                                                  For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                                                  with respect to the current state of the instance.
+                                              format: int64
+                                              minimum: 0
+                                              type: integer
+                                          reason:
+                                              description: |-
+                                                  reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                                                  Producers of specific condition types may define expected values and meanings for this field,
+                                                  and whether the values are considered a guaranteed API.
+                                                  The value should be a CamelCase string.
+                                                  This field may not be empty.
+                                              maxLength: 1024
+                                              minLength: 1
+                                              pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                                              type: string
+                                          status:
+                                              description: status of the condition, one of True, False, Unknown.
+                                              enum:
+                                                  - "True"
+                                                  - "False"
+                                                  - Unknown
+                                              type: string
+                                          type:
+                                              description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                                              maxLength: 316
+                                              pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                                              type: string
+                                      required:
+                                          - lastTransitionTime
+                                          - message
+                                          - reason
+                                          - status
+                                          - type
+                                      type: object
+                                  type: array
+                                  x-kubernetes-list-map-keys:
+                                      - type
+                                  x-kubernetes-list-type: map
+                              lastUsedTimestamp:
+                                  description: LastUsedTimestamp records when a cluster last referenced this config.
+                                  format: date-time
+                                  type: string
+                              observedGeneration:
+                                  description: ObservedGeneration is the most recent generation observed by the controller.
+                                  format: int64
+                                  type: integer
+                              phase:
+                                  description: Phase summarizes the OIDC config's lifecycle state.
+                                  enum:
+                                      - Pending
+                                      - Ready
+                                      - Error
+                                  type: string
+                              thumbprint:
+                                  description: |-
+                                      Thumbprint is the SHA-1 fingerprint of the OIDC issuer's TLS certificate.
+                                      Computed by the controller and refreshed periodically.
+                                  type: string
+                          type: object
+                  required:
+                      - spec
+                  type: object
+              type: array
+          kind:
+              description: |-
+                  Kind is a string value representing the REST resource this object represents.
+                  Servers may infer this from the endpoint the client submits requests to.
+                  Cannot be updated.
+                  In CamelCase.
+                  More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+              type: string
+          metadata:
+              description: |-
+                  ListMeta describes metadata that synthetic resources must have, including lists and
+                  various status objects. A resource may have only one of {ObjectMeta, ListMeta}.
+              properties:
+                  continue:
+                      description: |-
+                          continue may be set if the user set a limit on the number of items returned, and indicates that
+                          the server has more data available. The value is opaque and may be used to issue another request
+                          to the endpoint that served this list to retrieve the next set of available objects. Continuing a
+                          consistent list may not be possible if the server configuration has changed or more than a few
+                          minutes have passed. The resourceVersion field returned when using this continue value will be
+                          identical to the value in the first response, unless you have received this token from an error
+                          message.
+                      type: string
+                  remainingItemCount:
+                      description: |-
+                          remainingItemCount is the number of subsequent items in the list which are not included in this
+                          list response. If the list request contained label or field selectors, then the number of
+                          remaining items is unknown and the field will be left unset and omitted during serialization.
+                          If the list is complete (either because it is not chunking or because this is the last chunk),
+                          then there are no more remaining items and this field will be left unset and omitted during
+                          serialization.
+                          Servers older than v1.15 do not set this field.
+                          The intended use of the remainingItemCount is *estimating* the size of a collection. Clients
+                          should not rely on the remainingItemCount to be set or to be exact.
+                      format: int64
+                      type: integer
+                  resourceVersion:
+                      description: |-
+                          String that identifies the server's internal version of this object that
+                          can be used by clients to determine when objects have changed.
+                          Value must be treated as opaque by clients and passed unmodified back to the server.
+                          Populated by the system.
+                          Read-only.
+                          More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
+                      type: string
+                  selfLink:
+                      description: 'Deprecated: selfLink is a legacy read-only field that is no longer populated by the system.'
+                      type: string
+                  shardInfo:
+                      description: |-
+                          shardInfo is set when the list is a filtered subset of the full collection,
+                          as selected by a shard selector on the request. It echoes back the selector
+                          so clients can verify which shard they received and merge sharded responses.
+                          Clients should not cache sharded list responses as a full representation
+                          of the collection.
+                          This is an alpha field and requires enabling the ShardedListAndWatch feature gate.
+                      properties:
+                          selector:
+                              description: |-
+                                  selector is the shard selector string from the request, echoed back so clients
+                                  can verify which shard they received and merge responses from multiple shards.
+                              type: string
+                      required:
+                          - selector
+                      type: object
+              type: object
+      required:
+          - items
+          - metadata
+      type: object
+
+    OidcConfigStatus:
+      description: OidcConfigStatus defines the observed state of an OidcConfig.
+      properties:
+          conditions:
+              description: |-
+                  Conditions represent the latest observations of the OIDC config's state.
+                  Known condition types: Ready.
+              items:
+                  description: Condition contains details for one aspect of the current state of this API Resource.
+                  properties:
+                      lastTransitionTime:
+                          description: |-
+                              lastTransitionTime is the last time the condition transitioned from one status to another.
+                              This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                          format: date-time
+                          type: string
+                      message:
+                          description: |-
+                              message is a human readable message indicating details about the transition.
+                              This may be an empty string.
+                          maxLength: 32768
+                          type: string
+                      observedGeneration:
+                          description: |-
+                              observedGeneration represents the .metadata.generation that the condition was set based upon.
+                              For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                              with respect to the current state of the instance.
+                          format: int64
+                          minimum: 0
+                          type: integer
+                      reason:
+                          description: |-
+                              reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                              Producers of specific condition types may define expected values and meanings for this field,
+                              and whether the values are considered a guaranteed API.
+                              The value should be a CamelCase string.
+                              This field may not be empty.
+                          maxLength: 1024
+                          minLength: 1
+                          pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                          type: string
+                      status:
+                          description: status of the condition, one of True, False, Unknown.
+                          enum:
+                              - "True"
+                              - "False"
+                              - Unknown
+                          type: string
+                      type:
+                          description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                          maxLength: 316
+                          pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                          type: string
+                  required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                  type: object
+              type: array
+              x-kubernetes-list-map-keys:
+                  - type
+              x-kubernetes-list-type: map
+          lastUsedTimestamp:
+              description: LastUsedTimestamp records when a cluster last referenced this config.
+              format: date-time
+              type: string
+          observedGeneration:
+              description: ObservedGeneration is the most recent generation observed by the controller.
+              format: int64
+              type: integer
+          phase:
+              description: Phase summarizes the OIDC config's lifecycle state.
+              enum:
+                  - Pending
+                  - Ready
+                  - Error
+              type: string
+          thumbprint:
+              description: |-
+                  Thumbprint is the SHA-1 fingerprint of the OIDC issuer's TLS certificate.
+                  Computed by the controller and refreshed periodically.
+              type: string
+      type: object

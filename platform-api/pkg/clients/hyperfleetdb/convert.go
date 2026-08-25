@@ -125,6 +125,49 @@ func InternalToPublicNodePool(cr *hyperfleetv1alpha1.NodePool) *public.NodePool 
 	return pub
 }
 
+// --- OidcConfig conversions ---
+
+// PublicToInternalOidcConfig converts public.OidcConfig to internal v1alpha1.OidcConfig
+// for storage in FleetDB. Sets namespace from accountID and name from configID.
+// The input pub is not modified; a copy of ObjectMeta is used for the returned CRD.
+func PublicToInternalOidcConfig(pub *public.OidcConfig, accountID, configID string) *hyperfleetv1alpha1.OidcConfig {
+	if pub == nil {
+		return nil
+	}
+
+	meta := pub.ObjectMeta
+	meta.Labels = maps.Clone(pub.Labels)
+	meta.Namespace = accountNamespace(accountID)
+	meta.Name = configID
+	if meta.Labels == nil {
+		meta.Labels = make(map[string]string)
+	}
+	meta.Labels["hyperfleet.io/account-id"] = accountID
+
+	enrichment := &conversion.ServiceSetFields{
+		AccountID: accountID,
+	}
+	crdSpec := v1alpha1conv.UnprojectOidcConfig(&pub.Spec, enrichment)
+
+	return &hyperfleetv1alpha1.OidcConfig{
+		TypeMeta:   pub.TypeMeta,
+		ObjectMeta: meta,
+		Spec:       *crdSpec,
+	}
+}
+
+// InternalToPublicOidcConfig converts internal v1alpha1.OidcConfig to public.OidcConfig
+// for REST API responses. Filters service-set fields via JSON roundtrip projection.
+// metadata.uid is set to cr.Name (configID) as the stable identifier for routing.
+func InternalToPublicOidcConfig(cr *hyperfleetv1alpha1.OidcConfig) *public.OidcConfig {
+	if cr == nil {
+		return nil
+	}
+	pub := v1alpha1conv.ProjectOidcConfig(cr)
+	pub.UID = types.UID(cr.Name)
+	return pub
+}
+
 // --- Helpers ---
 
 // enrichMetadata sets K8s namespace, UID, and account label on meta in-place.

@@ -438,7 +438,6 @@ func TestClusterHandler_Delete_NotFound(t *testing.T) {
 	}
 }
 
-
 func TestClusterHandler_Update_Success(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(

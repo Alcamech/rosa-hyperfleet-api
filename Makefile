@@ -400,10 +400,13 @@ generate-openapi: codegen-conversion
 	./bin/openapi-gen \
 		-input-dirs ./api/v1alpha1 \
 		-output-file $(OPENAPI_GENERATED)
+	# TODO: auto-discover schemas via +hyperfleet:public-api=true marker so new CRDs
+	# are included automatically — requires extending openapi-merge to scan
+	# generated-schemas.json description fields for the marker text.
 	./bin/openapi-merge \
 		-spec $(OPENAPI_SPEC) \
 		-generated $(OPENAPI_GENERATED) \
-		-schemas Cluster,ClusterList,ClusterSpec,ClusterStatus,NodePool,NodePoolList,NodePoolSpec,NodePoolStatus,PlacementReference,HostedClusterSpecPassthrough,NodePoolSpecPassthrough,ClusterConfiguration,KubeletConfig,MachineConfigSpec,OidcConfigSpec
+		-schemas Cluster,ClusterList,ClusterSpec,ClusterStatus,NodePool,NodePoolList,NodePoolSpec,NodePoolStatus,OidcConfig,OidcConfigList,OidcConfigStatus,PlacementReference,HostedClusterSpecPassthrough,NodePoolSpecPassthrough,ClusterConfiguration,KubeletConfig,MachineConfigSpec
 
 verify-openapi: generate-openapi
 	git diff --exit-code $(OPENAPI_SPEC)

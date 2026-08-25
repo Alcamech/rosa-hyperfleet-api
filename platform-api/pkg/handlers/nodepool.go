@@ -279,4 +279,3 @@ func (h *NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }
-
