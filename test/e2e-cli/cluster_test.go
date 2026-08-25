@@ -471,7 +471,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		Expect(string(output)).To(ContainSubstring(clusterName))
 	})
 
-	// GET /api/v0/clusters/{id} and /statuses use the Hyperfleet resource id (e.g. "2pdl6eud5btdtvgv2f4roaca96e9mvtn"),
+	// GET /api/v0/clusters/{id} use the Hyperfleet resource id (e.g. "2pdl6eud5btdtvgv2f4roaca96e9mvtn"),
 	// not the cluster display name. List responses are { "items": [ { "id", "name", "spec", "status", ... } ], ... }.
 	It("should be able to wait for the hcp cluster to be ready", Label("cluster-status", "monitor"), func() {
 		defer recordTiming("hcp-cluster-ready-wait")()
@@ -481,7 +481,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		}
 		Expect(id).ToNot(BeEmpty(), "set clusterID from hcp-create (Ordered) or HCP_INSTANCE_ID when running cluster-status alone")
 
-		GinkgoWriter.Printf("Querying platform api /clusters/%s and .../statuses (HCP cluster resource id)\n", id)
+		GinkgoWriter.Printf("Querying platform api /clusters/%s for status (HCP cluster resource id)\n", id)
 		var statusRaw map[string]interface{}
 		Eventually(func(g Gomega) {
 			response, err := customerApiClient.Get("/api/v0/clusters/"+id, customerAccountID)
@@ -508,7 +508,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		// and Degraded!=True on the Cluster CR, so this is the single
 		// authoritative readiness signal.
 		Eventually(func(g Gomega) {
-			resp, err := customerApiClient.Get("/api/v0/clusters/"+id+"/statuses", customerAccountID)
+			resp, err := customerApiClient.Get("/api/v0/clusters/"+id, customerAccountID)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -521,26 +521,26 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 			if os.Getenv("E2E_STATUS_POLL_LOG") != "" {
 				snap, mErr := json.MarshalIndent(statusEnvelope, "", "  ")
 				if mErr == nil {
-					_, _ = fmt.Fprintf(os.Stderr, "\n[%s] GET /clusters/%s/statuses (poll)\n%s\n",
+					_, _ = fmt.Fprintf(os.Stderr, "\n[%s] GET /clusters/%s (poll status)\n%s\n",
 						time.Now().Format(time.RFC3339), id, snap)
 				}
 			}
 
 			g.Expect(statusEnvelope.Status).NotTo(BeNil(), "status should be present")
 			phase, _ := statusEnvelope.Status["phase"].(string)
-			GinkgoWriter.Printf("[%s] polled cluster /statuses — phase=%s\n", time.Now().Format(time.RFC3339), phase)
+			GinkgoWriter.Printf("[%s] polled cluster status — phase=%s\n", time.Now().Format(time.RFC3339), phase)
 			g.Expect(phase).To(Equal("Ready"), "cluster phase should be Ready, got %s", phase)
 		}).WithTimeout(35*time.Minute).WithPolling(20*time.Second).Should(Succeed(),
 			"cluster status.phase should become Ready")
 
-		resp, err := customerApiClient.Get("/api/v0/clusters/"+id+"/statuses", customerAccountID)
+		resp, err := customerApiClient.Get("/api/v0/clusters/"+id, customerAccountID)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 		var finalStatus map[string]interface{}
 		Expect(json.Unmarshal(resp.Body, &finalStatus)).To(Succeed())
 		finalJSON, err := json.MarshalIndent(finalStatus, "", "  ")
 		Expect(err).ToNot(HaveOccurred())
-		GinkgoWriter.Printf("HCP final cluster statuses:\n%s\n", string(finalJSON))
+		GinkgoWriter.Printf("HCP final cluster status:\n%s\n", string(finalJSON))
 	})
 
 	It("should generate a working kubeconfig", Label("kubeconfig", "monitor"), func() {
@@ -669,7 +669,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		}
 		Expect(id).ToNot(BeEmpty(), "set clusterID from hcp-create (Ordered) or HCP_INSTANCE_ID when running dns-verify alone")
 
-		resp, err := customerApiClient.Get("/api/v0/clusters/"+id+"/statuses", customerAccountID)
+		resp, err := customerApiClient.Get("/api/v0/clusters/"+id, customerAccountID)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
@@ -742,7 +742,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 				npID, _ := np["id"].(string)
 				npName, _ := np["name"].(string)
 
-				statusResp, err := customerApiClient.Get("/api/v0/nodepools/"+npID+"/status", customerAccountID)
+				statusResp, err := customerApiClient.Get("/api/v0/nodepools/"+npID, customerAccountID)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(statusResp.StatusCode).To(Equal(http.StatusOK))
 

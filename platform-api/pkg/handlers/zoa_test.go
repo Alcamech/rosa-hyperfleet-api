@@ -197,7 +197,9 @@ func TestZoaHandler_Create_MissingJira(t *testing.T) {
 	handler.Create(rr, req)
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
-	assert.Contains(t, rr.Body.String(), "missing-jira")
+	var errResp map[string]any
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+	assert.True(t, strings.Contains(errResp["message"].(string), ErrZoaCreateMissingJira.Code), "message should contain "+ErrZoaCreateMissingJira.Code)
 }
 
 func TestZoaHandler_Create_UnknownAction(t *testing.T) {
@@ -360,9 +362,9 @@ func TestZoaHandler_Create_UnknownParams(t *testing.T) {
 	var errResp map[string]any
 	err := json.NewDecoder(rr.Body).Decode(&errResp)
 	require.NoError(t, err)
-	assert.Equal(t, ErrZoaCreateInvalidParams.Code, errResp["code"])
-	assert.Contains(t, errResp["reason"], "unknown parameter 'namespace'")
-	assert.Contains(t, errResp["reason"], "node_selector")
+	assert.True(t, strings.Contains(errResp["message"].(string), ErrZoaCreateInvalidParams.Code), "message should contain "+ErrZoaCreateInvalidParams.Code)
+	assert.Contains(t, errResp["message"].(string), "unknown parameter 'namespace'")
+	assert.Contains(t, errResp["message"].(string), "node_selector")
 }
 
 func TestZoaHandler_Create_WriteCooldown(t *testing.T) {
@@ -412,7 +414,7 @@ script: |
 	assert.Equal(t, http.StatusTooManyRequests, rr.Code)
 	var errResp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
-	assert.Equal(t, ErrZoaCreateCooldown.Code, errResp["code"])
+	assert.True(t, strings.Contains(errResp["message"].(string), ErrZoaCreateCooldown.Code), "message should contain "+ErrZoaCreateCooldown.Code)
 }
 
 func TestZoaHandler_Create_WriteCooldown_ForceBypass(t *testing.T) {
@@ -499,8 +501,8 @@ func TestZoaHandler_Create_MaxConcurrent(t *testing.T) {
 	assert.Equal(t, http.StatusTooManyRequests, rr.Code)
 	var errResp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
-	assert.Equal(t, ErrZoaCreateMaxConcurrent.Code, errResp["code"])
-	assert.Contains(t, errResp["reason"].(string), "10 active executions")
+	assert.True(t, strings.Contains(errResp["message"].(string), ErrZoaCreateMaxConcurrent.Code), "message should contain "+ErrZoaCreateMaxConcurrent.Code)
+	assert.Contains(t, errResp["message"].(string), "10 active executions")
 }
 
 func TestZoaHandler_Create_MaxConcurrent_ForceBypass(t *testing.T) {
@@ -757,7 +759,7 @@ func TestZoaHandler_Create_InvalidJiraFormat(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 	var errResp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
-	assert.Equal(t, "invalid-jira", errResp["code"])
+	assert.True(t, strings.Contains(errResp["message"].(string), ErrZoaCreateInvalidJira.Code), "message should contain "+ErrZoaCreateInvalidJira.Code)
 }
 
 func TestZoaHandler_Create_DryRun(t *testing.T) {

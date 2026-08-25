@@ -12,6 +12,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gorilla/mux"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/authz"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/authz/client"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
@@ -54,6 +55,18 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 
 	// Create API router
 	apiRouter := mux.NewRouter()
+	// Override gorilla/mux plain-text fallbacks with metav1.Status responses so
+	// unmatched routes and unsupported methods match the api.WriteError format.
+	apiRouter.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := api.WriteError(w, apphandlers.ErrRouteNotFound); err != nil {
+			logger.Error("failed to write 404 response", "error", err)
+		}
+	})
+	apiRouter.MethodNotAllowedHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := api.WriteError(w, apphandlers.ErrRouteMethodNotAllowed); err != nil {
+			logger.Error("failed to write 405 response", "error", err)
+		}
+	})
 	apiRouter.Use(middleware.Identity)
 
 	// Rate limiting middleware
@@ -209,7 +222,6 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 	clusterRouter.HandleFunc("/{id}", clusterHandler.Get).Methods(http.MethodGet)
 	clusterRouter.HandleFunc("/{id}", clusterHandler.Update).Methods(http.MethodPatch, http.MethodPut)
 	clusterRouter.HandleFunc("/{id}", clusterHandler.Delete).Methods(http.MethodDelete)
-	clusterRouter.HandleFunc("/{id}/statuses", clusterHandler.GetStatus).Methods(http.MethodGet)
 
 	// NodePool routes (user-facing, require authz)
 	nodePoolRouter := apiRouter.PathPrefix("/api/v0/nodepools").Subrouter()
@@ -224,7 +236,6 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Get).Methods(http.MethodGet)
 	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Update).Methods(http.MethodPut)
 	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Delete).Methods(http.MethodDelete)
-	nodePoolRouter.HandleFunc("/{id}/status", nodePoolHandler.GetStatus).Methods(http.MethodGet)
 
 	// OidcConfig routes (user-facing, require authz)
 	oidcConfigRouter := apiRouter.PathPrefix("/api/v0/oidc_configs").Subrouter()

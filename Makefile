@@ -1,6 +1,6 @@
 .PHONY: help build test test-unit test-integration lint clean \
 	build-hyperfleet-db build-operator build-api build-api-codegen \
-	test-hyperfleet-db test-operator test-operator-int test-api test-api-codegen test-clientset \
+	test-hyperfleet-db test-operator test-operator-int test-api test-api-int test-api-codegen test-clientset \
 	coverage-api-codegen \
 	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz test-e2e-sdk \
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
@@ -97,7 +97,8 @@ help:
 	@echo "  test                 All tests (unit + integration)"
 	@echo "  test-unit            Unit tests: API + operator + codegen + clientset (no external services)"
 	@echo "  test-clientset       Clientset unit tests (transport, platform)"
-	@echo "  test-integration     Integration tests: FleetDB + operator (podman)"
+	@echo "  test-integration     Integration tests: FleetDB + operator (podman) + API handlers"
+	@echo "  test-api-int         API handler integration tests (build tag: integration)"
 	@echo "  test-e2e-authz       E2E authz (starts local infra)"
 	@echo "  test-e2e-api         E2E API"
 	@echo "  test-e2e-cli         E2E CLI"
@@ -167,7 +168,10 @@ test: test-unit test-integration
 
 test-unit: test-api test-operator test-api-codegen test-clientset
 
-test-integration: test-hyperfleet-db test-operator-int
+test-integration: test-hyperfleet-db test-operator-int test-api-int
+
+test-api-int:
+	cd platform-api && go test -v -race -count=1 -tags integration ./pkg/handlers/...
 
 test-api:
 	cd platform-api && go test -v -race -count=1 $$(go list ./... | grep -v '/test/e2e')
@@ -317,12 +321,6 @@ generate-clientset: codegen-conversion $(CLIENT_GEN) $(BRIDGE_GEN)
 		--output-pkg "$(SDK_OUTPUT_PKG)" \
 		--go-header-file "$(SDK_HEADER_FILE)"
 	$(BRIDGE_GEN) \
-		--mode bridge \
-		--input-dir "$(BRIDGE_INPUT_DIR)" \
-		--output-dir "$(BRIDGE_OUTPUT_DIR)" \
-		--output-pkg "$(BRIDGE_OUTPUT_PKG)" \
-		--go-header-file "$(SDK_HEADER_FILE)"
-	$(BRIDGE_GEN) \
 		--mode platform \
 		--input-dir "$(BRIDGE_INPUT_DIR)" \
 		--output-dir "$(PLATFORM_OUTPUT_DIR)" \
@@ -402,10 +400,13 @@ generate-openapi: codegen-conversion
 	./bin/openapi-gen \
 		-input-dirs ./api/v1alpha1 \
 		-output-file $(OPENAPI_GENERATED)
+	# TODO: auto-discover schemas via +hyperfleet:public-api=true marker so new CRDs
+	# are included automatically — requires extending openapi-merge to scan
+	# generated-schemas.json description fields for the marker text.
 	./bin/openapi-merge \
 		-spec $(OPENAPI_SPEC) \
 		-generated $(OPENAPI_GENERATED) \
-		-schemas ClusterSpec,NodePoolSpec,OidcConfigSpec,HostedClusterSpecPassthrough,NodePoolSpecPassthrough,ClusterConfiguration,KubeletConfig,MachineConfigSpec
+		-schemas Cluster,ClusterList,ClusterSpec,ClusterStatus,NodePool,NodePoolList,NodePoolSpec,NodePoolStatus,OidcConfig,OidcConfigList,OidcConfigStatus,PlacementReference,HostedClusterSpecPassthrough,NodePoolSpecPassthrough,ClusterConfiguration,KubeletConfig,MachineConfigSpec
 
 verify-openapi: generate-openapi
 	git diff --exit-code $(OPENAPI_SPEC)
@@ -450,6 +451,12 @@ clean:
 	rm -rf bin/
 	rm -f coverage.out coverage.html
 	rm -rf test-results/
+
+clean-test-containers:
+	@$(CONTAINER_ENGINE) ps -a --format "{{.Names}}" \
+	  | grep -E "^pgctl-" \
+	  | xargs -r $(CONTAINER_ENGINE) rm -f \
+	  && echo "test containers removed" || true
 
 # ── All ──────────────────────────────────────────────────────────────────
 
