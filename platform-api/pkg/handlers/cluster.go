@@ -108,13 +108,25 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
 
-	var req public.Cluster
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
 		writeAPIError(w, ErrClusterCreateInvalidBody, h.logger)
 		return
 	}
 
-	if req.Name == "" {
+	var req public.Cluster
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeAPIError(w, ErrClusterCreateInvalidBody, h.logger)
+		return
+	}
+
+	// Require both metadata.name and a non-empty, non-null spec key to be present.
+	var envelope struct {
+		Spec json.RawMessage `json:"spec"`
+	}
+	_ = json.Unmarshal(body, &envelope)
+	specStr := string(envelope.Spec)
+	if req.Name == "" || len(envelope.Spec) == 0 || specStr == "{}" || specStr == "null" {
 		writeAPIError(w, ErrClusterCreateMissingFields, h.logger)
 		return
 	}
@@ -259,12 +271,16 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(envelope.Spec) > 0 {
-		if err := hyperfleetdb.MergeSpecJSON(&cr.Spec, envelope.Spec); err != nil {
-			h.logger.Error("failed to merge cluster spec", "error", err)
-			writeAPIError(w, ErrClusterUpdateInvalidSpec, h.logger)
-			return
-		}
+	// Reject absent spec (nil) and empty spec object ({}) — both are no-ops
+	// that indicate a malformed request rather than a deliberate partial update.
+	if len(envelope.Spec) == 0 || string(envelope.Spec) == "{}" {
+		writeAPIError(w, ErrClusterUpdateMissingFields, h.logger)
+		return
+	}
+	if err := hyperfleetdb.MergeSpecJSON(&cr.Spec, envelope.Spec); err != nil {
+		h.logger.Error("failed to merge cluster spec", "error", err)
+		writeAPIError(w, ErrClusterUpdateInvalidSpec, h.logger)
+		return
 	}
 
 	if err := h.db.UpdateCluster(ctx, cr); err != nil {
