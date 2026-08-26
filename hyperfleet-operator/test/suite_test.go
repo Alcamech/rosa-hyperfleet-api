@@ -318,7 +318,7 @@ var _ = BeforeSuite(func() {
 					if !ok {
 						continue
 					}
-				_, _ = dynamoDBCli.PutItem(ctx, &dynamodb.PutItemInput{
+				_, err = dynamoDBCli.PutItem(ctx, &dynamodb.PutItemInput{
 					TableName: aws.String(statusTable),
 					Item: map[string]dynamodbtypes.AttributeValue{
 						"documentID":         docID,
@@ -327,6 +327,7 @@ var _ = BeforeSuite(func() {
 						"status_kubeContent": &dynamodbtypes.AttributeValueMemberS{Value: string(completedJob)},
 					},
 				})
+				Expect(err).NotTo(HaveOccurred(), "write simulated ReadDesire status")
 				}
 			}
 		}

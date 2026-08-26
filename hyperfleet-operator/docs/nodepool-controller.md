@@ -26,7 +26,7 @@ sequenceDiagram
         KA->>DDB: Read ApplyDesires
         KA->>MC: Apply NodePool resource
         KA->>DDB: Write status (status table)
-        DDB-->>NPC: DynamoDB Stream event via EventRouter (~2s)
+        DDB-->>NPC: GSI poll event via EventRouter (~15s)
         NPC->>DDB: Read status (consistent read)
         NPC->>PG: Update NodePool status (conditions, phase)
     end
@@ -40,7 +40,7 @@ sequenceDiagram
 4. **ApplyDesire**: Writes one ApplyDesire to `{mc}-specs-applydesires`
 5. **ReadDesire**: Creates a ReadDesire for the NodePool to get status feedback (extracts "Ready" condition from the remote NodePool)
 6. **Status propagation**: Reads status from DynamoDB, updates NodePool CR conditions (Synced, Ready) and phase
-7. **Requeue**: Requeues every 5 minutes as a fallback; DynamoDB Streams via EventRouter provides the primary notification path (~2s latency)
+7. **Requeue**: Requeues every 5 minutes as a fallback; GSI two-speed polling via EventRouter provides the primary notification path (~15s latency)
 
 ### Generated Resource
 

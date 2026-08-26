@@ -21,6 +21,12 @@ type watcherHandle struct {
 	cancel context.CancelFunc
 }
 
+// watcher is the interface surface of hd.Watcher used by Manager.
+// Extracted to allow injection of fakes in tests.
+type watcher interface {
+	Run(context.Context)
+}
+
 // Manager discovers ManagementCluster CRs and runs one Watcher per
 // (MC, table-suffix) pair. It polls the MC list periodically to start
 // watchers for new MCs and stop watchers for removed MCs.
@@ -35,6 +41,7 @@ type Manager struct {
 	onChange      OnChange
 	opts          hd.Options
 	logger        logr.Logger
+	newWatcher    func(tableName string) watcher
 }
 
 // NewManager creates a Manager. Call Run to start it.
@@ -49,7 +56,7 @@ func NewManager(
 	opts hd.Options,
 ) *Manager {
 	opts.Logger = logger
-	return &Manager{
+	m := &Manager{
 		dbClient:      dbClient,
 		mcReader:      mcReader,
 		tableSuffixes: tableSuffixes,
@@ -57,6 +64,10 @@ func NewManager(
 		opts:          opts,
 		logger:        logger,
 	}
+	m.newWatcher = func(tableName string) watcher {
+		return hd.New(dbClient, tableName, onChange, m.opts)
+	}
+	return m
 }
 
 // Run blocks until ctx is cancelled. It immediately syncs watchers, then
@@ -111,7 +122,7 @@ func (m *Manager) syncWatchers(ctx context.Context, active map[string]watcherHan
 
 	// Start or restart watchers as needed.
 	for _, mc := range list.Items {
-		// Skip test MCs to avoid consuming stream capacity during testing.
+		// Skip test MCs to avoid consuming GSI polling capacity during testing.
 		if strings.HasPrefix(mc.Name, "test-mc-") {
 			continue
 		}
@@ -125,7 +136,7 @@ func (m *Manager) syncWatchers(ctx context.Context, active map[string]watcherHan
 			}
 
 			tableName := mc.Name + suffix
-			w := hd.New(m.dbClient, tableName, m.onChange, m.opts)
+			w := m.newWatcher(tableName)
 			watcherCtx, cancel := context.WithCancel(ctx)
 			active[key] = watcherHandle{cancel: cancel}
 			m.logger.Info("starting status watcher", "mc", mc.Name, "table", tableName)

@@ -148,6 +148,134 @@ func TestManager_StartsWatcherPerMCAndSuffix(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Lifecycle tests using the injected newWatcher factory.
+// ---------------------------------------------------------------------------
+
+// newTestManager creates a Manager with an injected watcher factory that
+// records which table names have been started and returns fakeWatcherHandles
+// the test can control.
+func newTestManager(reader *fakeReader, suffixes []string, factory func(string) watcher) *Manager {
+	m := NewManager(nil, reader, suffixes, func(string, hd.Item) {}, logr.Discard(), hd.Options{})
+	m.newWatcher = factory
+	return m
+}
+
+func TestManager_Lifecycle_StartsWatcherOnMCAdd(t *testing.T) {
+	reader := &fakeReader{}
+	reader.setMCs("mc-a")
+	suffixes := []string{"-status-applydesires"}
+
+	var mu sync.Mutex
+	started := map[string]*fakeWatcherHandle{}
+
+	factory := func(tableName string) watcher {
+		h := newFakeWatcherHandle()
+		mu.Lock()
+		started[tableName] = h
+		mu.Unlock()
+		return h
+	}
+
+	mgr := newTestManager(reader, suffixes, factory)
+	active := make(map[string]watcherHandle)
+
+	// First sync — should start one watcher for mc-a.
+	mgr.syncWatchers(context.Background(), active)
+
+	mu.Lock()
+	count := len(started)
+	_, ok := started["mc-a-status-applydesires"]
+	mu.Unlock()
+
+	if count != 1 {
+		t.Fatalf("expected 1 watcher started, got %d", count)
+	}
+	if !ok {
+		t.Error("expected watcher for mc-a-status-applydesires")
+	}
+	if len(active) != 1 {
+		t.Errorf("expected 1 active watcher, got %d", len(active))
+	}
+}
+
+func TestManager_Lifecycle_StopsWatcherOnMCRemove(t *testing.T) {
+	reader := &fakeReader{}
+	reader.setMCs("mc-a")
+	suffixes := []string{"-status-applydesires"}
+
+	stopped := make(chan string, 4)
+	factory := func(tableName string) watcher {
+		h := newFakeWatcherHandle()
+		return h
+	}
+
+	mgr := newTestManager(reader, suffixes, factory)
+	active := make(map[string]watcherHandle)
+
+	// First sync — starts watcher for mc-a.
+	mgr.syncWatchers(context.Background(), active)
+	if len(active) != 1 {
+		t.Fatalf("expected 1 active watcher after first sync, got %d", len(active))
+	}
+
+	// Wrap the cancel to detect stop.
+	for key, h := range active {
+		origCancel := h.cancel
+		active[key] = watcherHandle{cancel: func() {
+			origCancel()
+			stopped <- key
+		}}
+	}
+
+	// MC removed — second sync should stop the watcher.
+	reader.setMCs()
+	mgr.syncWatchers(context.Background(), active)
+
+	select {
+	case key := <-stopped:
+		if key != "mc-a-status-applydesires" {
+			t.Errorf("stopped unexpected key %q", key)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("watcher was not stopped within 1s")
+	}
+	if len(active) != 0 {
+		t.Errorf("expected 0 active watchers after MC removed, got %d", len(active))
+	}
+}
+
+func TestManager_Lifecycle_SkipsTestMCPrefix(t *testing.T) {
+	reader := &fakeReader{}
+	reader.setMCs("mc-real", "test-mc-fake")
+	suffixes := []string{"-status-applydesires"}
+
+	var mu sync.Mutex
+	started := map[string]struct{}{}
+	factory := func(tableName string) watcher {
+		mu.Lock()
+		started[tableName] = struct{}{}
+		mu.Unlock()
+		return newFakeWatcherHandle()
+	}
+
+	mgr := newTestManager(reader, suffixes, factory)
+	active := make(map[string]watcherHandle)
+	mgr.syncWatchers(context.Background(), active)
+
+	mu.Lock()
+	_, hasReal := started["mc-real-status-applydesires"]
+	_, hasFake := started["test-mc-fake-status-applydesires"]
+	mu.Unlock()
+
+	if !hasReal {
+		t.Error("expected watcher for mc-real")
+	}
+	if hasFake {
+		t.Error("test-mc-fake should have been skipped")
+	}
+}
+
 func TestManager_SkipsTestMCPrefix(t *testing.T) {
 	reader := &fakeReader{}
 	reader.setMCs("mc-real", "test-mc-fake")

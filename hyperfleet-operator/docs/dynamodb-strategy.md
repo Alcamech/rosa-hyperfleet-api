@@ -59,7 +59,9 @@ Each controller type has its own `StatusEvents` channel (buffered, capacity 256)
 
 ## Replica scaling
 
-The GSI polling approach has no consumer limit. Unlike DynamoDB Streams (which was capped at 2 concurrent consumers per shard), each `Watcher` goroutine queries the `updateTime-index` GSI independently. The operator can scale to any number of replicas without risk of throttling or missed events on the status path.
+The GSI polling approach removes the DynamoDB Streams consumer-per-shard limit (previously capped at 2 concurrent consumers per shard). Each `Watcher` goroutine queries the `updateTime-index` GSI independently, so additional replicas do not compete for stream shards. Each replica does add its own DynamoDB read traffic, which can encounter throttling under high load; provision table capacity accordingly.
+
+Note that every replica polls all status tables, but only the owning shard (determined by the pod's ordinal) acts on `EventRouter.Dispatch`. Non-owning replicas perform the GSI read but discard the events. This is a deliberate trade-off: the watcher layer is unaware of sharding, keeping it reusable, and the per-replica RCU overhead is small (stub-only GSI queries projecting just `documentID` and `updateTime`).
 
 ## Reliability
 
