@@ -284,12 +284,6 @@ func computeDesired(ctx context.Context, t *testing.T, reader *fakeReader, suffi
 	return desired
 }
 
-func extractMCName(key, suffix string) string {
-	if len(key) > len(suffix) {
-		return key[:len(key)-len(suffix)]
-	}
-	return key
-}
 
 // Verify runtime.Object interface is still satisfiable — compile check.
 var _ runtime.Object = (*hyperfleetv1alpha1.ManagementCluster)(nil)
