@@ -318,16 +318,16 @@ var _ = BeforeSuite(func() {
 					if !ok {
 						continue
 					}
-				_, err = dynamoDBCli.PutItem(ctx, &dynamodb.PutItemInput{
-					TableName: aws.String(statusTable),
-					Item: map[string]dynamodbtypes.AttributeValue{
-						"documentID":         docID,
-						"updateTime":         &dynamodbtypes.AttributeValueMemberS{Value: time.Now().UTC().Format(time.RFC3339)},
-						"shard":              &dynamodbtypes.AttributeValueMemberS{Value: hd.ComputeShardDefault(docID.(*dynamodbtypes.AttributeValueMemberS).Value)},
-						"status_kubeContent": &dynamodbtypes.AttributeValueMemberS{Value: string(completedJob)},
-					},
-				})
-				Expect(err).NotTo(HaveOccurred(), "write simulated ReadDesire status")
+					_, err = dynamoDBCli.PutItem(ctx, &dynamodb.PutItemInput{
+						TableName: aws.String(statusTable),
+						Item: map[string]dynamodbtypes.AttributeValue{
+							"documentID":         docID,
+							"updateTime":         &dynamodbtypes.AttributeValueMemberS{Value: time.Now().UTC().Format(time.RFC3339)},
+							"shard":              &dynamodbtypes.AttributeValueMemberS{Value: hd.ComputeShardDefault(docID.(*dynamodbtypes.AttributeValueMemberS).Value)},
+							"status_kubeContent": &dynamodbtypes.AttributeValueMemberS{Value: string(completedJob)},
+						},
+					})
+					Expect(err).NotTo(HaveOccurred(), "write simulated ReadDesire status")
 				}
 			}
 		}

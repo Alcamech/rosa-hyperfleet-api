@@ -70,7 +70,7 @@ func NewManager(
 	return m
 }
 
-// Run blocks until ctx is cancelled. It immediately syncs watchers, then
+// Run blocks until ctx is canceled. It immediately syncs watchers, then
 // re-syncs on every interval tick.
 func (m *Manager) Run(ctx context.Context, interval time.Duration) {
 	active := make(map[string]watcherHandle)
