@@ -8,15 +8,15 @@ replace (
 )
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.43.6
-	github.com/aws/aws-sdk-go-v2/config v1.32.31
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.30
-	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.54
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.62.0
-	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.36.0
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.107.2
-	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.44.6
-	github.com/aws/aws-sdk-go-v2/service/sts v1.45.6
+	github.com/aws/aws-sdk-go-v2 v1.43.7
+	github.com/aws/aws-sdk-go-v2/config v1.32.38
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.37
+	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.62
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.63.4
+	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.36.7
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.107.3
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.44.7
+	github.com/aws/aws-sdk-go-v2/service/sts v1.45.7
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/onsi/ginkgo/v2 v2.32.1
@@ -37,26 +37,26 @@ require (
 require (
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.18 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.31 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.37 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.37 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.38 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.38 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.38 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.38 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.39 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.17 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.30 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.12.8 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.37 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.38 // indirect
-	github.com/aws/aws-sdk-go-v2/service/signin v1.5.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.33.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.38.0 // indirect
-	github.com/aws/smithy-go v1.27.8 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.31 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.12.15 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.38 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.39 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.5.7 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.33.7 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.38.7 // indirect
+	github.com/aws/smithy-go v1.27.9 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
+	github.com/fxamacker/cbor/v2 v2.9.3 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v1.0.0 // indirect
@@ -74,7 +74,7 @@ require (
 	github.com/go-openapi/swag/typeutils v0.28.0 // indirect
 	github.com/go-openapi/swag/yamlutils v0.28.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
-	github.com/google/gnostic-models v0.7.0 // indirect
+	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/pprof v0.0.0-20260802141513-ef3492d7dac3 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
@@ -104,7 +104,7 @@ require (
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.5.0 // indirect
-	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
+	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiextensions-apiserver v0.36.0 // indirect
@@ -112,6 +112,6 @@ require (
 	k8s.io/kube-openapi v0.0.0-20260317180543-43fb72c5454a // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
-	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
+	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
