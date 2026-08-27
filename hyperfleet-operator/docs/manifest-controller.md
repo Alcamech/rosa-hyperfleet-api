@@ -2,7 +2,7 @@
 
 Deploys arbitrary Kubernetes resources to a management cluster as a pass-through — raw manifests are written as-is to DynamoDB ApplyDesires. Resources with `watch: true` also get ReadDesires, mirroring their live state from the MC back into CR status. Unlike Cluster/NodePool controllers, no manifest generation happens; the content is user-supplied.
 
-Used for ZOA (deploying Jobs + RBAC with status feedback) and infrastructure resources (monitoring, CRDs, shared configs).
+Used for infrastructure resources (monitoring collectors, CRDs, shared configs, RBAC) that need to be deployed to MCs with optional status feedback.
 
 ## Creation Flow
 
@@ -70,13 +70,13 @@ sequenceDiagram
 3. **ReadDesire cleanup**: Deletes ReadDesire specs from DynamoDB for any resources that had `watch: true`
 4. **Finalizer removal**: Removes finalizer, allowing Kubernetes to complete CR deletion
 
-## CRD Example (ZOA Trusted Action)
+## CRD Example (Monitoring Collector)
 
 ```yaml
 apiVersion: hyperfleet.io/v1alpha1
 kind: Manifest
 metadata:
-  name: zoa-collect-logs-abc123
+  name: deploy-monitoring-collector
   namespace: "123456789012"
 spec:
   managementCluster: mc01
@@ -86,15 +86,15 @@ spec:
         apiVersion: v1
         kind: ServiceAccount
         metadata:
-          name: zoa-runner
-          namespace: zoa-actions
+          name: monitoring-collector
+          namespace: monitoring
     - resource: roles
       content:
         apiVersion: rbac.authorization.k8s.io/v1
         kind: Role
         metadata:
-          name: zoa-runner
-          namespace: zoa-actions
+          name: monitoring-collector
+          namespace: monitoring
         rules:
           - apiGroups: [""]
             resources: ["pods/log"]
@@ -104,16 +104,16 @@ spec:
         apiVersion: rbac.authorization.k8s.io/v1
         kind: RoleBinding
         metadata:
-          name: zoa-runner
-          namespace: zoa-actions
+          name: monitoring-collector
+          namespace: monitoring
         roleRef:
           apiGroup: rbac.authorization.k8s.io
           kind: Role
-          name: zoa-runner
+          name: monitoring-collector
         subjects:
           - kind: ServiceAccount
-            name: zoa-runner
-            namespace: zoa-actions
+            name: monitoring-collector
+            namespace: monitoring
     - resource: jobs
       watch: true
       content:
@@ -121,14 +121,14 @@ spec:
         kind: Job
         metadata:
           name: collect-logs-abc123
-          namespace: zoa-actions
+          namespace: monitoring
         spec:
           template:
             spec:
-              serviceAccountName: zoa-runner
+              serviceAccountName: monitoring-collector
               containers:
-                - name: runner
-                  image: registry.example.com/zoa-runner:latest
+                - name: collector
+                  image: registry.example.com/monitoring-collector:latest
               restartPolicy: Never
 ```
 
@@ -153,7 +153,7 @@ status:
   resourceStatuses:
     - resource: jobs
       name: collect-logs-abc123
-      namespace: zoa-actions
+      namespace: monitoring
       status:
         succeeded: 1
         completionTime: "2026-06-25T10:00:05Z"

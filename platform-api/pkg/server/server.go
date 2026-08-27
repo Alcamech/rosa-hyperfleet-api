@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/gorilla/mux"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/authz"
@@ -20,7 +18,6 @@ import (
 	apphandlers "github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/handlers"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/ratelimit"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/zoa"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 )
@@ -33,12 +30,11 @@ type Server struct {
 	healthServer  *http.Server
 	metricsServer *http.Server
 	healthHandler *apphandlers.HealthHandler
-	zoaReconciler *zoa.Reconciler
 	redisCloser   io.Closer
 }
 
 // New creates a new Server instance. The dbClient is used by cluster,
-// nodepool, management cluster, and ZOA handlers.
+// nodepool, and management cluster handlers.
 func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger) (*Server, error) {
 	ctx := context.Background()
 
@@ -250,61 +246,6 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 	oidcConfigRouter.HandleFunc("/{id}", oidcConfigHandler.Get).Methods(http.MethodGet)
 	oidcConfigRouter.HandleFunc("/{id}", oidcConfigHandler.Delete).Methods(http.MethodDelete)
 
-	// ZOA Trusted Actions routes (privileged)
-	var zoaReconciler *zoa.Reconciler
-	if cfg.Zoa.Enabled {
-		jobConfig, err := zoa.LoadJobConfig(cfg.Zoa.JobConfigDir)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load ZOA job config from %s: %w", cfg.Zoa.JobConfigDir, err)
-		}
-
-		zoaDynamoClient, err := client.NewDynamoDBClient(ctx, cfg.Zoa.AWSRegion, "")
-		if err != nil {
-			return nil, fmt.Errorf("failed to create ZOA DynamoDB client: %w", err)
-		}
-
-		zoaStore := zoa.NewDynamoExecutionStore(cfg.Zoa.TableName, zoaDynamoClient, logger, jobConfig.DynamoDBTTLDays)
-
-		var auditStore zoa.AuditStore
-		if cfg.Zoa.AuditTableName != "" {
-			auditStore = zoa.NewDynamoAuditStore(cfg.Zoa.AuditTableName, zoaDynamoClient, logger, jobConfig.DynamoDBTTLDays)
-			logger.Info("ZOA audit logging enabled", "table", cfg.Zoa.AuditTableName)
-		}
-
-		zoaRegistry := zoa.NewTemplateRegistry(logger)
-		if err := zoaRegistry.LoadFromDir(cfg.Zoa.TemplatesDir); err != nil {
-			return nil, fmt.Errorf("failed to load ZOA templates from %s: %w", cfg.Zoa.TemplatesDir, err)
-		}
-
-		awsCfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(cfg.Zoa.AWSRegion))
-		if err != nil {
-			return nil, fmt.Errorf("failed to load AWS config for ZOA S3: %w", err)
-		}
-		s3Client := s3.NewFromConfig(awsCfg)
-
-		zoaHandler := apphandlers.NewZoaHandler(zoaStore, zoaRegistry, dbClient, s3Client, apphandlers.ZoaConfig{
-			BucketName: cfg.Zoa.BucketName,
-			JobConfig:  jobConfig,
-			AuditStore: auditStore,
-		}, logger)
-
-		zoaRouter := apiRouter.PathPrefix("/api/v0/trusted-actions").Subrouter()
-		if privilegedMiddleware != nil {
-			zoaRouter.Use(privilegedMiddleware.CheckPrivileged)
-		} else {
-			zoaRouter.Use(authMiddleware.RequireAllowedAccount)
-		}
-		zoaRouter.HandleFunc("/audit", zoaHandler.AuditList).Methods(http.MethodGet)
-		zoaRouter.HandleFunc("/runs", zoaHandler.List).Methods(http.MethodGet)
-		zoaRouter.HandleFunc("/runs/{id}", zoaHandler.Get).Methods(http.MethodGet)
-		zoaRouter.HandleFunc("/{action}/run", zoaHandler.Create).Methods(http.MethodPost)
-		zoaRouter.HandleFunc("/{action}", zoaHandler.Describe).Methods(http.MethodGet)
-		zoaRouter.HandleFunc("", zoaHandler.Catalog).Methods(http.MethodGet)
-
-		zoaReconciler = zoa.NewReconciler(zoaStore, zoaRegistry, dbClient, jobConfig, cfg.Zoa.PollInterval, logger)
-		logger.Info("ZOA trusted actions enabled", "table", cfg.Zoa.TableName, "bucket", cfg.Zoa.BucketName)
-	}
-
 	// Health and info routes on API server (no auth required)
 	apiRouter.HandleFunc("/api/v0/live", healthHandler.Liveness).Methods(http.MethodGet)
 	apiRouter.HandleFunc("/api/v0/ready", healthHandler.Readiness).Methods(http.MethodGet)
@@ -323,10 +264,9 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 	metricsRouter.Handle("/metrics", promhttp.Handler()).Methods(http.MethodGet)
 
 	return &Server{
-		cfg:           cfg,
-		logger:        logger,
-		zoaReconciler: zoaReconciler,
-		redisCloser:   redisCloser,
+		cfg:         cfg,
+		logger:      logger,
+		redisCloser: redisCloser,
 		apiServer: &http.Server{
 			Addr:         fmt.Sprintf("%s:%d", cfg.Server.APIBindAddress, cfg.Server.APIPort),
 			Handler:      apiHandler,
@@ -352,11 +292,6 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 // Run starts all servers and blocks until context is canceled
 func (s *Server) Run(ctx context.Context) error {
 	errCh := make(chan error, 3)
-
-	// Start ZOA reconciler if enabled
-	if s.zoaReconciler != nil {
-		go s.zoaReconciler.Run(ctx)
-	}
 
 	// Start health server
 	go func() {

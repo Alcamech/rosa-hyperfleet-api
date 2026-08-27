@@ -2,7 +2,7 @@
 	build-hyperfleet-db build-operator build-api build-api-codegen \
 	test-hyperfleet-db test-operator test-operator-int test-api test-api-int test-api-codegen test-clientset \
 	coverage-api-codegen \
-	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz test-e2e-sdk \
+	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-authz test-e2e-sdk \
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
 	fmt vet verify verify-mod deps mod-tidy \
 	manifests generate generate-deepcopy generate-clientset verify-clientset setup-envtest \
@@ -102,7 +102,6 @@ help:
 	@echo "  test-e2e-authz       E2E authz (starts local infra)"
 	@echo "  test-e2e-api         E2E API"
 	@echo "  test-e2e-cli         E2E CLI"
-	@echo "  test-e2e-zoa         E2E ZOA"
 	@echo "  test-e2e-sdk         E2E SDK (Go clientset lifecycle)"
 	@echo "  test-e2e-platform-monitoring  E2E monitoring"
 	@echo ""
@@ -222,11 +221,6 @@ test-e2e-platform-monitoring: $(GINKGO)
 	E2E_RHOBS_API_URL="$${RHOBS_API_URL}" \
 	$(GINKGO) -vv --junit-report=junit-platform-monitoring.xml \
 		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-platform-monitoring
-
-test-e2e-zoa: $(GINKGO)
-	E2E_BASE_URL="$${BASE_URL}" E2E_ACCOUNT_ID="$${E2E_ACCOUNT_ID}" \
-	$(GINKGO) -vv --junit-report=junit-zoa.xml \
-		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-zoa
 
 test-e2e-sdk: $(GINKGO)
 	E2E_BASE_URL="$${BASE_URL}" \

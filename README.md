@@ -5,12 +5,12 @@ ROSA HCP regional cluster management — platform API, operator, and backing dat
 | Directory              | Description                                             |
 | ---------------------- | ------------------------------------------------------- |
 | `api/`                 | CRD types and API definitions (v1alpha1)                |
-| `platform-api/`        | REST gateway (SigV4 auth, Cedar/AVP authz, ZOA)         |
+| `platform-api/`        | REST gateway (SigV4 auth, Cedar/AVP authz)              |
 | `hyperfleet-operator/` | Kubernetes operator (Cluster, NodePool, Placement CRDs) |
 | `hyperfleet-db/`       | PostgreSQL-backed controller-runtime library            |
 | `clientset/`           | Generated typed Kubernetes client for HyperFleet CRDs   |
 | `hack/`                | Code generation tools and dev tooling                   |
-| `test/`                | E2E tests (API, CLI, monitoring, ZOA)                   |
+| `test/`                | E2E tests (API, CLI, monitoring)                        |
 
 ## Quick Start
 
@@ -33,6 +33,5 @@ platform-api/go.mod              ← requires: hyperfleet-db, api
 ## Docs
 
 - [OpenAPI spec](api/v1alpha1/public/openapi.yaml)
-- [ZOA Trusted Actions](docs/api/zoa-endpoints.md)
 - [Authorization](docs/authz.md)
 - [Konflux / Quay image tags](docs/konflux/quay-image-tags.md)

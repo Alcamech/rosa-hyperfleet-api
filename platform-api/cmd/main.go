@@ -132,43 +132,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logger.Info("authz disabled via environment variable")
 	}
 
-	// ZOA configuration from environment variables
-	if os.Getenv("ZOA_ENABLED") == "true" {
-		cfg.Zoa.Enabled = true
-		if dynamodbRegion != "" {
-			cfg.Zoa.AWSRegion = dynamodbRegion
-		} else {
-			cfg.Zoa.AWSRegion = awsCfg.Region
-		}
-		if table := os.Getenv("ZOA_TABLE_NAME"); table != "" {
-			cfg.Zoa.TableName = table
-		}
-		if bucket := os.Getenv("ZOA_BUCKET_NAME"); bucket != "" {
-			cfg.Zoa.BucketName = bucket
-		}
-		if dir := os.Getenv("ZOA_TEMPLATES_DIR"); dir != "" {
-			cfg.Zoa.TemplatesDir = dir
-		} else {
-			cfg.Zoa.TemplatesDir = "/etc/zoa/templates"
-		}
-		if dir := os.Getenv("ZOA_JOB_CONFIG_DIR"); dir != "" {
-			cfg.Zoa.JobConfigDir = dir
-		} else {
-			cfg.Zoa.JobConfigDir = "/etc/zoa/job-config"
-		}
-		if auditTable := os.Getenv("ZOA_AUDIT_TABLE_NAME"); auditTable != "" {
-			cfg.Zoa.AuditTableName = auditTable
-		}
-		logger.Info("ZOA trusted actions enabled",
-			"table", cfg.Zoa.TableName,
-			"bucket", cfg.Zoa.BucketName,
-			"region", cfg.Zoa.AWSRegion,
-			"templates_dir", cfg.Zoa.TemplatesDir,
-			"job_config_dir", cfg.Zoa.JobConfigDir,
-			"audit_table", cfg.Zoa.AuditTableName,
-		)
-	}
-
 	// Rate limiting configuration from environment variables
 	if os.Getenv("RATE_LIMIT_ENABLED") == "true" {
 		cfg.RateLimit.Enabled = true

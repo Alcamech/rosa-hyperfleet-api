@@ -35,7 +35,7 @@ import (
 )
 
 var _ = Describe("Manifest Controller", func() {
-	Context("When reconciling a Manifest (ZOA deploy)", func() {
+	Context("When reconciling a Manifest (monitoring collector deploy)", func() {
 		const (
 			manifestName = "test-monitoring"
 			testNS       = "mc01"
@@ -110,18 +110,18 @@ var _ = Describe("Manifest Controller", func() {
 			// 4 resources → 4 ApplyDesires (SA, Role, RoleBinding, Job).
 			Expect(fd.applyCount).To(Equal(4))
 
-			sa := fd.findApply("serviceaccounts", "zoa-runner")
+			sa := fd.findApply("serviceaccounts", "monitoring-collector")
 			Expect(sa).NotTo(BeNil())
 			Expect(sa.Spec.TargetItem.Version).To(Equal("v1"))
 
-			role := fd.findApply("roles", "zoa-runner")
+			role := fd.findApply("roles", "monitoring-collector")
 			Expect(role).NotTo(BeNil())
 			Expect(role.Spec.TargetItem.Version).To(Equal("v1"))
 			Expect(role.Spec.TargetItem.Group).To(Equal("rbac.authorization.k8s.io"))
 
 			job := fd.findApply("jobs", "collect-logs-abc123")
 			Expect(job).NotTo(BeNil())
-			Expect(job.Spec.TargetItem.Namespace).To(Equal("zoa-actions"))
+			Expect(job.Spec.TargetItem.Namespace).To(Equal("monitoring"))
 
 			// Verify KubeContent is the raw JSON from spec.
 			for _, a := range fd.applies {
@@ -197,17 +197,17 @@ var _ = Describe("Manifest Controller", func() {
 			Expect(fdA.applyCount).To(Equal(4))
 			Expect(fdB.applyCount).To(Equal(4))
 
-			// The document IDs for the same resource (SA "zoa-runner") must differ between CRs.
-			saA := fdA.findApply("serviceaccounts", "zoa-runner")
-			saB := fdB.findApply("serviceaccounts", "zoa-runner")
+			// The document IDs for the same resource (SA "monitoring-collector") must differ between source CRs.
+			saA := fdA.findApply("serviceaccounts", "monitoring-collector")
+			saB := fdB.findApply("serviceaccounts", "monitoring-collector")
 			Expect(saA).NotTo(BeNil())
 			Expect(saB).NotTo(BeNil())
 			docIDA := saA.DocumentID
 			docIDB := saB.DocumentID
 			Expect(docIDA).NotTo(Equal(docIDB), "document IDs should differ between CRs")
 
-			expectedA := dynamo.NewDocumentID("hyperfleet-manifest/"+testNS+"/"+manifestName, "", "v1", "serviceaccounts", "zoa-actions", "zoa-runner")
-			expectedB := dynamo.NewDocumentID("hyperfleet-manifest/"+testNS+"/test-monitoring-b", "", "v1", "serviceaccounts", "zoa-actions", "zoa-runner")
+			expectedA := dynamo.NewDocumentID("hyperfleet-manifest/"+testNS+"/"+manifestName, "", "v1", "serviceaccounts", "monitoring", "monitoring-collector")
+			expectedB := dynamo.NewDocumentID("hyperfleet-manifest/"+testNS+"/test-monitoring-b", "", "v1", "serviceaccounts", "monitoring", "monitoring-collector")
 			Expect(docIDA).To(Equal(expectedA))
 			Expect(docIDB).To(Equal(expectedB))
 		})
@@ -253,7 +253,7 @@ var _ = Describe("Manifest Controller", func() {
 
 			// Document IDs must match those written during create (same taskKey).
 			taskKey := "hyperfleet-manifest/" + testNS + "/" + manifestName
-			expectedSADocID := dynamo.NewDocumentID(taskKey, "", "v1", "serviceaccounts", "zoa-actions", "zoa-runner")
+			expectedSADocID := dynamo.NewDocumentID(taskKey, "", "v1", "serviceaccounts", "monitoring", "monitoring-collector")
 			found := false
 			for _, a := range deleteApplies {
 				if a.DocumentID == expectedSADocID {
@@ -401,7 +401,7 @@ var _ = Describe("Manifest Controller", func() {
 			Expect(fd.readCount).To(Equal(1))
 			Expect(fd.reads[0].Spec.TargetItem.Resource).To(Equal("jobs"))
 			Expect(fd.reads[0].Spec.TargetItem.Name).To(Equal("collect-logs-abc123"))
-			Expect(fd.reads[0].Spec.TargetItem.Namespace).To(Equal("zoa-actions"))
+			Expect(fd.reads[0].Spec.TargetItem.Namespace).To(Equal("monitoring"))
 			Expect(fd.reads[0].Spec.TargetItem.Group).To(Equal("batch"))
 			Expect(fd.reads[0].Spec.TargetItem.Version).To(Equal("v1"))
 
@@ -413,7 +413,7 @@ var _ = Describe("Manifest Controller", func() {
 			resource := newTestManifest(manifestName)
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 
-			kubeContent := []byte(`{"apiVersion":"batch/v1","kind":"Job","metadata":{"name":"collect-logs-abc123","namespace":"zoa-actions"},"status":{"succeeded":1,"startTime":"2026-06-25T10:00:00Z","completionTime":"2026-06-25T10:00:05Z"}}`)
+			kubeContent := []byte(`{"apiVersion":"batch/v1","kind":"Job","metadata":{"name":"collect-logs-abc123","namespace":"monitoring"},"status":{"succeeded":1,"startTime":"2026-06-25T10:00:00Z","completionTime":"2026-06-25T10:00:05Z"}}`)
 			fd := &fakeDynamo{
 				readStatus: &dynamo.ReadDesireStatus{
 					KubeContent: &runtime.RawExtension{Raw: kubeContent},
@@ -437,7 +437,7 @@ var _ = Describe("Manifest Controller", func() {
 			Expect(updated.Status.ResourceStatuses).To(HaveLen(1))
 			Expect(updated.Status.ResourceStatuses[0].Resource).To(Equal("jobs"))
 			Expect(updated.Status.ResourceStatuses[0].Name).To(Equal("collect-logs-abc123"))
-			Expect(updated.Status.ResourceStatuses[0].Namespace).To(Equal("zoa-actions"))
+			Expect(updated.Status.ResourceStatuses[0].Namespace).To(Equal("monitoring"))
 			Expect(updated.Status.ResourceStatuses[0].Status.Raw).To(MatchJSON(`{"succeeded":1,"startTime":"2026-06-25T10:00:00Z","completionTime":"2026-06-25T10:00:05Z"}`))
 		})
 
@@ -496,7 +496,7 @@ var _ = Describe("Manifest Controller", func() {
 
 			readDocID := dynamo.NewDocumentID(
 				"hyperfleet-manifest/"+testNS+"/"+manifestName+"-read",
-				"batch", "v1", "jobs", "zoa-actions", "collect-logs-abc123",
+				"batch", "v1", "jobs", "monitoring", "collect-logs-abc123",
 			)
 			target, ok := er.Lookup(readDocID)
 			Expect(ok).To(BeTrue(), "EventRouter should contain entry for watched resource")
@@ -540,7 +540,7 @@ var _ = Describe("Manifest Controller", func() {
 
 			fd := &fakeDynamo{
 				readStatus: &dynamo.ReadDesireStatus{
-					KubeContent: &runtime.RawExtension{Raw: []byte(`{"apiVersion":"batch/v1","kind":"Job","metadata":{"name":"collect-logs-abc123","namespace":"zoa-actions"},"status":{"succeeded":1}}`)},
+					KubeContent: &runtime.RawExtension{Raw: []byte(`{"apiVersion":"batch/v1","kind":"Job","metadata":{"name":"collect-logs-abc123","namespace":"monitoring"},"status":{"succeeded":1}}`)},
 				},
 			}
 			er := NewEventRouter()
@@ -573,7 +573,7 @@ var _ = Describe("Manifest Controller", func() {
 			// Verify the watched resource's ReadDesire is registered in EventRouter.
 			readDocID := dynamo.NewDocumentID(
 				"hyperfleet-manifest/"+testNS+"/"+manifestName+"-read",
-				"batch", "v1", "jobs", "zoa-actions", "collect-logs-abc123",
+				"batch", "v1", "jobs", "monitoring", "collect-logs-abc123",
 			)
 			_, ok := er.Lookup(readDocID)
 			Expect(ok).To(BeTrue())
@@ -583,11 +583,11 @@ var _ = Describe("Manifest Controller", func() {
 			initial.Spec.Resources = []hyperfleetv1alpha1.ResourceTemplate{
 				{
 					Resource: "serviceaccounts",
-					Content:  runtime.RawExtension{Raw: []byte(`{"apiVersion":"v1","kind":"ServiceAccount","metadata":{"name":"zoa-runner","namespace":"zoa-actions"}}`)},
+					Content:  runtime.RawExtension{Raw: []byte(`{"apiVersion":"v1","kind":"ServiceAccount","metadata":{"name":"monitoring-collector","namespace":"monitoring"}}`)},
 				},
 				{
 					Resource: "roles",
-					Content:  runtime.RawExtension{Raw: []byte(`{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"Role","metadata":{"name":"zoa-runner","namespace":"zoa-actions"},"rules":[{"apiGroups":[""],"resources":["pods/log"],"verbs":["get"]}]}`)},
+					Content:  runtime.RawExtension{Raw: []byte(`{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"Role","metadata":{"name":"monitoring-collector","namespace":"monitoring"},"rules":[{"apiGroups":[""],"resources":["pods/log"],"verbs":["get"]}]}`)},
 				},
 			}
 			Expect(k8sClient.Update(ctx, &initial)).To(Succeed())
@@ -636,7 +636,7 @@ var _ = Describe("Manifest Controller", func() {
 
 			readDocID := dynamo.NewDocumentID(
 				"hyperfleet-manifest/"+testNS+"/"+manifestName+"-read",
-				"batch", "v1", "jobs", "zoa-actions", "collect-logs-abc123",
+				"batch", "v1", "jobs", "monitoring", "collect-logs-abc123",
 			)
 			_, ok := er.Lookup(readDocID)
 			Expect(ok).To(BeTrue(), "EventRouter should be populated before deletion")
@@ -666,8 +666,8 @@ var _ = Describe("Manifest Controller", func() {
 	})
 })
 
-// newTestManifest models a ZOA trusted action: deploy a ServiceAccount, Role,
-// RoleBinding, and a runner Job to an MC. The Job is watched so the platform-api
+// newTestManifest models a monitoring collector deploy: a ServiceAccount, Role,
+// RoleBinding, and a collector Job to an MC. The Job is watched so the operator
 // can detect completion via status.resourceStatuses.
 func newTestManifest(name string) *hyperfleetv1alpha1.Manifest {
 	return &hyperfleetv1alpha1.Manifest{
@@ -680,19 +680,19 @@ func newTestManifest(name string) *hyperfleetv1alpha1.Manifest {
 			Resources: []hyperfleetv1alpha1.ResourceTemplate{
 				{
 					Resource: "serviceaccounts",
-					Content:  runtime.RawExtension{Raw: []byte(`{"apiVersion":"v1","kind":"ServiceAccount","metadata":{"name":"zoa-runner","namespace":"zoa-actions"}}`)},
+					Content:  runtime.RawExtension{Raw: []byte(`{"apiVersion":"v1","kind":"ServiceAccount","metadata":{"name":"monitoring-collector","namespace":"monitoring"}}`)},
 				},
 				{
 					Resource: "roles",
-					Content:  runtime.RawExtension{Raw: []byte(`{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"Role","metadata":{"name":"zoa-runner","namespace":"zoa-actions"},"rules":[{"apiGroups":[""],"resources":["pods/log"],"verbs":["get"]}]}`)},
+					Content:  runtime.RawExtension{Raw: []byte(`{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"Role","metadata":{"name":"monitoring-collector","namespace":"monitoring"},"rules":[{"apiGroups":[""],"resources":["pods/log"],"verbs":["get"]}]}`)},
 				},
 				{
 					Resource: "rolebindings",
-					Content:  runtime.RawExtension{Raw: []byte(`{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"RoleBinding","metadata":{"name":"zoa-runner","namespace":"zoa-actions"},"roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"Role","name":"zoa-runner"},"subjects":[{"kind":"ServiceAccount","name":"zoa-runner","namespace":"zoa-actions"}]}`)},
+					Content:  runtime.RawExtension{Raw: []byte(`{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"RoleBinding","metadata":{"name":"monitoring-collector","namespace":"monitoring"},"roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"Role","name":"monitoring-collector"},"subjects":[{"kind":"ServiceAccount","name":"monitoring-collector","namespace":"monitoring"}]}`)},
 				},
 				{
 					Resource: "jobs",
-					Content:  runtime.RawExtension{Raw: []byte(`{"apiVersion":"batch/v1","kind":"Job","metadata":{"name":"collect-logs-abc123","namespace":"zoa-actions"},"spec":{"template":{"spec":{"serviceAccountName":"zoa-runner","containers":[{"name":"runner","image":"registry.example.com/zoa-runner:latest"}],"restartPolicy":"Never"}}}}`)},
+					Content:  runtime.RawExtension{Raw: []byte(`{"apiVersion":"batch/v1","kind":"Job","metadata":{"name":"collect-logs-abc123","namespace":"monitoring"},"spec":{"template":{"spec":{"serviceAccountName":"monitoring-collector","containers":[{"name":"runner","image":"registry.example.com/monitoring-collector:latest"}],"restartPolicy":"Never"}}}}`)},
 					Watch:    true,
 				},
 			},
