@@ -32,7 +32,7 @@ sequenceDiagram
     KA->>DDB: Read ApplyDesires (specs table)
     KA->>MC: Apply resources (Namespace, HostedCluster, etc.)
     KA->>DDB: Write status (status table)
-    DDB-->>CC: DynamoDB Stream event via EventRouter (~2s)
+    DDB-->>CC: GSI poll event via EventRouter (~15s)
     CC->>DDB: Read status (consistent read)
     CC->>PG: Update Cluster status (conditions, endpoint, version)
 ```
@@ -45,7 +45,7 @@ sequenceDiagram
 4. **ApplyDesires**: Writes one ApplyDesire per manifest to `{mc}-specs-applydesires`
 5. **ReadDesire**: Creates a ReadDesire for the HostedCluster to get status feedback
 6. **Status propagation**: Reads status from DynamoDB, propagates conditions/endpoint/version to Cluster CR
-7. **Requeue**: Requeues every 5 minutes as a fallback; DynamoDB Streams via EventRouter provides the primary notification path (~2s latency)
+7. **Requeue**: Requeues every 5 minutes as a fallback; GSI two-speed polling via EventRouter provides the primary notification path (~15s latency)
 
 ### Generated Resources
 

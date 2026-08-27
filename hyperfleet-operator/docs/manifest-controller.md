@@ -26,7 +26,7 @@ sequenceDiagram
     KA->>MC: Apply resources
     KA->>MC: Watch resources (ReadDesires)
     KA->>DDB: Write ApplyDesire + ReadDesire status
-    DDB-->>Op: DynamoDB Stream fires (status change)
+    DDB-->>Op: GSI poll fires (status change, ~15s)
     Op->>DDB: Read ApplyDesire + ReadDesire statuses
     Op->>PG: Set phase=Applied, update status.resourceStatuses
 ```
@@ -36,9 +36,9 @@ sequenceDiagram
 1. **Finalizer**: Adds `hyperfleet.io/manifest` finalizer on first reconcile, requeues
 2. **ApplyDesires**: Writes one ApplyDesire per resource in `spec.resources`
 3. **ReadDesires**: For resources with `watch: true`, writes a ReadDesire. kube-applier-aws mirrors the resource's live state back to DynamoDB as raw `KubeContent`
-4. **Status feedback**: The `status-readdesires` DynamoDB table has DynamoDB Streams enabled. When kube-applier-aws writes status, the stream triggers reconciliation within ~2 seconds. The operator reads the ReadDesire status and surfaces raw `KubeContent` in `status.resourceStatuses`. A fallback requeue at 5-minute intervals covers edge cases (operator restart, missed stream events). The operator does not parse the content — consumers extract the fields they need from the mirrored resource
+4. **Status feedback**: When kube-applier-aws writes status to the `status-readdesires` DynamoDB table, the GSI two-speed watcher detects the change and triggers reconciliation within ~15 seconds (fast poll default). The operator reads the ReadDesire status and surfaces raw `KubeContent` in `status.resourceStatuses`. A fallback requeue at 5-minute intervals covers edge cases (operator restart, missed poll events). The operator does not parse the content — consumers extract the fields they need from the mirrored resource
 5. **Synced check**: Checks ApplyDesire statuses via `CheckApplyDesireStatuses`. If not all confirmed, sets phase to `Syncing` and requeues after 15 seconds. Once all confirmed, sets phase to `Applied`
-6. **Requeue**: Requeues every 5 minutes as a fallback if watched resources exist; DynamoDB Streams provides the primary notification path. No requeue if Synced=True and no watched resources (purely event-driven)
+6. **Requeue**: Requeues every 5 minutes as a fallback if watched resources exist; GSI two-speed polling provides the primary notification path. No requeue if Synced=True and no watched resources (purely event-driven)
 
 ## Deletion Flow
 
@@ -162,9 +162,9 @@ status:
 - `phase: Applied` — all ApplyDesires confirmed by kube-applier-aws (Synced condition is True). Before confirmation, the phase is `Syncing`
 - `resourceStatuses` — mirrored `.status` sub-object for `watch: true` resources. Only the status is stored, not the full object, to avoid duplicating spec content. Empty until kube-applier-aws applies and mirrors back
 
-## DynamoDB Streams Integration
+## GSI Two-Speed Polling Integration
 
-The operator consumes DynamoDB Streams on both the `status-applydesires` and `status-readdesires` tables to react to status changes within ~2 seconds instead of polling. A `statusstream.Manager` runs one stream watcher per management cluster per table suffix, mapping changed `documentID`s back to the owning CR via a shared `EventRouter`. A 5-minute fallback requeue covers operator restarts and missed events.
+The operator uses a GSI two-speed watcher (via `statusstream.Manager`) on both the `status-applydesires` and `status-readdesires` tables to detect status changes. A fast GSI poll (default 15 s) provides low-latency change detection; a full consistent relist (default 5 m) handles deletions and correctness. A `statusstream.Manager` runs one watcher per management cluster per table suffix, mapping changed `documentID`s back to the owning CR via a shared `EventRouter`. A 5-minute fallback requeue covers operator restarts and missed poll events.
 
 ## Known Limitations
 
