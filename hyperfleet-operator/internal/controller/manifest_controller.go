@@ -52,7 +52,8 @@ const (
 // DynamoDB desires that kube-applier-aws applies to the target management cluster.
 // Unlike ClusterReconciler and NodePoolReconciler which generate typed manifests,
 // this controller accepts arbitrary Kubernetes resources as raw JSON, enabling
-// infrastructure-level resources (ZOA) to be deployed to MCs without new controller code.
+// infrastructure-level resources (RBAC, CRDs, operators) to be deployed to MCs
+// without new controller code.
 type ManifestReconciler struct {
 	client.Client
 	Scheme                  *runtime.Scheme

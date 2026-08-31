@@ -20,8 +20,8 @@ func TestMatchPath(t *testing.T) {
 		{"both trailing slashes", "/api/v0/clusters/", "/api/v0/clusters/", true},
 		{"root path", "/", "/", true},
 		{"wildcard does not match empty segment", "/api/v0/*/run", "/api/v0//run", false},
-		{"middle wildcard", "/api/v0/trusted-actions/*/run", "/api/v0/trusted-actions/ta-123/run", true},
-		{"middle wildcard mismatch suffix", "/api/v0/trusted-actions/*/run", "/api/v0/trusted-actions/ta-123/stop", false},
+		{"middle wildcard", "/api/v0/clusters/*/status", "/api/v0/clusters/abc123/status", true},
+		{"middle wildcard mismatch suffix", "/api/v0/clusters/*/status", "/api/v0/clusters/abc123/delete", false},
 	}
 
 	for _, tt := range tests {
