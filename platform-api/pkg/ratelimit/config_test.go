@@ -129,7 +129,7 @@ routes:
     method: PATCH
     rate: 10
     burst: 20
-  - path: "/api/v0/trusted-actions/*/run"
+  - path: "/api/v0/clusters/*/nodepools"
     method: POST
     rate: 20
     burst: 30
@@ -155,7 +155,7 @@ routes:
 	}{
 		{"/api/v0/clusters", "POST", 5, 10},
 		{"/api/v0/clusters/*", "PATCH", 10, 20},
-		{"/api/v0/trusted-actions/*/run", "POST", 20, 30},
+		{"/api/v0/clusters/*/nodepools", "POST", 20, 30},
 	}
 
 	for i, exp := range expected {

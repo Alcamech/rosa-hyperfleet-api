@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -10,10 +11,10 @@ import (
 	"github.com/gorilla/mux"
 
 	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
+	public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/types"
 )
 
 // OidcConfigHandler handles OIDC config HTTP requests.
@@ -64,15 +65,15 @@ func (h *OidcConfigHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	configs := make([]*types.OidcConfig, 0, len(list.Items))
+	configs := make([]*public.OidcConfig, 0, len(list.Items))
 	for i := range list.Items {
-		configs = append(configs, hyperfleetdb.OidcConfigCRToPlatform(&list.Items[i]))
+		configs = append(configs, hyperfleetdb.InternalToPublicOidcConfig(&list.Items[i]))
 	}
 
 	total := len(configs)
 
 	if offset >= len(configs) {
-		configs = []*types.OidcConfig{}
+		configs = []*public.OidcConfig{}
 	} else {
 		end := min(offset+limit, len(configs))
 		configs = configs[offset:end]
@@ -91,17 +92,30 @@ func (h *OidcConfigHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // Create handles POST /api/v0/oidc_configs
+// Request body: public.OidcConfig (K8s-native). Spec.Type is required.
 func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
 
-	var req types.OidcConfigCreateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
 		writeAPIError(w, ErrOidcConfigCreateInvalidBody, h.logger)
 		return
 	}
 
-	if req.Spec == nil {
+	var req public.OidcConfig
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeAPIError(w, ErrOidcConfigCreateInvalidBody, h.logger)
+		return
+	}
+
+	// Reject absent spec (nil) and empty spec object ({}) — spec.type is required.
+	var envelope struct {
+		Spec json.RawMessage `json:"spec"`
+	}
+	_ = json.Unmarshal(body, &envelope)
+	specStr := string(envelope.Spec)
+	if len(envelope.Spec) == 0 || specStr == "{}" || specStr == "null" {
 		writeAPIError(w, ErrOidcConfigCreateMissingFields, h.logger)
 		return
 	}
@@ -130,7 +144,7 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 	configID := h.generateID()
 	h.logger.Info("creating oidc config", "account_id", accountID, "config_id", configID, "type", req.Spec.Type)
 
-	cr := hyperfleetdb.PlatformCreateToOidcConfigCR(configID, accountID, &req)
+	cr := hyperfleetdb.PublicToInternalOidcConfig(&req, accountID, configID)
 
 	if err := h.db.CreateOidcConfig(ctx, cr); err != nil {
 		h.logger.Error("failed to create oidc config", "error", err, "account_id", accountID)
@@ -138,7 +152,7 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := api.Write(w, http.StatusCreated, hyperfleetdb.OidcConfigCRToPlatform(cr)); err != nil {
+	if err := api.Write(w, http.StatusCreated, hyperfleetdb.InternalToPublicOidcConfig(cr)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }
@@ -162,7 +176,7 @@ func (h *OidcConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := api.Write(w, http.StatusOK, hyperfleetdb.OidcConfigCRToPlatform(cr)); err != nil {
+	if err := api.Write(w, http.StatusOK, hyperfleetdb.InternalToPublicOidcConfig(cr)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }

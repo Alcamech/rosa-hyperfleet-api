@@ -53,13 +53,14 @@ var (
 var (
 	ErrNodePoolList APIError
 
-	ErrNodePoolCreateInvalidBody     APIError
-	ErrNodePoolCreateMissingFields   APIError
-	ErrNodePoolCreateNameConflict    APIError
-	ErrNodePoolCreateClusterNotFound APIError
-	ErrNodePoolCreateClusterCheck    APIError
-	ErrNodePoolCreateInvalidSpec     APIError
-	ErrNodePoolCreateFailed          APIError
+	ErrNodePoolCreateInvalidBody      APIError
+	ErrNodePoolCreateMissingFields    APIError
+	ErrNodePoolCreateInvalidNamespace APIError
+	ErrNodePoolCreateNameConflict     APIError
+	ErrNodePoolCreateClusterNotFound  APIError
+	ErrNodePoolCreateClusterCheck     APIError
+	ErrNodePoolCreateInvalidSpec      APIError
+	ErrNodePoolCreateFailed           APIError
 
 	ErrNodePoolGetNotFound APIError
 	ErrNodePoolGetFailed   APIError
@@ -198,33 +199,15 @@ var (
 	ErrAuthzCheckFailed        APIError
 )
 
-// ZOA error codes
-var (
-	ErrZoaCreateUnknownAction   APIError
-	ErrZoaCreateInvalidBody     APIError
-	ErrZoaCreateMissingCluster  APIError
-	ErrZoaCreateMissingJira     APIError
-	ErrZoaCreateInvalidJira     APIError
-	ErrZoaCreateInvalidParams   APIError
-	ErrZoaCreateCooldown        APIError
-	ErrZoaCreateMaxConcurrent   APIError
-	ErrZoaCreateDryRunError     APIError
-	ErrZoaCreateStoreFailed     APIError
-	ErrZoaCreateRenderFailed    APIError
-	ErrZoaCreateDispatchFailed  APIError
-	ErrZoaCreateStoreSaveFailed APIError
-
-	ErrZoaGetStoreFailed APIError
-	ErrZoaGetNotFound    APIError
-
-	ErrZoaListStoreFailed APIError
-
-	ErrZoaAuditDisabled   APIError
-	ErrZoaAuditListFailed APIError
-)
-
 // Info error codes
 var ErrInfoRegionalAccountUnavailable APIError
+
+// Router fallback error codes — returned when gorilla/mux finds no matching
+// route or method so that the response format matches api.WriteError output.
+var (
+	ErrRouteNotFound         APIError
+	ErrRouteMethodNotAllowed APIError
+)
 
 func init() {
 	// Cluster — List
@@ -267,12 +250,13 @@ func init() {
 
 	// NodePool — Create
 	ErrNodePoolCreateInvalidBody = APIError{Code: "NODEPOOLS-MGMT-CREATE-001", HTTPStatus: http.StatusBadRequest, Message: "Invalid request body"}
-	ErrNodePoolCreateMissingFields = APIError{Code: "NODEPOOLS-MGMT-CREATE-002", HTTPStatus: http.StatusBadRequest, Message: "Missing required fields: name, cluster_id, and spec"}
+	ErrNodePoolCreateMissingFields = APIError{Code: "NODEPOOLS-MGMT-CREATE-002", HTTPStatus: http.StatusBadRequest, Message: "Missing required fields: metadata.name and metadata.namespace"}
 	ErrNodePoolCreateNameConflict = APIError{Code: "NODEPOOLS-MGMT-CREATE-003", HTTPStatus: http.StatusConflict, Message: "NodePool already exists"}
 	ErrNodePoolCreateClusterNotFound = APIError{Code: "NODEPOOLS-MGMT-CREATE-004", HTTPStatus: http.StatusNotFound, Message: "Referenced cluster not found"}
 	ErrNodePoolCreateClusterCheck = APIError{Code: "NODEPOOLS-MGMT-CREATE-005", HTTPStatus: http.StatusInternalServerError, Message: "Failed to validate cluster reference"}
 	ErrNodePoolCreateInvalidSpec = APIError{Code: "NODEPOOLS-MGMT-CREATE-006", HTTPStatus: http.StatusBadRequest, Message: "Invalid nodepool spec"}
 	ErrNodePoolCreateFailed = APIError{Code: "NODEPOOLS-MGMT-CREATE-007", HTTPStatus: http.StatusInternalServerError, Message: "Failed to create nodepool"}
+	ErrNodePoolCreateInvalidNamespace = APIError{Code: "NODEPOOLS-MGMT-CREATE-008", HTTPStatus: http.StatusBadRequest, Message: "metadata.namespace must be a valid cluster namespace (cluster-<uuid>)"}
 
 	// NodePool — Get
 	ErrNodePoolGetNotFound = APIError{Code: "NODEPOOLS-MGMT-GET-001", HTTPStatus: http.StatusNotFound, Message: "NodePool not found"}
@@ -416,32 +400,10 @@ func init() {
 	ErrAuthzCheckMissingRes = APIError{Code: "AUTHZ-CHECK-004", HTTPStatus: http.StatusBadRequest, Message: "resource is required"}
 	ErrAuthzCheckFailed = APIError{Code: "AUTHZ-CHECK-005", HTTPStatus: http.StatusInternalServerError, Message: "Authorization check failed", Reason: "%w"}
 
-	// ZOA — Create
-	ErrZoaCreateUnknownAction = APIError{Code: "ZOA-CREATE-001", HTTPStatus: http.StatusNotFound, Message: "Trusted action not found", Reason: "trusted action not found: %s"}
-	ErrZoaCreateInvalidBody = APIError{Code: "ZOA-CREATE-002", HTTPStatus: http.StatusBadRequest, Message: "Invalid request body"}
-	ErrZoaCreateMissingCluster = APIError{Code: "ZOA-CREATE-003", HTTPStatus: http.StatusBadRequest, Message: "target_cluster is required"}
-	ErrZoaCreateMissingJira = APIError{Code: "ZOA-CREATE-004", HTTPStatus: http.StatusBadRequest, Message: "jira is required for all trusted actions (e.g. ROSAENG-1234)"}
-	ErrZoaCreateInvalidJira = APIError{Code: "ZOA-CREATE-005", HTTPStatus: http.StatusBadRequest, Message: "jira does not have correct format; expected PROJECT-NUMBER (e.g. ROSAENG-1234)"}
-	ErrZoaCreateInvalidParams = APIError{Code: "ZOA-CREATE-006", HTTPStatus: http.StatusBadRequest, Message: "Invalid parameters", Reason: "%w"}
-	ErrZoaCreateCooldown = APIError{Code: "ZOA-CREATE-007", HTTPStatus: http.StatusTooManyRequests, Message: "Write cooldown in effect", Reason: "%w"}
-	ErrZoaCreateMaxConcurrent = APIError{Code: "ZOA-CREATE-008", HTTPStatus: http.StatusTooManyRequests, Message: "Too many concurrent executions on target", Reason: "%w"}
-	ErrZoaCreateDryRunError = APIError{Code: "ZOA-CREATE-009", HTTPStatus: http.StatusInternalServerError, Message: "Dry run action not found", Reason: "dry_run_action '%s' not found in registry"}
-	ErrZoaCreateStoreFailed = APIError{Code: "ZOA-CREATE-010", HTTPStatus: http.StatusInternalServerError, Message: "Failed to create execution"}
-	ErrZoaCreateRenderFailed = APIError{Code: "ZOA-CREATE-011", HTTPStatus: http.StatusInternalServerError, Message: "Failed to build trusted action manifest"}
-	ErrZoaCreateDispatchFailed = APIError{Code: "ZOA-CREATE-012", HTTPStatus: http.StatusBadGateway, Message: "Failed to dispatch trusted action"}
-	ErrZoaCreateStoreSaveFailed = APIError{Code: "ZOA-CREATE-013", HTTPStatus: http.StatusInternalServerError, Message: "Failed to persist execution state"}
-
-	// ZOA — Get
-	ErrZoaGetStoreFailed = APIError{Code: "ZOA-GET-001", HTTPStatus: http.StatusInternalServerError, Message: "Failed to retrieve execution"}
-	ErrZoaGetNotFound = APIError{Code: "ZOA-GET-002", HTTPStatus: http.StatusNotFound, Message: "Execution not found"}
-
-	// ZOA — List
-	ErrZoaListStoreFailed = APIError{Code: "ZOA-LIST-001", HTTPStatus: http.StatusInternalServerError, Message: "Failed to list executions"}
-
-	// ZOA — Audit
-	ErrZoaAuditDisabled = APIError{Code: "ZOA-AUDIT-001", HTTPStatus: http.StatusNotFound, Message: "Audit logging is not enabled"}
-	ErrZoaAuditListFailed = APIError{Code: "ZOA-AUDIT-002", HTTPStatus: http.StatusInternalServerError, Message: "Failed to list audit log"}
-
 	// Info
 	ErrInfoRegionalAccountUnavailable = APIError{Code: "INFO-001", HTTPStatus: http.StatusServiceUnavailable, Message: "regional account ID is not configured"}
+
+	// Router fallbacks
+	ErrRouteNotFound = APIError{Code: "ROUTE-001", HTTPStatus: http.StatusNotFound, Message: "route not found"}
+	ErrRouteMethodNotAllowed = APIError{Code: "ROUTE-002", HTTPStatus: http.StatusMethodNotAllowed, Message: "method not allowed"}
 }

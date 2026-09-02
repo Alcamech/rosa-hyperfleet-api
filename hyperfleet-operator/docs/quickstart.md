@@ -53,7 +53,7 @@ Create 6 DynamoDB tables per management cluster, each with a single string parti
 
 Use on-demand billing (`PAY_PER_REQUEST`).
 
-Enable DynamoDB Streams (NEW_AND_OLD_IMAGES) on the status tables so the operator receives status updates from kube-applier-aws.
+The operator uses GSI two-speed polling on the status tables to detect updates from kube-applier-aws. No DynamoDB Streams configuration is required.
 
 ## 4. Install the Helm Chart
 

@@ -30,7 +30,7 @@ CRDs are under API group `hyperfleet.io/v1alpha1`. Most are **namespace-scoped**
 - **NodePool** — represents a set of worker nodes for a Cluster. References a parent Cluster via `spec.clusterRef`. Must be in the same namespace as its parent Cluster.
 - **Placement** — binds a Cluster to a management cluster. Created automatically by the Placement controller. Must be in the same namespace as its Cluster.
 - **ManagementCluster** — represents a management cluster in the fleet. Stores region and account metadata.
-- **Manifest** — deploys arbitrary Kubernetes resources to a management cluster. A generic pass-through: raw manifests are written as-is to DynamoDB ApplyDesires. Resources with `watch: true` also get ReadDesires, mirroring their live state from the MC back into the CR status. Used for ZOA (Zero Operator Actions) — deploying Jobs, RBAC, and supporting resources with status feedback — and for any infrastructure resource that doesn't warrant a dedicated controller.
+- **Manifest** — deploys arbitrary Kubernetes resources to a management cluster. A generic pass-through: raw manifests are written as-is to DynamoDB ApplyDesires. Resources with `watch: true` also get ReadDesires, mirroring their live state from the MC back into the CR status. Used for infrastructure resources (monitoring collectors, CRDs, RBAC, shared configs) that don't warrant a dedicated controller.
 
 ### Controllers
 
@@ -50,11 +50,13 @@ The operator is the **inverse** of kube-applier-aws:
 | **hyperfleet-operator** | writes       | reads         |
 | **kube-applier-aws**    | reads        | writes        |
 
-Per management cluster, there are 6 DynamoDB tables:
+Per management cluster, there are 4 DynamoDB tables:
 
 - `{mc}-specs-applydesires` / `{mc}-status-applydesires`
-- `{mc}-specs-deletedesires` / `{mc}-status-deletedesires`
 - `{mc}-specs-readdesires` / `{mc}-status-readdesires`
+
+Deletion of a Kubernetes resource is expressed as an `ApplyDesire` with
+`spec.type=Delete` — there is no separate `deletedesires` table.
 
 ### Document IDs
 
@@ -65,7 +67,7 @@ documentID = UUIDv5(NamespaceUUID, "{taskKey}/{group}/{version}/{resource}/{name
 ```
 
 - **NamespaceUUID**: `a3f1b2c4-d5e6-4f7a-8b9c-0d1e2f3a4b5c` (shared with kube-applier-aws)
-- **taskKey**: `hyperfleet-operator` for Cluster/NodePool ApplyDesires, `hyperfleet-operator-read` for ReadDesires, `hyperfleet-operator-delete` for DeleteDesires, `hyperfleet-manifest/{namespace}/{name}` for Manifest (scoped per CR to prevent collisions)
+- **taskKey**: `hyperfleet-operator` for Cluster/NodePool ApplyDesires, `hyperfleet-operator-read` for ReadDesires, `hyperfleet-manifest/{namespace}/{name}` for Manifest (scoped per CR to prevent collisions)
 
 Same inputs always produce the same UUID, giving natural idempotency — re-reconciling a Cluster writes the same document IDs, updating existing rows rather than creating duplicates.
 

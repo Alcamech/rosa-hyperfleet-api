@@ -48,13 +48,15 @@ func testContext(accountID string) context.Context {
 	return ctx
 }
 
-// testClusterCR creates a cluster CR with Namespace=clusterID (UUID),
+// testClusterCR creates a cluster CR with Namespace="cluster-<clusterID>",
 // Name=clusterName (human-readable), labeled with accountID.
+// The namespace matches what clusterNamespace(clusterID) produces so that
+// handler lookups (which call GetCluster → InNamespace("cluster-<id>")) work.
 func testClusterCR(clusterID, clusterName, accountID string) *hyperfleetv1alpha1.Cluster {
 	return &hyperfleetv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      clusterName,
-			Namespace: clusterID,
+			Namespace: "cluster-" + clusterID,
 			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
 		},
 		Spec: hyperfleetv1alpha1.ClusterSpec{
@@ -68,6 +70,49 @@ func testClusterCR(clusterID, clusterName, accountID string) *hyperfleetv1alpha1
 			},
 		},
 	}
+}
+
+// metaField extracts a field from the K8s-native metadata object in a decoded response.
+func metaField(result map[string]any, field string) any {
+	meta, _ := result["metadata"].(map[string]any)
+	if meta == nil {
+		return nil
+	}
+	return meta[field]
+}
+
+// minSpec is the minimum valid cluster spec for create requests.
+var minSpec = map[string]any{
+	"hostedCluster": map[string]any{
+		"release":    map[string]any{"image": ""},
+		"networking": map[string]any{},
+		"platform":   map[string]any{"type": "AWS"},
+	},
+}
+
+// clusterBody builds a K8s-native cluster create request body.
+// Pass nil spec to use minSpec.
+func clusterBody(name string, spec map[string]any) []byte {
+	s := spec
+	if s == nil {
+		s = minSpec
+	}
+	b, _ := json.Marshal(map[string]any{
+		"metadata": map[string]any{"name": name},
+		"spec":     s,
+	})
+	return b
+}
+
+// decodeErrorMessage decodes a metav1.Status response and returns the message field.
+func decodeErrorMessage(t *testing.T, w *httptest.ResponseRecorder) string {
+	t.Helper()
+	var errResp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+		t.Fatalf("response body is not valid JSON: %v", err)
+	}
+	msg, _ := errResp["message"].(string)
+	return msg
 }
 
 func TestClusterHandler_List_Success(t *testing.T) {
@@ -163,18 +208,7 @@ func TestClusterHandler_Create_Success(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
 
-	body, _ := json.Marshal(map[string]any{
-		"name": "my-cluster",
-		"spec": map[string]any{
-			"platform": map[string]any{
-				"aws": map[string]any{
-					"region": "us-east-1",
-				},
-			},
-		},
-	})
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
 
 	w := httptest.NewRecorder()
@@ -187,11 +221,11 @@ func TestClusterHandler_Create_Success(t *testing.T) {
 	var result map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&result)
 
-	if result["id"] == nil || result["id"] == "" {
-		t.Error("expected non-empty cluster ID")
+	if uid := metaField(result, "uid"); uid == nil || uid == "" {
+		t.Error("expected non-empty cluster UID in metadata.uid")
 	}
-	if result["name"] != "my-cluster" {
-		t.Errorf("expected name=my-cluster, got %v", result["name"])
+	if name := metaField(result, "name"); name != "my-cluster" {
+		t.Errorf("expected metadata.name=my-cluster, got %v", name)
 	}
 }
 
@@ -201,12 +235,7 @@ func TestClusterHandler_Create_SetsCreatorARN(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
 
-	body, _ := json.Marshal(map[string]any{
-		"name": "my-cluster",
-		"spec": map[string]any{},
-	})
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
 
 	w := httptest.NewRecorder()
@@ -216,11 +245,18 @@ func TestClusterHandler_Create_SetsCreatorARN(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var result map[string]any
-	_ = json.NewDecoder(w.Body).Decode(&result)
-
-	if result["created_by"] != "arn:aws:iam::"+testAccountID+":user/test" {
-		t.Errorf("expected creatorARN in created_by, got %v", result["created_by"])
+	// CreatorARN is a service-set field — not exposed in the public response.
+	// Verify it was stored correctly in the internal CRD.
+	var list hyperfleetv1alpha1.ClusterList
+	if err := fc.List(context.Background(), &list); err != nil {
+		t.Fatalf("listing clusters from fake client: %v", err)
+	}
+	if len(list.Items) != 1 {
+		t.Fatalf("expected 1 cluster in store, got %d", len(list.Items))
+	}
+	wantARN := "arn:aws:iam::" + testAccountID + ":user/test"
+	if list.Items[0].Spec.CreatorARN != wantARN {
+		t.Errorf("expected CreatorARN=%s, got %s", wantARN, list.Items[0].Spec.CreatorARN)
 	}
 }
 
@@ -244,11 +280,13 @@ func TestClusterHandler_Create_InvalidJSON(t *testing.T) {
 func TestClusterHandler_Create_MissingFields(t *testing.T) {
 	tests := []struct {
 		name string
-		body map[string]any
+		body []byte
 	}{
-		{"missing name", map[string]any{"spec": map[string]any{}}},
-		{"missing spec", map[string]any{"name": "test"}},
-		{"empty name", map[string]any{"name": "", "spec": map[string]any{}}},
+		{"missing name", clusterBody("", map[string]any{"hostedCluster": map[string]any{}})},
+		{"empty metadata", []byte(`{}`)},
+		{"missing spec key", []byte(`{"metadata":{"name":"my-cluster"}}`)},
+		{"null spec", []byte(`{"metadata":{"name":"my-cluster"},"spec":null}`)},
+		{"empty spec object", clusterBody("my-cluster", map[string]any{})},
 	}
 
 	for _, tt := range tests {
@@ -258,8 +296,7 @@ func TestClusterHandler_Create_MissingFields(t *testing.T) {
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 			handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
 
-			body, _ := json.Marshal(tt.body)
-			req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
+			req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(tt.body))
 			req = req.WithContext(testContext(testAccountID))
 
 			w := httptest.NewRecorder()
@@ -279,9 +316,7 @@ func TestClusterHandler_Create_NameTooLong(t *testing.T) {
 	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
 
 	longName := strings.Repeat("a", hyperfleetdb.MaxClusterNameLen+1)
-	body, _ := json.Marshal(map[string]any{"name": longName, "spec": map[string]any{}})
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody(longName, nil)))
 	req = req.WithContext(testContext(testAccountID))
 
 	w := httptest.NewRecorder()
@@ -290,19 +325,23 @@ func TestClusterHandler_Create_NameTooLong(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
-
-	var errResp map[string]any
-	_ = json.NewDecoder(w.Body).Decode(&errResp)
-	if errResp["code"] != ErrClusterCreateNameTooLong.Code {
-		t.Errorf("expected code %s, got %v", ErrClusterCreateNameTooLong.Code, errResp["code"])
+	if msg := decodeErrorMessage(t, w); !strings.Contains(msg, ErrClusterCreateNameTooLong.Code) {
+		t.Errorf("expected message to contain %s, got %q", ErrClusterCreateNameTooLong.Code, msg)
 	}
 }
 
 func TestClusterHandler_Get_Success(t *testing.T) {
+	cr := testClusterCR("cluster-123", "test-cluster", testAccountID)
+	cr.Status = hyperfleetv1alpha1.ClusterStatus{
+		ObservedGeneration: 1,
+		Phase:              "Ready",
+		Conditions: []metav1.Condition{
+			{Type: "Available", Status: metav1.ConditionTrue, Reason: "AsExpected"},
+		},
+	}
 	scheme := newTestScheme()
-	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
-		testClusterCR("cluster-123", "test-cluster", testAccountID),
-	).Build()
+	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).
+		WithStatusSubresource(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
 
@@ -320,11 +359,16 @@ func TestClusterHandler_Get_Success(t *testing.T) {
 	var result map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&result)
 
-	if result["id"] != "cluster-123" {
-		t.Errorf("expected id=cluster-123, got %v", result["id"])
+	if uid := metaField(result, "uid"); uid != "cluster-123" {
+		t.Errorf("expected metadata.uid=cluster-123, got %v", uid)
 	}
-	if result["name"] != "test-cluster" {
-		t.Errorf("expected name=test-cluster, got %v", result["name"])
+	if name := metaField(result, "name"); name != "test-cluster" {
+		t.Errorf("expected metadata.name=test-cluster, got %v", name)
+	}
+	// Status is included in GET — no separate /statuses endpoint.
+	status, _ := result["status"].(map[string]any)
+	if status["phase"] != "Ready" {
+		t.Errorf("expected status.phase=Ready, got %v", status["phase"])
 	}
 }
 
@@ -344,11 +388,8 @@ func TestClusterHandler_Get_NotFound(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", w.Code)
 	}
-
-	var errResp map[string]any
-	_ = json.NewDecoder(w.Body).Decode(&errResp)
-	if errResp["code"] != ErrClusterGetNotFound.Code {
-		t.Errorf("expected code %s, got %v", ErrClusterGetNotFound.Code, errResp["code"])
+	if msg := decodeErrorMessage(t, w); !strings.Contains(msg, ErrClusterGetNotFound.Code) {
+		t.Errorf("expected message to contain %s, got %q", ErrClusterGetNotFound.Code, msg)
 	}
 }
 
@@ -371,6 +412,7 @@ func TestClusterHandler_Delete_Success(t *testing.T) {
 		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
 	}
 
+	// Delete returns a plain map (not a K8s type) with the cluster_id.
 	var result map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&result)
 	if result["cluster_id"] != "cluster-123" {
@@ -396,63 +438,6 @@ func TestClusterHandler_Delete_NotFound(t *testing.T) {
 	}
 }
 
-func TestClusterHandler_GetStatus_Success(t *testing.T) {
-	cr := testClusterCR("cluster-123", "test-cluster", testAccountID)
-	cr.Status = hyperfleetv1alpha1.ClusterStatus{
-		ObservedGeneration: 1,
-		Phase:              "Ready",
-		Conditions: []metav1.Condition{
-			{
-				Type:   "Ready",
-				Status: metav1.ConditionTrue,
-				Reason: "ClusterReady",
-			},
-		},
-	}
-
-	scheme := newTestScheme()
-	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).
-		WithStatusSubresource(cr).Build()
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/cluster-123/statuses", nil)
-	req = req.WithContext(testContext(testAccountID))
-	req = mux.SetURLVars(req, map[string]string{"id": "cluster-123"})
-
-	w := httptest.NewRecorder()
-	handler.GetStatus(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	var result map[string]any
-	_ = json.NewDecoder(w.Body).Decode(&result)
-
-	if result["cluster_id"] != "cluster-123" {
-		t.Errorf("expected cluster_id=cluster-123, got %v", result["cluster_id"])
-	}
-}
-
-func TestClusterHandler_GetStatus_NotFound(t *testing.T) {
-	scheme := newTestScheme()
-	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/no-such/statuses", nil)
-	req = req.WithContext(testContext(testAccountID))
-	req = mux.SetURLVars(req, map[string]string{"id": "no-such"})
-
-	w := httptest.NewRecorder()
-	handler.GetStatus(w, req)
-
-	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", w.Code)
-	}
-}
-
 func TestClusterHandler_Update_Success(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
@@ -463,7 +448,7 @@ func TestClusterHandler_Update_Success(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]any{
 		"spec": map[string]any{
-			"name": "updated-name",
+			"displayName": "updated-display",
 		},
 	})
 
@@ -481,8 +466,10 @@ func TestClusterHandler_Update_Success(t *testing.T) {
 	var result map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&result)
 
-	if result["name"] != "updated-name" {
-		t.Errorf("expected name=updated-name, got %v", result["name"])
+	// Verify the mutable spec field was merged into the response.
+	spec, _ := result["spec"].(map[string]any)
+	if spec["displayName"] != "updated-display" {
+		t.Errorf("expected spec.displayName=updated-display, got %v", spec["displayName"])
 	}
 }
 
@@ -493,7 +480,7 @@ func TestClusterHandler_Update_NotFound(t *testing.T) {
 	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
 
 	body, _ := json.Marshal(map[string]any{
-		"spec": map[string]any{"name": "x"},
+		"spec": map[string]any{"displayName": "x"},
 	})
 
 	req := httptest.NewRequest(http.MethodPut, "/api/v0/clusters/no-such", bytes.NewReader(body))
@@ -510,7 +497,9 @@ func TestClusterHandler_Update_NotFound(t *testing.T) {
 
 func TestClusterHandler_Update_MissingSpec(t *testing.T) {
 	scheme := newTestScheme()
-	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+		testClusterCR("cluster-123", "test-cluster", testAccountID),
+	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
 
@@ -536,12 +525,7 @@ func TestClusterHandler_Create_DuplicateName(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
 
-	body, _ := json.Marshal(map[string]any{
-		"name": "test-cluster",
-		"spec": map[string]any{},
-	})
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("test-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
 
 	w := httptest.NewRecorder()
@@ -550,11 +534,8 @@ func TestClusterHandler_Create_DuplicateName(t *testing.T) {
 	if w.Code != http.StatusConflict {
 		t.Fatalf("expected 409 for duplicate name, got %d: %s", w.Code, w.Body.String())
 	}
-
-	var errResp map[string]any
-	_ = json.NewDecoder(w.Body).Decode(&errResp)
-	if errResp["code"] != ErrClusterCreateNameConflict.Code {
-		t.Errorf("expected code %s, got %v", ErrClusterCreateNameConflict.Code, errResp["code"])
+	if msg := decodeErrorMessage(t, w); !strings.Contains(msg, ErrClusterCreateNameConflict.Code) {
+		t.Errorf("expected message to contain %s, got %q", ErrClusterCreateNameConflict.Code, msg)
 	}
 }
 
@@ -567,12 +548,7 @@ func TestClusterHandler_Create_SameNameDifferentAccount(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
 
-	body, _ := json.Marshal(map[string]any{
-		"name": "test-cluster",
-		"spec": map[string]any{},
-	})
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("test-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
 
 	w := httptest.NewRecorder()
@@ -605,12 +581,7 @@ func TestClusterHandler_Create_Hash4CollisionThenSuccess(t *testing.T) {
 	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
 	handler.generateID = sequenceIDGen("aaaa-1111-1111-1111", "cccc-2222-2222-2222")
 
-	body, _ := json.Marshal(map[string]any{
-		"name": "test-cluster",
-		"spec": map[string]any{},
-	})
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("test-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
 
 	w := httptest.NewRecorder()
@@ -622,8 +593,8 @@ func TestClusterHandler_Create_Hash4CollisionThenSuccess(t *testing.T) {
 
 	var result map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&result)
-	if id, ok := result["id"].(string); !ok || id != "cccc-2222-2222-2222" {
-		t.Errorf("expected cluster ID cccc-2222-2222-2222, got %v", result["id"])
+	if uid := metaField(result, "uid"); uid != "cccc-2222-2222-2222" {
+		t.Errorf("expected metadata.uid=cccc-2222-2222-2222, got %v", uid)
 	}
 }
 
@@ -644,12 +615,7 @@ func TestClusterHandler_Create_Hash4ExhaustedRetries(t *testing.T) {
 		"aaaa-5555-5555-5555",
 	)
 
-	body, _ := json.Marshal(map[string]any{
-		"name": "test-cluster",
-		"spec": map[string]any{},
-	})
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("test-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
 
 	w := httptest.NewRecorder()
@@ -658,11 +624,8 @@ func TestClusterHandler_Create_Hash4ExhaustedRetries(t *testing.T) {
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 after exhausted retries, got %d: %s", w.Code, w.Body.String())
 	}
-
-	var errResp map[string]any
-	_ = json.NewDecoder(w.Body).Decode(&errResp)
-	if errResp["code"] != ErrClusterCreateIDExhausted.Code {
-		t.Errorf("expected code %s, got %v", ErrClusterCreateIDExhausted.Code, errResp["code"])
+	if msg := decodeErrorMessage(t, w); !strings.Contains(msg, ErrClusterCreateIDExhausted.Code) {
+		t.Errorf("expected message to contain %s, got %q", ErrClusterCreateIDExhausted.Code, msg)
 	}
 }
 
@@ -719,11 +682,7 @@ func TestClusterHandler_Create_ConcurrentHash4Collision(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			acct := fmt.Sprintf("account-%d", idx)
-			body, _ := json.Marshal(map[string]any{
-				"name": "concurrent-cluster",
-				"spec": map[string]any{},
-			})
-			req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
+			req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("concurrent-cluster", nil)))
 			req = req.WithContext(testContext(acct))
 			w := httptest.NewRecorder()
 			handler.Create(w, req)

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -192,8 +193,8 @@ func TestOidcConfigHandler_Create_Success(t *testing.T) {
 	var result map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&result)
 
-	if result["id"] != "generated-config-id" {
-		t.Errorf("expected generated id, got %v", result["id"])
+	if uid := metaField(result, "uid"); uid != "generated-config-id" {
+		t.Errorf("expected metadata.uid=generated-config-id, got %v", uid)
 	}
 	spec := result["spec"].(map[string]any)
 	if spec["type"] != "managed" {
@@ -260,8 +261,8 @@ func TestOidcConfigHandler_Create_InvalidJSON(t *testing.T) {
 
 	var errResp map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&errResp)
-	if errResp["code"] != ErrOidcConfigCreateInvalidBody.Code {
-		t.Errorf("expected code %s, got %v", ErrOidcConfigCreateInvalidBody.Code, errResp["code"])
+	if !strings.Contains(errResp["message"].(string), ErrOidcConfigCreateInvalidBody.Code) {
+		t.Errorf("expected message to contain %s, got %q", ErrOidcConfigCreateInvalidBody.Code, errResp["message"])
 	}
 }
 
@@ -295,8 +296,8 @@ func TestOidcConfigHandler_Create_MissingFields(t *testing.T) {
 
 			var errResp map[string]any
 			_ = json.NewDecoder(w.Body).Decode(&errResp)
-			if errResp["code"] != ErrOidcConfigCreateMissingFields.Code {
-				t.Errorf("expected code %s, got %v", ErrOidcConfigCreateMissingFields.Code, errResp["code"])
+			if !strings.Contains(errResp["message"].(string), ErrOidcConfigCreateMissingFields.Code) {
+				t.Errorf("expected message to contain %s, got %q", ErrOidcConfigCreateMissingFields.Code, errResp["message"])
 			}
 		})
 	}
@@ -326,8 +327,8 @@ func TestOidcConfigHandler_Create_InvalidType(t *testing.T) {
 
 	var errResp map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&errResp)
-	if errResp["code"] != ErrOidcConfigCreateInvalidType.Code {
-		t.Errorf("expected code %s, got %v", ErrOidcConfigCreateInvalidType.Code, errResp["code"])
+	if !strings.Contains(errResp["message"].(string), ErrOidcConfigCreateInvalidType.Code) {
+		t.Errorf("expected message to contain %s, got %q", ErrOidcConfigCreateInvalidType.Code, errResp["message"])
 	}
 }
 
@@ -396,8 +397,8 @@ func TestOidcConfigHandler_Create_InvalidFieldsForType(t *testing.T) {
 
 			var errResp map[string]any
 			_ = json.NewDecoder(w.Body).Decode(&errResp)
-			if errResp["code"] != ErrOidcConfigCreateInvalidFields.Code {
-				t.Errorf("expected code %s, got %v", ErrOidcConfigCreateInvalidFields.Code, errResp["code"])
+			if !strings.Contains(errResp["message"].(string), ErrOidcConfigCreateInvalidFields.Code) {
+				t.Errorf("expected message to contain %s, got %q", ErrOidcConfigCreateInvalidFields.Code, errResp["message"])
 			}
 		})
 	}
@@ -459,8 +460,8 @@ func TestOidcConfigHandler_Get_Success(t *testing.T) {
 	var result map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&result)
 
-	if result["id"] != "oidc-123" {
-		t.Errorf("expected id=oidc-123, got %v", result["id"])
+	if uid := metaField(result, "uid"); uid != "oidc-123" {
+		t.Errorf("expected metadata.uid=oidc-123, got %v", uid)
 	}
 }
 
@@ -483,8 +484,8 @@ func TestOidcConfigHandler_Get_NotFound(t *testing.T) {
 
 	var errResp map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&errResp)
-	if errResp["code"] != ErrOidcConfigGetNotFound.Code {
-		t.Errorf("expected code %s, got %v", ErrOidcConfigGetNotFound.Code, errResp["code"])
+	if !strings.Contains(errResp["message"].(string), ErrOidcConfigGetNotFound.Code) {
+		t.Errorf("expected message to contain %s, got %q", ErrOidcConfigGetNotFound.Code, errResp["message"])
 	}
 }
 
@@ -554,7 +555,7 @@ func TestOidcConfigHandler_Delete_NotFound(t *testing.T) {
 
 	var errResp map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&errResp)
-	if errResp["code"] != ErrOidcConfigDeleteNotFound.Code {
-		t.Errorf("expected code %s, got %v", ErrOidcConfigDeleteNotFound.Code, errResp["code"])
+	if !strings.Contains(errResp["message"].(string), ErrOidcConfigDeleteNotFound.Code) {
+		t.Errorf("expected message to contain %s, got %q", ErrOidcConfigDeleteNotFound.Code, errResp["message"])
 	}
 }

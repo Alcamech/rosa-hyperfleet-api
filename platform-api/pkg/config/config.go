@@ -12,7 +12,6 @@ type Config struct {
 	Regional        RegionalConfig
 	Logging         LoggingConfig
 	Authz           *authz.Config
-	Zoa             ZoaConfig
 	RateLimit       RateLimitConfig
 	AllowedAccounts []string
 }
@@ -34,17 +33,6 @@ type DBConfig struct {
 type RegionalConfig struct {
 	OIDCIssuerBaseURL        string
 	DefaultClusterExpiration time.Duration
-}
-
-type ZoaConfig struct {
-	Enabled        bool
-	TableName      string
-	AuditTableName string
-	BucketName     string
-	AWSRegion      string
-	TemplatesDir   string
-	JobConfigDir   string
-	PollInterval   time.Duration
 }
 
 type ServerConfig struct {
@@ -82,8 +70,5 @@ func NewConfig() *Config {
 			Format: "json",
 		},
 		Authz: authz.DefaultConfig(),
-		Zoa: ZoaConfig{
-			PollInterval: 15 * time.Second,
-		},
 	}
 }
