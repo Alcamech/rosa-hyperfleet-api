@@ -36,9 +36,9 @@ ROSA_REPO_URL          ?= https://github.com/openshift/rosa
 ROSA_REPO_BRANCH       ?= hyperfleet-v2
 ROSA_MAKE_TARGET       ?= e2e-hyperfleet
 ROSA_BUILD_TARGET      ?= install
-ROSA_GINKGO_FOCUS      ?=
-ROSA_GINKGO_SKIP       ?=
-ROSA_GINKGO_LABEL_FILTER ?=
+ROSA_FOCUS      ?=
+ROSA_SKIP       ?=
+ROSA_LABEL_FILTER ?=
 
 CONTAINER_ENGINE ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 
@@ -117,7 +117,7 @@ help:
 	@echo "  test-e2e-cli         E2E CLI"
 	@echo "  test-e2e-sdk         E2E SDK (Go clientset lifecycle)"
 	@echo "  test-e2e-rosa-cli    E2E rosa CLI (clones rosa repo, builds CLI, runs hyperfleet tests)"
-	@echo "                       Supports ROSA_GINKGO_FOCUS, ROSA_GINKGO_SKIP, ROSA_GINKGO_LABEL_FILTER"
+	@echo "                       Supports ROSA_FOCUS, ROSA_SKIP, ROSA_LABEL_FILTER"
 	@echo "  test-e2e-platform-monitoring  E2E monitoring"
 	@echo ""
 	@echo "  coverage-api-codegen Coverage report for codegen (hack/api-codegen)"
@@ -250,10 +250,10 @@ test-e2e-sdk: $(GINKGO)
 		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-sdk
 
 test-e2e-rosa-cli:
-	@echo "Cloning rosa repo into temporary directory..."
 	@ROSA_TMPDIR=$$(mktemp -d) && \
 	trap "rm -rf $$ROSA_TMPDIR" EXIT && \
 	echo "Temporary directory: $$ROSA_TMPDIR" && \
+	echo "Cloning rosa repo from $(ROSA_REPO_URL)@$(ROSA_REPO_BRANCH)..." && \
 	git clone --depth=1 --branch $(ROSA_REPO_BRANCH) $(ROSA_REPO_URL) $$ROSA_TMPDIR && \
 	echo "Building rosa CLI..." && \
 	cd $$ROSA_TMPDIR && $(MAKE) $(ROSA_BUILD_TARGET) && \
@@ -264,16 +264,23 @@ test-e2e-rosa-cli:
 	export CLUSTER_NAME="$$name" && \
 	export OPERATOR_ROLES_PREFIX="$${OPERATOR_ROLES_PREFIX:-$$name}" && \
 	export AWS_DEFAULT_REGION="$${AWS_DEFAULT_REGION:-$${AWS_REGION}}" && \
-	if [ -n "$(ROSA_GINKGO_FOCUS)$(ROSA_GINKGO_SKIP)$(ROSA_GINKGO_LABEL_FILTER)" ]; then \
+	export GOTOOLCHAIN=auto && \
+	export TEST_PROFILE="$${TEST_PROFILE}" && \
+	export TEST_PROFILE_DIR="$$ROSA_TMPDIR/tests/ci/data/profiles" && \
+	export WORKSPACE="$$ROSA_TMPDIR" && \
+	if [ -n "$(ROSA_SKIP)$(ROSA_LABEL_FILTER)" ]; then \
 		echo "Running with custom ginkgo filters..." && \
 		ginkgo run -v --timeout 3h \
-			$(if $(ROSA_GINKGO_FOCUS),--focus="$(ROSA_GINKGO_FOCUS)") \
-			$(if $(ROSA_GINKGO_SKIP),--skip="$(ROSA_GINKGO_SKIP)") \
-			$(if $(ROSA_GINKGO_LABEL_FILTER),--label-filter="$(ROSA_GINKGO_LABEL_FILTER)") \
+			$(if $(ROSA_SKIP),--skip="$(ROSA_SKIP)") \
+			$(if $(ROSA_LABEL_FILTER),--label-filter="$(ROSA_LABEL_FILTER)") \
 			./tests/e2e/; \
 	else \
 		echo "Running default rosa e2e-hyperfleet target..." && \
-		$(MAKE) $(ROSA_MAKE_TARGET); \
+		$(MAKE) \
+			TEST_PROFILE="$${TEST_PROFILE}" \
+			TEST_PROFILE_DIR="$$ROSA_TMPDIR/tests/ci/data/profiles" \
+			WORKSPACE="$$ROSA_TMPDIR" \
+			$(ROSA_MAKE_TARGET); \
 	fi
 
 
