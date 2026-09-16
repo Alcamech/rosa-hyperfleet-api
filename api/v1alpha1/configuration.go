@@ -9,11 +9,6 @@ import (
 // us to add granular markers to nested fields like kubelet config.
 // +hyperfleet:upstream-reduced-object=hypershiftv1beta1.ClusterConfiguration
 type ClusterConfiguration struct {
-	// apiServer contains advanced network settings for the API server.
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
-	APIServer *APIServerNetworkConfiguration `json:"apiServer,omitempty"`
-
 	// authentication contains configuration for the cluster authentication.
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
@@ -157,8 +152,6 @@ type KubeletConfig struct {
 }
 
 // Placeholder types for configuration areas not yet exposed.
-
-type APIServerNetworkConfiguration struct{}
 
 type ClusterAuthentication struct{}
 

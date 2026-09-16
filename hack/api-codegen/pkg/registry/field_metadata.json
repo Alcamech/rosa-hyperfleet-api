@@ -79,13 +79,6 @@
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
-    "fieldPath": "spec.hostedCluster.configuration.apiServer",
-    "writeMode": "service-set",
-    "hidden": true,
-    "ownerType": "Cluster",
-    "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
-  },
-  {
     "fieldPath": "spec.hostedCluster.configuration.authentication",
     "writeMode": "service-set",
     "hidden": true,
@@ -562,13 +555,6 @@
     "featureGate": "HyperFleetAutoScaling",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
-  },
-  {
-    "fieldPath": "apiServer",
-    "writeMode": "service-set",
-    "hidden": true,
-    "ownerType": "ClusterConfiguration",
-    "ownerGVK": ""
   },
   {
     "fieldPath": "authentication",
