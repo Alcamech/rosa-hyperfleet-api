@@ -19,7 +19,7 @@ type ServiceSetFields struct {
 	// AllowedUnsafeSysctls is service-set (platform-managed, hidden from API)
 	AllowedUnsafeSysctls []string `json:"allowedUnsafeSysctls,omitempty"`
 	// ApiServer is service-set (platform-managed, hidden from API)
-	ApiServer *v1alpha1.APIServerNetworkConfiguration `json:"apiServer,omitempty"`
+	ApiServer *hypershiftv1beta1.APIServerNetworking `json:"apiServer,omitempty"`
 	// Arch is service-set (platform-managed, hidden from API)
 	Arch string `json:"arch,omitempty"`
 	// AuditWebhook is service-set (platform-managed, hidden from API)
