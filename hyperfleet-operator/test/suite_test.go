@@ -41,19 +41,19 @@ const (
 	amContainerName  = "hyperfleet-test-alertmanager"
 	mc               = "mc01"
 
-	postgresImage      = "quay.io/sclorg/postgresql-16-c10s"
-	dynamoLocalImage   = "public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local:latest"
-	alertmanagerImage  = "quay.io/prometheus/alertmanager:v0.28.1"
+	postgresImage         = "quay.io/sclorg/postgresql-16-c10s"
+	dynamoLocalImage      = "public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local:latest"
+	alertmanagerImage     = "quay.io/prometheus/alertmanager:v0.28.1"
 	containerStartTimeout = 5 * time.Minute
 )
 
 var (
-	ctx         context.Context
-	cancel      context.CancelFunc
-	mgr         manager.Manager
-	k8sClient   client.Client
-	dynamoDBCli *dynamodb.Client
-	dynamoCli   *dynamo.Client
+	ctx           context.Context
+	cancel        context.CancelFunc
+	mgr           manager.Manager
+	k8sClient     client.Client
+	dynamoDBCli   *dynamodb.Client
+	dynamoCli     *dynamo.Client
 	ddbPort       string
 	pgPort        string
 	amPort        string

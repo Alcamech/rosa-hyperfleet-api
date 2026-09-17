@@ -102,13 +102,6 @@ var FieldRegistry = TypedFieldRegistry{
 			OwnerType: "Cluster",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
 		},
-		"spec.hostedCluster.configuration.apiServer": {
-			FieldPath: "spec.hostedCluster.configuration.apiServer",
-			WriteMode: ServiceSet,
-			Hidden:    true,
-			OwnerType: "Cluster",
-			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
-		},
 		"spec.hostedCluster.configuration.authentication": {
 			FieldPath: "spec.hostedCluster.configuration.authentication",
 			WriteMode: ServiceSet,
@@ -432,8 +425,38 @@ var FieldRegistry = TypedFieldRegistry{
 			OwnerType: "Cluster",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
 		},
-		"spec.hostedCluster.networking": {
-			FieldPath: "spec.hostedCluster.networking",
+		"spec.hostedCluster.networking.allocateNodeCIDRs": {
+			FieldPath: "spec.hostedCluster.networking.allocateNodeCIDRs",
+			WriteMode: Mutable,
+			OwnerType: "Cluster",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
+		},
+		"spec.hostedCluster.networking.apiServer": {
+			FieldPath: "spec.hostedCluster.networking.apiServer",
+			WriteMode: Mutable,
+			OwnerType: "Cluster",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
+		},
+		"spec.hostedCluster.networking.clusterNetwork": {
+			FieldPath: "spec.hostedCluster.networking.clusterNetwork",
+			WriteMode: Mutable,
+			OwnerType: "Cluster",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
+		},
+		"spec.hostedCluster.networking.machineNetwork": {
+			FieldPath: "spec.hostedCluster.networking.machineNetwork",
+			WriteMode: Mutable,
+			OwnerType: "Cluster",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
+		},
+		"spec.hostedCluster.networking.networkType": {
+			FieldPath: "spec.hostedCluster.networking.networkType",
+			WriteMode: Mutable,
+			OwnerType: "Cluster",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
+		},
+		"spec.hostedCluster.networking.serviceNetwork": {
+			FieldPath: "spec.hostedCluster.networking.serviceNetwork",
 			WriteMode: Mutable,
 			OwnerType: "Cluster",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
@@ -559,13 +582,6 @@ var FieldRegistry = TypedFieldRegistry{
 		},
 	},
 	"ClusterConfiguration": {
-		"apiServer": {
-			FieldPath: "apiServer",
-			WriteMode: ServiceSet,
-			Hidden:    true,
-			OwnerType: "ClusterConfiguration",
-			OwnerGVK:  "",
-		},
 		"authentication": {
 			FieldPath: "authentication",
 			WriteMode: ServiceSet,
@@ -813,6 +829,44 @@ var FieldRegistry = TypedFieldRegistry{
 			WriteMode: ServiceSet,
 			Hidden:    true,
 			OwnerType: "ClusterConfiguration",
+			OwnerGVK:  "",
+		},
+	},
+	"ClusterNetworking": {
+		"allocateNodeCIDRs": {
+			FieldPath: "allocateNodeCIDRs",
+			WriteMode: Mutable,
+			OwnerType: "ClusterNetworking",
+			OwnerGVK:  "",
+		},
+		"apiServer": {
+			FieldPath: "apiServer",
+			WriteMode: Mutable,
+			OwnerType: "ClusterNetworking",
+			OwnerGVK:  "",
+		},
+		"clusterNetwork": {
+			FieldPath: "clusterNetwork",
+			WriteMode: Mutable,
+			OwnerType: "ClusterNetworking",
+			OwnerGVK:  "",
+		},
+		"machineNetwork": {
+			FieldPath: "machineNetwork",
+			WriteMode: Mutable,
+			OwnerType: "ClusterNetworking",
+			OwnerGVK:  "",
+		},
+		"networkType": {
+			FieldPath: "networkType",
+			WriteMode: Mutable,
+			OwnerType: "ClusterNetworking",
+			OwnerGVK:  "",
+		},
+		"serviceNetwork": {
+			FieldPath: "serviceNetwork",
+			WriteMode: Mutable,
+			OwnerType: "ClusterNetworking",
 			OwnerGVK:  "",
 		},
 	},
