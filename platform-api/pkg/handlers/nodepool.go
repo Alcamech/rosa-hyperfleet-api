@@ -161,12 +161,13 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
+	clusterID := r.URL.Query().Get("clusterId")
 	vars := mux.Vars(r)
 	nodepoolID := vars["id"]
 
-	h.logger.Info("getting nodepool", "account_id", accountID, "nodepool_id", nodepoolID)
+	h.logger.Info("getting nodepool", "account_id", accountID, "cluster_id", clusterID, "nodepool_id", nodepoolID)
 
-	cr, err := h.db.GetNodePool(ctx, accountID, nodepoolID)
+	cr, err := h.db.GetNodePool(ctx, accountID, clusterID, nodepoolID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolGetNotFound, h.logger)
@@ -187,6 +188,7 @@ func (h *NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
+	clusterID := r.URL.Query().Get("clusterId")
 	vars := mux.Vars(r)
 	nodepoolID := vars["id"]
 
@@ -202,9 +204,9 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.logger.Info("updating nodepool", "account_id", accountID, "nodepool_id", nodepoolID)
+	h.logger.Info("updating nodepool", "account_id", accountID, "cluster_id", clusterID, "nodepool_id", nodepoolID)
 
-	cr, err := h.db.GetNodePool(ctx, accountID, nodepoolID)
+	cr, err := h.db.GetNodePool(ctx, accountID, clusterID, nodepoolID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolUpdateNotFound, h.logger)
@@ -258,12 +260,13 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
+	clusterID := r.URL.Query().Get("clusterId")
 	vars := mux.Vars(r)
 	nodepoolID := vars["id"]
 
-	h.logger.Info("deleting nodepool", "account_id", accountID, "nodepool_id", nodepoolID)
+	h.logger.Info("deleting nodepool", "account_id", accountID, "cluster_id", clusterID, "nodepool_id", nodepoolID)
 
-	err := h.db.DeleteNodePool(ctx, accountID, nodepoolID)
+	err := h.db.DeleteNodePool(ctx, accountID, clusterID, nodepoolID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolDeleteNotFound, h.logger)

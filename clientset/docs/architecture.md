@@ -106,6 +106,7 @@ The platform API differs from a standard Kubernetes API in three ways that requi
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Requests are signed with AWS SigV4                       | `transport/sigv4.go` — custom RoundTripper                                                                                                |
 | Resources are account-scoped, not namespace-scoped       | SigV4 transport extracts the Kubernetes namespace from the URL, maps it to `X-Amz-Account-Id`, and strips the `/namespaces/{ns}/` segment |
+| NodePools are scoped to a parent cluster                  | The adapter maps the generated namespace path to the Platform API `clusterId` query parameter                                             |
 | Wire format is flat JSON, not Kubernetes nested metadata | `transport/bridge.go` — request/response adapter                                                                                          |
 
 ### `rest/config.go` — SDK configuration
@@ -126,7 +127,7 @@ type Config struct {
 
 Every outbound request goes through `SigV4RoundTripper.RoundTrip`:
 
-1. The generated client appends `/namespaces/{accountID}/` to every URL because the CRDs are declared as `scope=Namespaced`. The transport strips this segment and promotes the namespace value to the `X-Amz-Account-Id` signed header.
+1. The generated client appends `/namespaces/{accountID}/` to namespaced URLs. For NodePools, the adapter first converts that namespace to the parent `clusterId` query parameter. For other namespaced resources, the signing transport strips the segment and promotes its value to the `X-Amz-Account-Id` signed header.
 2. The request body is buffered, hashed (SHA-256), and restored so SigV4 can include the payload hash in the signature.
 3. The request is signed with `aws/signer/v4` against the `execute-api` service.
 
@@ -159,6 +160,8 @@ The Kubernetes decoder populates `v1alpha1.Cluster` from `metadata.*` fields. Th
 Both single-object and list (`{"items": [...]}`) responses are handled.
 
 **Request rewriting** — the Kubernetes serializer produces nested metadata. The adapter flattens it back to the platform wire format before sending. For namespaced POST requests (e.g. nodepool create), the namespace segment encodes the parent cluster ID; the adapter injects it as `"cluster_id"` in the body before the SigV4 transport strips the namespace from the URL.
+
+**NodePool scope rewrite** — the generated namespaced NodePool path is rewritten to the flat Platform API path, and its namespace becomes `?clusterId=<id>`. This scopes list, get, update, delete, and wait operations without replacing the configured AWS account identity.
 
 **Pagination rewrite** — `platform.ListOptions.Offset` is bridged by encoding the integer as a numeric string in `metav1.ListOptions.Continue`. The adapter detects this encoding and rewrites `?continue=N` to `?offset=N` so the platform API receives the parameter it expects.
 

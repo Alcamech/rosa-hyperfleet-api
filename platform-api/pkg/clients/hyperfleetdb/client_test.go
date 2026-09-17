@@ -94,6 +94,53 @@ func TestClient_ListClusters_FiltersByAccount(t *testing.T) {
 	}
 }
 
+func TestClient_GetNodePool_ScopedToCluster(t *testing.T) {
+	fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(
+		&hyperfleetv1alpha1.NodePool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "workers", Namespace: "cluster-uuid-1",
+				Labels: map[string]string{accountIDLabel: "acct-1"},
+			},
+		},
+		&hyperfleetv1alpha1.NodePool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "workers", Namespace: "cluster-uuid-2",
+				Labels: map[string]string{accountIDLabel: "acct-1"},
+			},
+		},
+	).Build()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	c := NewClientFrom(fc, logger)
+
+	np, err := c.GetNodePool(context.Background(), "acct-1", "uuid-2", "workers")
+	if err != nil {
+		t.Fatalf("GetNodePool: %v", err)
+	}
+	if np.Namespace != "cluster-uuid-2" {
+		t.Errorf("namespace = %q, want cluster-uuid-2", np.Namespace)
+	}
+}
+
+func TestClient_GetNodePool_FallbackWithoutClusterID(t *testing.T) {
+	fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(
+		&hyperfleetv1alpha1.NodePool{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "workers", Namespace: "cluster-uuid-1",
+				Labels: map[string]string{accountIDLabel: "acct-1"},
+			},
+		},
+	).Build()
+	c := NewClientFrom(fc, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+
+	np, err := c.GetNodePool(context.Background(), "acct-1", "", "workers")
+	if err != nil {
+		t.Fatalf("GetNodePool empty clusterID: unexpected err = %v", err)
+	}
+	if np.Name != "workers" {
+		t.Errorf("got nodepool %q, want workers", np.Name)
+	}
+}
+
 func TestClient_GetCluster_ScopedToAccount(t *testing.T) {
 	fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(
 		&hyperfleetv1alpha1.Cluster{
