@@ -10,6 +10,8 @@ import (
 	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
 )
 
+const defaultRootVolumeSizeGiB int64 = 300
+
 // NodePoolResource generates the HyperShift NodePool resource for the MC.
 func NodePoolResource(nodePool *hyperfleetv1alpha1.NodePool, cluster *hyperfleetv1alpha1.Cluster) (Resource, error) {
 	clusterID := ClusterIDFromNamespace(cluster.Namespace)
@@ -44,10 +46,10 @@ func NodePoolResource(nodePool *hyperfleetv1alpha1.NodePool, cluster *hyperfleet
 			npSpec.Platform.AWS.InstanceType = "t3a.xlarge"
 		}
 		if npSpec.Platform.AWS.RootVolume == nil {
-			npSpec.Platform.AWS.RootVolume = &hypershiftv1beta1.Volume{Size: 120, Type: "gp3"}
+			npSpec.Platform.AWS.RootVolume = &hypershiftv1beta1.Volume{Size: defaultRootVolumeSizeGiB, Type: "gp3"}
 		} else {
 			if npSpec.Platform.AWS.RootVolume.Size == 0 {
-				npSpec.Platform.AWS.RootVolume.Size = 120
+				npSpec.Platform.AWS.RootVolume.Size = defaultRootVolumeSizeGiB
 			}
 			if npSpec.Platform.AWS.RootVolume.Type == "" {
 				npSpec.Platform.AWS.RootVolume.Type = "gp3"

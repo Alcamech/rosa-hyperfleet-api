@@ -112,8 +112,25 @@ func (c *Client) CreateNodePool(ctx context.Context, accountID string, np *hyper
 	return c.client.Create(ctx, np)
 }
 
-// GetNodePool retrieves a NodePool by name, scoped to the given account.
-func (c *Client) GetNodePool(ctx context.Context, accountID, nodepoolName string) (*hyperfleetv1alpha1.NodePool, error) {
+// GetNodePool retrieves a NodePool by name, scoped to the account and optionally cluster.
+func (c *Client) GetNodePool(
+	ctx context.Context, accountID, clusterID, nodepoolName string,
+) (*hyperfleetv1alpha1.NodePool, error) {
+	if clusterID != "" {
+		var np hyperfleetv1alpha1.NodePool
+		err := c.client.Get(ctx, k8stypes.NamespacedName{
+			Namespace: clusterNamespace(clusterID),
+			Name:      nodepoolName,
+		}, &np)
+		if err != nil {
+			return nil, err
+		}
+		if np.Labels[accountIDLabel] != accountID {
+			return nil, apierrors.NewNotFound(nodePoolGR, nodepoolName)
+		}
+		return &np, nil
+	}
+
 	var list hyperfleetv1alpha1.NodePoolList
 	err := c.client.List(ctx, &list, client.MatchingLabels{accountIDLabel: accountID})
 	if err != nil {
@@ -149,9 +166,9 @@ func (c *Client) UpdateNodePool(ctx context.Context, np *hyperfleetv1alpha1.Node
 	return c.client.Update(ctx, np)
 }
 
-// DeleteNodePool deletes a NodePool by name, scoped to the given account.
-func (c *Client) DeleteNodePool(ctx context.Context, accountID, nodepoolName string) error {
-	np, err := c.GetNodePool(ctx, accountID, nodepoolName)
+// DeleteNodePool deletes a NodePool by name, scoped to the account and cluster.
+func (c *Client) DeleteNodePool(ctx context.Context, accountID, clusterID, nodepoolName string) error {
+	np, err := c.GetNodePool(ctx, accountID, clusterID, nodepoolName)
 	if err != nil {
 		return err
 	}

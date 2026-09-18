@@ -157,8 +157,8 @@ func TestNodePoolResourceDefaults(t *testing.T) {
 			}
 		}},
 		{"RootVolume.Size", func(t *testing.T) {
-			if np.Spec.Platform.AWS.RootVolume == nil || np.Spec.Platform.AWS.RootVolume.Size != 120 {
-				t.Errorf("got %v, want 120", np.Spec.Platform.AWS.RootVolume)
+			if np.Spec.Platform.AWS.RootVolume == nil || np.Spec.Platform.AWS.RootVolume.Size != 300 {
+				t.Errorf("got %v, want 300", np.Spec.Platform.AWS.RootVolume)
 			}
 		}},
 		{"RootVolume.Type", func(t *testing.T) {
