@@ -10,6 +10,26 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// ServiceSetFieldsDNS contains DNS-related fields for hostedCluster.dns
+type ServiceSetFieldsDNS struct {
+	// BaseDomain is service-set (platform-managed, hidden from API)
+	BaseDomain string `json:"baseDomain,omitempty"`
+	// BaseDomainPrefix is service-set (platform-managed, hidden from API)
+	BaseDomainPrefix *string `json:"baseDomainPrefix,omitempty"`
+	// PrivateZoneID is service-set (platform-managed, hidden from API)
+	PrivateZoneID string `json:"privateZoneID,omitempty"`
+	// PublicZoneID is service-set (platform-managed, hidden from API)
+	PublicZoneID string `json:"publicZoneID,omitempty"`
+}
+
+// ServiceSetFieldsHostedCluster contains hostedCluster-level service-set fields
+type ServiceSetFieldsHostedCluster struct {
+	// DNS is service-set (platform-managed, hidden from API)
+	DNS *ServiceSetFieldsDNS `json:"dns,omitempty"`
+	// KubeAPIServerDNSName is service-set (platform-managed, hidden from API)
+	KubeAPIServerDNSName string `json:"kubeAPIServerDNSName,omitempty"`
+}
+
 // ServiceSetFields contains platform-managed fields injected during UnprojectX conversions
 type ServiceSetFields struct {
 	// AccountID is service-set (platform-managed, hidden from API)
@@ -28,10 +48,8 @@ type ServiceSetFields struct {
 	AutoScaling *hypershiftv1beta1.NodePoolAutoScaling `json:"autoScaling,omitempty"`
 	// Autoscaling is service-set (platform-managed, hidden from API)
 	Autoscaling hypershiftv1beta1.ClusterAutoscaling `json:"autoscaling,omitempty"`
-	// BaseDomain is service-set (platform-managed, hidden from API)
-	BaseDomain string `json:"baseDomain,omitempty"`
-	// BaseDomainPrefix is service-set (platform-managed, hidden from API)
-	BaseDomainPrefix *string `json:"baseDomainPrefix,omitempty"`
+	// HostedCluster is service-set (platform-managed, hidden from API)
+	HostedCluster *ServiceSetFieldsHostedCluster `json:"hostedCluster,omitempty"`
 	// Capabilities is service-set (platform-managed, hidden from API)
 	Capabilities *hypershiftv1beta1.Capabilities `json:"capabilities,omitempty"`
 	// Channel is service-set (platform-managed, hidden from API)
@@ -88,8 +106,6 @@ type ServiceSetFields struct {
 	KernelArguments []string `json:"kernelArguments,omitempty"`
 	// KernelType is service-set (platform-managed, hidden from API)
 	KernelType *string `json:"kernelType,omitempty"`
-	// KubeAPIServerDNSName is service-set (platform-managed, hidden from API)
-	KubeAPIServerDNSName string `json:"kubeAPIServerDNSName,omitempty"`
 	// Labels is service-set (platform-managed, hidden from API)
 	Labels map[string]string `json:"labels,omitempty"`
 	// Management is service-set (platform-managed, hidden from API)
@@ -116,12 +132,8 @@ type ServiceSetFields struct {
 	OsImageStream hypershiftv1beta1.OSImageStreamReference `json:"osImageStream,omitempty"`
 	// PausedUntil is service-set (platform-managed, hidden from API)
 	PausedUntil *string `json:"pausedUntil,omitempty"`
-	// PrivateZoneID is service-set (platform-managed, hidden from API)
-	PrivateZoneID string `json:"privateZoneID,omitempty"`
 	// Proxy is service-set (platform-managed, hidden from API)
 	Proxy *v1alpha1.ProxyConfiguration `json:"proxy,omitempty"`
-	// PublicZoneID is service-set (platform-managed, hidden from API)
-	PublicZoneID string `json:"publicZoneID,omitempty"`
 	// PullSecret is service-set (platform-managed, hidden from API)
 	PullSecret corev1.LocalObjectReference `json:"pullSecret,omitempty"`
 	// Scheduler is service-set (platform-managed, hidden from API)
