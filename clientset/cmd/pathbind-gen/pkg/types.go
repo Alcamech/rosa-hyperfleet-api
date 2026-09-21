@@ -120,17 +120,18 @@ type CobraTemplateData struct {
 
 // TFTemplateData is passed to tf templates.
 type TFTemplateData struct {
-	Package        string
-	ResourceName   string
-	SDKType        string
-	SDKShortType   string
-	AllFields      []MergedAlias
-	CreateFields   []MergedAlias
-	UpdateFields   []MergedAlias
-	ImmutableList  []string
-	ComputedList   []string
-	Namespaced     bool
-	HandlerFactory string // e.g., "NewClusterHandlerImpl" for template to call
+	Package         string
+	ResourceName    string
+	SDKType         string
+	SDKShortType    string
+	AllFields       []MergedAlias
+	CreateFields    []MergedAlias
+	UpdateFields    []MergedAlias
+	ImmutableList   []string
+	ComputedList    []string
+	Namespaced      bool
+	IdentifierField string
+	HandlerFactory  string // e.g., "NewClusterHandlerImpl" for template to call
 }
 
 // IsNamespacedResource returns true if the resource requires a namespace/parent argument.
@@ -153,15 +154,12 @@ func LoadDraft(draftPath string, draftIndex map[string]map[string]DraftField, dr
 		return nil
 	}
 	rawDr, err := os.ReadFile(draftPath)
-	if err != nil && os.IsNotExist(err) {
-		return nil
-	}
 	if err != nil {
-		return nil
+		return fmt.Errorf("reading draft %s: %w", draftPath, err)
 	}
 	var dr Draft
 	if err := yaml.Unmarshal(rawDr, &dr); err != nil {
-		return nil
+		return fmt.Errorf("parsing draft %s: %w", draftPath, err)
 	}
 	for resKey, r := range dr.Resources {
 		draftSDKTypes[resKey] = r.SDKType
@@ -174,7 +172,7 @@ func LoadDraft(draftPath string, draftIndex map[string]map[string]DraftField, dr
 }
 
 // BuildMergedAliases builds the merged alias list with the draft as the primary source.
-func BuildMergedAliases(draft map[string]DraftField, overrides []OverrideAlias) []MergedAlias {
+func BuildMergedAliases(draft map[string]DraftField, overrides []OverrideAlias) ([]MergedAlias, error) {
 	ovByPath := map[string]OverrideAlias{}
 	for _, ov := range overrides {
 		if ov.Path != "" {
@@ -191,17 +189,20 @@ func BuildMergedAliases(draft map[string]DraftField, overrides []OverrideAlias) 
 
 	for _, df := range sortedDraftFields(draft) {
 		ov, hasOv := ovByPath[df.Path]
-		ma := mergeDraftField(df, ov, hasOv, allDraftPaths)
+		ma, err := mergeDraftField(df, ov, hasOv, allDraftPaths)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, ma)
 	}
 
 	out = append(out, mergeConsumerOnlyAliases(overrides)...)
 
-	return out
+	return out, nil
 }
 
 // mergeDraftField constructs a MergedAlias from a draft field and its optional override.
-func mergeDraftField(df DraftField, ov OverrideAlias, hasOv bool, allDraftPaths []string) MergedAlias {
+func mergeDraftField(df DraftField, ov OverrideAlias, hasOv bool, allDraftPaths []string) (MergedAlias, error) {
 	alias := uniqueAlias(df.Path, allDraftPaths)
 	if hasOv && ov.Alias != "" {
 		alias = ov.Alias
@@ -218,9 +219,12 @@ func mergeDraftField(df DraftField, ov OverrideAlias, hasOv bool, allDraftPaths 
 	}
 	if typ == "" && df.GoType != "" {
 		typ = goTypeToConsumer(df.GoType)
+		if !IsSupportedConsumerType(typ) {
+			return MergedAlias{}, fmt.Errorf("unsupported draft type %q for field %s; add an explicit consumer type override", df.GoType, df.Path)
+		}
 	}
 	if typ == "" {
-		typ = "string"
+		return MergedAlias{}, fmt.Errorf("missing consumer type for field %s; add an explicit consumer type override", df.Path)
 	}
 
 	flag := ToKebab(alias)
@@ -276,7 +280,7 @@ func mergeDraftField(df DraftField, ov OverrideAlias, hasOv bool, allDraftPaths 
 		Computed:    computed,
 		Sensitive:   sensitive,
 		JSONEncoded: jsonEncoded,
-	}
+	}, nil
 }
 
 // mergeConsumerOnlyAliases constructs merged aliases from consumer-only override entries.
@@ -572,7 +576,9 @@ func goTypeToConsumer(goType string) string {
 		return "*int64"
 	case "number":
 		return ""
-	case "array":
+	case "array(string)", "array":
+		return "string[]"
+	case "array(object)":
 		return ""
 	case "map":
 		return "map"
@@ -604,7 +610,7 @@ func narrowOperations(draftOps, overrideOps []string) []string {
 
 func IsSupportedConsumerType(typ string) bool {
 	switch typ {
-	case "string", "*string", "bool", "*bool", "int32", "*int32", "int64", "*int64":
+	case "string", "*string", "bool", "*bool", "int32", "*int32", "int64", "*int64", "map", "string[]":
 		return true
 	default:
 		return false

@@ -65,8 +65,12 @@ func (w *openAPIWalker) effectiveWithVisited(node map[string]interface{}, visite
 		if resolved == nil {
 			return nil
 		}
-		visited[ref] = true
-		return w.effectiveWithVisited(resolved, visited)
+		branchVisited := make(map[string]bool, len(visited)+1)
+		for seenRef := range visited {
+			branchVisited[seenRef] = true
+		}
+		branchVisited[ref] = true
+		return w.effectiveWithVisited(resolved, branchVisited)
 	}
 	if allOf, ok := node["allOf"].([]interface{}); ok {
 		merged := map[string]interface{}{}
@@ -185,7 +189,13 @@ func (w *openAPIWalker) walkNode(node map[string]interface{}, currentPath string
 	}
 	typ, _ := node["type"].(string)
 	if typ == "array" {
-		*out = append(*out, leafPath{path: currentPath, goType: "array"})
+		items, _ := node["items"].(map[string]interface{})
+		items = w.effective(items)
+		if w.goTypeFromSchema(items) == "string" {
+			*out = append(*out, leafPath{path: currentPath, goType: "array(string)"})
+		} else {
+			*out = append(*out, leafPath{path: currentPath, goType: "array(object)"})
+		}
 		return
 	}
 	if _, hasAdditional := node["additionalProperties"]; hasAdditional {

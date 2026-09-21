@@ -7,8 +7,13 @@ package {{.Package}}
 {{- $hasComputedID := false}}
 {{- $hasComputed := false}}
 {{- $hasList := false}}
+{{- $hasAnyList := false}}
 {{- $hasMap := false}}
 {{- $hasAnyMap := false}}
+{{- $hasStringModifiers := false}}
+{{- $hasBoolModifiers := false}}
+{{- $hasInt64Modifiers := false}}
+{{- $hasInt32 := false}}
 {{- $hasAttributes := false}}
 {{- range .AllFields}}
 {{- $inSchema := or (ne .Path "-") (and (eq .Path "-") (gt (len .Operations) 0))}}
@@ -22,13 +27,28 @@ package {{.Package}}
 {{- $hasComputed = true}}
 {{- end}}
 {{- if and (hasSuffix .Type "[]") $inSchema}}
+{{- $hasAnyList = true}}
+{{- if or .Immutable .Computed}}
 {{- $hasList = true}}
+{{- end}}
 {{- end}}
 {{- if and (eq .Type "map") $inSchema}}
 {{- $hasAnyMap = true}}
-{{- if or .Immutable .Computed .Sensitive}}
+{{- if or .Immutable .Computed}}
 {{- $hasMap = true}}
 {{- end}}
+{{- end}}
+{{- if and $inSchema (or .Immutable .Computed)}}
+{{- if or (eq .Type "string") (eq .Type "*string")}}
+{{- $hasStringModifiers = true}}
+{{- else if or (eq .Type "bool") (eq .Type "*bool")}}
+{{- $hasBoolModifiers = true}}
+{{- else if or (eq .Type "int32") (eq .Type "*int32") (eq .Type "int64") (eq .Type "*int64")}}
+{{- $hasInt64Modifiers = true}}
+{{- end}}
+{{- end}}
+{{- if and $inSchema (or (eq .Type "int32") (eq .Type "*int32"))}}
+{{- $hasInt32 = true}}
 {{- end}}
 {{- if $inSchema}}
 {{- $hasAttributes = true}}
@@ -37,13 +57,28 @@ package {{.Package}}
 import (
 	"context"
 	"fmt"
+{{- if .Namespaced}}
+	"strings"
+{{- end}}
+
+{{- if $hasInt32}}
+	"math"
+{{- end}}
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 {{- if or $hasImmutable $hasComputed}}
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+{{- end}}
+{{- if $hasStringModifiers}}
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+{{- end}}
+{{- if $hasBoolModifiers}}
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+{{- end}}
+{{- if $hasInt64Modifiers}}
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 {{- end}}
 {{- if $hasList}}
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
@@ -51,7 +86,7 @@ import (
 {{- if $hasMap}}
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 {{- end}}
-{{- if or $hasList $hasAnyMap}}
+{{- if or $hasAnyList $hasAnyMap}}
 	"github.com/hashicorp/terraform-plugin-framework/types"
 {{- end}}
 	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
@@ -66,9 +101,12 @@ var _ resource.Resource = &{{.ResourceName}}Resource{}
 var _ resource.ResourceWithConfigure = &{{.ResourceName}}Resource{}
 var _ resource.ResourceWithImportState = &{{.ResourceName}}Resource{}
 
+// {{.ResourceName}}HandlerFactory creates the hand-written handler used by the generated resource.
+type {{.ResourceName}}HandlerFactory func(client hyperfleet.Interface, accountID, callerARN string) {{.ResourceName}}Handler
+
 // New{{.ResourceName}} creates a new {{.ResourceName}} resource.
-func New{{.ResourceName}}() resource.Resource {
-	return &{{.ResourceName}}Resource{}
+func New{{.ResourceName}}(handlerFactory {{.ResourceName}}HandlerFactory) resource.Resource {
+	return &{{.ResourceName}}Resource{handlerFactory: handlerFactory}
 }
 
 // {{.ResourceName}}Handler defines consumer-specific logic for {{.ResourceName}} operations.
@@ -112,6 +150,8 @@ type {{.ResourceName}}Resource struct {
 
 	// Handler is the consumer-provided implementation of {{.ResourceName}}Handler.
 	Handler {{.ResourceName}}Handler
+
+	handlerFactory {{.ResourceName}}HandlerFactory
 }
 
 func (r *{{.ResourceName}}Resource) Metadata(
@@ -141,7 +181,7 @@ func (r *{{.ResourceName}}Resource) Configure(
 	r.CallerARN = shared.HyperfleetCallerARN
 
 	// Initialize the handler via factory function
-	r.Handler = {{.HandlerFactory}}(shared.HyperfleetClient, shared.HyperfleetAccountID, shared.HyperfleetCallerARN)
+	r.Handler = r.handlerFactory(shared.HyperfleetClient, shared.HyperfleetAccountID, shared.HyperfleetCallerARN)
 }
 
 func (r *{{.ResourceName}}Resource) Schema(
@@ -166,9 +206,12 @@ func (r *{{.ResourceName}}Resource) Schema(
 {{- else}}
 				Optional:    true,
 {{- end}}
+{{- if .Sensitive}}
+				Sensitive:   true,
+{{- end}}
 {{- if eq (schemaType .) "List"}}
 				ElementType: types.StringType,
-{{- if or .Immutable .Computed .Sensitive}}
+{{- if or .Immutable .Computed}}
 				PlanModifiers: []planmodifier.List{
 {{- if .Immutable}}
 					listplanmodifier.RequiresReplace(),
@@ -176,14 +219,11 @@ func (r *{{.ResourceName}}Resource) Schema(
 {{- if .Computed}}
 					listplanmodifier.UseStateForUnknown(),
 {{- end}}
-{{- if .Sensitive}}
-					listplanmodifier.Sensitive(),
-{{- end}}
 				},
 {{- end}}
 {{- else if eq (schemaType .) "Map"}}
 				ElementType: types.StringType,
-{{- if or .Immutable .Computed .Sensitive}}
+{{- if or .Immutable .Computed}}
 				PlanModifiers: []planmodifier.Map{
 {{- if .Immutable}}
 					mapplanmodifier.RequiresReplace(),
@@ -191,13 +231,32 @@ func (r *{{.ResourceName}}Resource) Schema(
 {{- if .Computed}}
 					mapplanmodifier.UseStateForUnknown(),
 {{- end}}
-{{- if .Sensitive}}
-					mapplanmodifier.Sensitive(),
+				},
+{{- end}}
+{{- else if eq (schemaType .) "Bool"}}
+{{- if or .Immutable .Computed}}
+				PlanModifiers: []planmodifier.Bool{
+{{- if .Immutable}}
+					boolplanmodifier.RequiresReplace(),
+{{- end}}
+{{- if .Computed}}
+					boolplanmodifier.UseStateForUnknown(),
+{{- end}}
+				},
+{{- end}}
+{{- else if eq (schemaType .) "Int64"}}
+{{- if or .Immutable .Computed}}
+				PlanModifiers: []planmodifier.Int64{
+{{- if .Immutable}}
+					int64planmodifier.RequiresReplace(),
+{{- end}}
+{{- if .Computed}}
+					int64planmodifier.UseStateForUnknown(),
 {{- end}}
 				},
 {{- end}}
 {{- else if eq (schemaType .) "String"}}
-{{- if and (planModifiers .) (or .Immutable .Computed .Sensitive)}}
+{{- if and (planModifiers .) (or .Immutable .Computed)}}
 				PlanModifiers: []planmodifier.String{
 					{{planModifiers .}},
 				},
@@ -237,9 +296,13 @@ func (r *{{.ResourceName}}Resource) Create(
 	}
 
 	// Convert Terraform state to native Go struct for pathbind
-	native := terraform{{.ResourceName}}ToNative(&plan)
+	native, conversionDiags := terraform{{.ResourceName}}ToNative(&plan)
+	resp.Diagnostics.Append(conversionDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	// Create empty SDK struct and expand plan into it
+	// Create an empty SDK object and expand the plan into it.
 	obj := &v1alpha1.{{.SDKShortType}}{}
 	if err := pathbind.Expand(ctx, native, obj); err != nil {
 		resp.Diagnostics.AddError("Failed to expand plan to SDK struct", err.Error())
@@ -311,9 +374,9 @@ func (r *{{.ResourceName}}Resource) Read(
 
 	// Get current resource from API
 {{- if .Namespaced}}
-	obj, err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}(r.Handler.Namespace(ctx, &state)).Get(ctx, state.Id.ValueString(), hfwrappers.GetOptions{})
+  obj, err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}(r.Handler.Namespace(ctx, &state)).Get(ctx, state.{{.IdentifierField}}.ValueString(), hfwrappers.GetOptions{})
 {{- else}}
-	obj, err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}().Get(ctx, state.Id.ValueString(), hfwrappers.GetOptions{})
+  obj, err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}().Get(ctx, state.{{.IdentifierField}}.ValueString(), hfwrappers.GetOptions{})
 {{- end}}
 	if err != nil {
 		if isNotFound(err) {
@@ -379,10 +442,24 @@ func (r *{{.ResourceName}}Resource) Update(
 	}
 
 	// Convert Terraform state to native Go struct for pathbind
-	native := terraform{{.ResourceName}}ToNative(&plan)
+	native, conversionDiags := terraform{{.ResourceName}}ToNative(&plan)
+	resp.Diagnostics.Append(conversionDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	// Create empty SDK struct and expand plan into it
-	obj := &v1alpha1.{{.SDKShortType}}{}
+	// Fetch the current object so fields not represented in Terraform are preserved.
+{{- if .Namespaced}}
+  obj, err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}(r.Handler.Namespace(ctx, &plan)).Get(ctx, plan.{{.IdentifierField}}.ValueString(), hfwrappers.GetOptions{})
+{{- else}}
+  obj, err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}().Get(ctx, plan.{{.IdentifierField}}.ValueString(), hfwrappers.GetOptions{})
+{{- end}}
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to read {{.ResourceName}} for update", err.Error())
+		return
+	}
+
+	// Expand the Terraform plan into the current SDK object.
 	if err := pathbind.Expand(ctx, native, obj); err != nil {
 		resp.Diagnostics.AddError("Failed to expand plan to SDK struct", err.Error())
 		return
@@ -448,7 +525,7 @@ func (r *{{.ResourceName}}Resource) Delete(
 		return
 	}
 
-	err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}({{if .Namespaced}}r.Handler.Namespace(ctx, &state){{end}}).Delete(ctx, state.Id.ValueString(), hfwrappers.DeleteOptions{})
+	err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}({{if .Namespaced}}r.Handler.Namespace(ctx, &state){{end}}).Delete(ctx, state.{{.IdentifierField}}.ValueString(), hfwrappers.DeleteOptions{})
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to delete {{.ResourceName}}", err.Error())
 		return
@@ -475,8 +552,16 @@ func (r *{{.ResourceName}}Resource) ImportState(
 
 	// Use the ID passed in as the {{.ResourceName}} identifier
 {{- if .Namespaced}}
-	// TODO: For namespaced resources, determine the namespace from context or import ID format
-	obj, err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}("").Get(ctx, req.ID, hfwrappers.GetOptions{})
+	parts := strings.SplitN(req.ID, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError("Invalid {{.ResourceName}} import ID", "expected namespace/id")
+		return
+	}
+	namespace := parts[0]
+	if !strings.HasPrefix(namespace, "cluster-") {
+		namespace = "cluster-" + namespace
+	}
+	obj, err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}(namespace).Get(ctx, parts[1], hfwrappers.GetOptions{})
 {{- else}}
 	obj, err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}().Get(ctx, req.ID, hfwrappers.GetOptions{})
 {{- end}}
@@ -501,6 +586,10 @@ func (r *{{.ResourceName}}Resource) ImportState(
 
 	// Convert native state to Terraform state
 	state := native{{.ResourceName}}ToTerraform(&nativeState)
+
+	// Call handler to populate computed fields and adjust state after flatten
+	r.Handler.PostFlatten(ctx, state, obj)
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
@@ -508,15 +597,18 @@ func (r *{{.ResourceName}}Resource) ImportState(
 
 // terraform{{.ResourceName}}ToNative converts Terraform framework types to native Go types.
 // This is used before pathbind.Expand to prepare input for API calls.
-func terraform{{.ResourceName}}ToNative(tf *{{.ResourceName}}State) *{{.ResourceName}}StateNative {
+func terraform{{.ResourceName}}ToNative(tf *{{.ResourceName}}State) (*{{.ResourceName}}StateNative, diag.Diagnostics) {
 	if tf == nil {
-		return nil
+		return nil, nil
 	}
 	native := &{{.ResourceName}}StateNative{}
+	var diags diag.Diagnostics
 {{- range .AllFields}}
 {{- if hasSuffix .Type "[]"}}
 	if !tf.{{.GoName}}.IsNull() && !tf.{{.GoName}}.IsUnknown() {
-		native.{{.GoName}} = terraformListToStringSlice(tf.{{.GoName}})
+		items, collectionDiags := terraformListToStringSlice(tf.{{.GoName}})
+		diags = append(diags, collectionDiags...)
+		native.{{.GoName}} = items
 	}
 {{- else if eq .Type "string"}}
 	if !tf.{{.GoName}}.IsNull() && !tf.{{.GoName}}.IsUnknown() {
@@ -538,12 +630,22 @@ func terraform{{.ResourceName}}ToNative(tf *{{.ResourceName}}State) *{{.Resource
 	}
 {{- else if eq .Type "int32"}}
 	if !tf.{{.GoName}}.IsNull() && !tf.{{.GoName}}.IsUnknown() {
-		native.{{.GoName}} = int32(tf.{{.GoName}}.ValueInt64())
+		value := tf.{{.GoName}}.ValueInt64()
+		if value < math.MinInt32 || value > math.MaxInt32 {
+			diags.AddError("Invalid int32 value", fmt.Sprintf("field {{.GoName}} value %d is outside the int32 range", value))
+		} else {
+			native.{{.GoName}} = int32(value)
+		}
 	}
 {{- else if eq .Type "*int32"}}
 	if !tf.{{.GoName}}.IsNull() && !tf.{{.GoName}}.IsUnknown() {
-		i := int32(tf.{{.GoName}}.ValueInt64())
-		native.{{.GoName}} = &i
+		value := tf.{{.GoName}}.ValueInt64()
+		if value < math.MinInt32 || value > math.MaxInt32 {
+			diags.AddError("Invalid int32 value", fmt.Sprintf("field {{.GoName}} value %d is outside the int32 range", value))
+		} else {
+			i := int32(value)
+			native.{{.GoName}} = &i
+		}
 	}
 {{- else if eq .Type "int64"}}
 	if !tf.{{.GoName}}.IsNull() && !tf.{{.GoName}}.IsUnknown() {
@@ -556,7 +658,9 @@ func terraform{{.ResourceName}}ToNative(tf *{{.ResourceName}}State) *{{.Resource
 	}
 {{- else if eq .Type "map"}}
 	if !tf.{{.GoName}}.IsNull() && !tf.{{.GoName}}.IsUnknown() {
-		native.{{.GoName}} = terraformMapToStringMap(tf.{{.GoName}})
+		values, collectionDiags := terraformMapToStringMap(tf.{{.GoName}})
+		diags = append(diags, collectionDiags...)
+		native.{{.GoName}} = values
 	}
 {{- else}}
 	if !tf.{{.GoName}}.IsNull() && !tf.{{.GoName}}.IsUnknown() {
@@ -564,7 +668,7 @@ func terraform{{.ResourceName}}ToNative(tf *{{.ResourceName}}State) *{{.Resource
 	}
 {{- end}}
 {{- end}}
-	return native
+	return native, diags
 }
 
 // native{{.ResourceName}}ToTerraform converts native Go types to Terraform framework types.

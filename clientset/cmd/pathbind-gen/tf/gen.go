@@ -13,6 +13,33 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type terraformTypeMapping struct {
+	FrameworkType string
+	ValueFunction string
+	SchemaType    string
+}
+
+var terraformTypeMappings = map[string]terraformTypeMapping{
+	"string":   {FrameworkType: "types.StringType", ValueFunction: "types.StringValue", SchemaType: "String"},
+	"*string":  {FrameworkType: "types.StringType", ValueFunction: "types.StringValue", SchemaType: "String"},
+	"bool":     {FrameworkType: "types.BoolType", ValueFunction: "types.BoolValue", SchemaType: "Bool"},
+	"*bool":    {FrameworkType: "types.BoolType", ValueFunction: "types.BoolValue", SchemaType: "Bool"},
+	"int32":    {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
+	"*int32":   {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
+	"int64":    {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
+	"*int64":   {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
+	"string[]": {FrameworkType: "types.ListType", ValueFunction: "types.ListValue", SchemaType: "List"},
+	"map":      {FrameworkType: "types.MapType", ValueFunction: "types.MapValue", SchemaType: "Map"},
+}
+
+func terraformTypeFor(typ string) (terraformTypeMapping, error) {
+	mapping, ok := terraformTypeMappings[typ]
+	if !ok {
+		return terraformTypeMapping{}, fmt.Errorf("unsupported Terraform consumer type %q", typ)
+	}
+	return mapping, nil
+}
+
 // Run orchestrates the TF code generation from pathbind configuration.
 func Run(draftPath, overridesPath, outputDir string) error {
 	rawOv, err := loadOverrides(overridesPath)
@@ -52,7 +79,15 @@ func Run(draftPath, overridesPath, outputDir string) error {
 		}
 
 		// Merge draft fields with override configuration
-		aliases := pkg.BuildMergedAliases(draftIndex[resKey], ovRes.Aliases)
+		aliases, err := pkg.BuildMergedAliases(draftIndex[resKey], ovRes.Aliases)
+		if err != nil {
+			return fmt.Errorf("building aliases for %s: %w", resKey, err)
+		}
+		for _, alias := range aliases {
+			if _, err := terraformTypeFor(alias.Type); err != nil {
+				return fmt.Errorf("building aliases for %s: field %s: %w", resKey, alias.Path, err)
+			}
+		}
 
 		// Categorize fields into create/update
 		createFields, _, _, updateFields, _, _ := pkg.CategorizeAliases(aliases)
@@ -63,6 +98,7 @@ func Run(draftPath, overridesPath, outputDir string) error {
 		// Collect immutable and computed fields for schema generation
 		immutableList := []string{}
 		computedList := []string{}
+		identifierField := ""
 		for _, a := range aliases {
 			if a.Immutable {
 				immutableList = append(immutableList, a.GoName)
@@ -70,20 +106,27 @@ func Run(draftPath, overridesPath, outputDir string) error {
 			if a.Computed {
 				computedList = append(computedList, a.GoName)
 			}
+			if a.Path == "metadata.uid" {
+				identifierField = a.GoName
+			}
+		}
+		if identifierField == "" {
+			return fmt.Errorf("building aliases for %s: metadata.uid field is missing", resKey)
 		}
 
 		td := pkg.TFTemplateData{
-			Package:        cfg.Package,
-			ResourceName:   resName,
-			SDKType:        sdkType,
-			SDKShortType:   sdkShort,
-			AllFields:      aliases,
-			CreateFields:   createFields,
-			UpdateFields:   updateFields,
-			ImmutableList:  immutableList,
-			ComputedList:   computedList,
-			Namespaced:     pkg.IsNamespacedResource(resKey),
-			HandlerFactory: "New" + resName + "HandlerImpl",
+			Package:         cfg.Package,
+			ResourceName:    resName,
+			SDKType:         sdkType,
+			SDKShortType:    sdkShort,
+			AllFields:       aliases,
+			CreateFields:    createFields,
+			UpdateFields:    updateFields,
+			ImmutableList:   immutableList,
+			ComputedList:    computedList,
+			Namespaced:      pkg.IsNamespacedResource(resKey),
+			IdentifierField: identifierField,
+			HandlerFactory:  "New" + resName + "HandlerImpl",
 		}
 
 		// Generate state struct file: <resource>_state_gen.go
@@ -136,7 +179,9 @@ func emitFile(tmpl *template.Template, data pkg.TFTemplateData, path string) err
 	formatted, err := format.Source(buf.Bytes())
 	if err != nil {
 		debugPath := path + ".debug"
-		_ = os.WriteFile(debugPath, buf.Bytes(), 0o644)
+		if debugErr := os.WriteFile(debugPath, buf.Bytes(), 0o644); debugErr != nil {
+			return fmt.Errorf("formatting %s: %w (also failed to write debug file %s: %v)", path, err, debugPath, debugErr)
+		}
 		return fmt.Errorf("formatting %s: %w\n(unformatted written to %s)", path, err, debugPath)
 	}
 
@@ -149,7 +194,7 @@ func emitFile(tmpl *template.Template, data pkg.TFTemplateData, path string) err
 
 func buildFuncMap() template.FuncMap {
 	return template.FuncMap{
-		"lower": strings.ToLower,
+		"lower":     strings.ToLower,
 		"hasSuffix": strings.HasSuffix,
 		"contains": func(slice []string, item string) bool {
 			for _, o := range slice {
@@ -160,30 +205,20 @@ func buildFuncMap() template.FuncMap {
 			return false
 		},
 		// tfType maps Go type to Terraform framework attr types
-		"tfType": func(a pkg.MergedAlias) string {
-			switch a.Type {
-			case "string", "*string":
-				return "types.StringType"
-			case "bool", "*bool":
-				return "types.BoolType"
-			case "int32", "*int32", "int64", "*int64":
-				return "types.Int64Type"
-			default:
-				return "types.StringType"
+		"tfType": func(a pkg.MergedAlias) (string, error) {
+			mapping, err := terraformTypeFor(a.Type)
+			if err != nil {
+				return "", err
 			}
+			return mapping.FrameworkType, nil
 		},
 		// tfTypeValue returns the TF framework value constructor
-		"tfTypeValue": func(a pkg.MergedAlias) string {
-			switch a.Type {
-			case "string", "*string":
-				return "types.StringValue"
-			case "bool", "*bool":
-				return "types.BoolValue"
-			case "int32", "*int32", "int64", "*int64":
-				return "types.Int64Value"
-			default:
-				return "types.StringValue"
+		"tfTypeValue": func(a pkg.MergedAlias) (string, error) {
+			mapping, err := terraformTypeFor(a.Type)
+			if err != nil {
+				return "", err
 			}
+			return mapping.ValueFunction, nil
 		},
 		// attrName converts GoName to snake_case attribute name (Terraform requirement)
 		"attrName": func(a pkg.MergedAlias) string {
@@ -197,9 +232,6 @@ func buildFuncMap() template.FuncMap {
 			}
 			if a.Computed {
 				modifiers = append(modifiers, "stringplanmodifier.UseStateForUnknown()")
-			}
-			if a.Sensitive {
-				modifiers = append(modifiers, "stringplanmodifier.Sensitive()")
 			}
 			return strings.Join(modifiers, ", ")
 		},
@@ -232,25 +264,12 @@ func buildFuncMap() template.FuncMap {
 			return sdkType
 		},
 		// schemaType determines the Terraform schema attribute type based on Go type
-		"schemaType": func(a pkg.MergedAlias) string {
-			// Check if it's a list/array type
-			if strings.Contains(a.Type, "[]") || strings.Contains(a.Type, "types.List") {
-				return "List"
+		"schemaType": func(a pkg.MergedAlias) (string, error) {
+			mapping, err := terraformTypeFor(a.Type)
+			if err != nil {
+				return "", err
 			}
-			// Check if it's a map type
-			if a.Type == "map" || strings.Contains(a.Type, "map[") || strings.Contains(a.Type, "types.Map") {
-				return "Map"
-			}
-			// Check if it's a bool type
-			if strings.Contains(a.Type, "bool") || strings.Contains(a.Type, "types.Bool") {
-				return "Bool"
-			}
-			// Check if it's an int type
-			if strings.Contains(a.Type, "int") || strings.Contains(a.Type, "types.Int") {
-				return "Int64"
-			}
-			// Default to String
-			return "String"
+			return mapping.SchemaType, nil
 		},
 	}
 }

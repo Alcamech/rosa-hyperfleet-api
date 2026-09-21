@@ -17,9 +17,11 @@ type {{.ResourceName}}State struct {
 {{- end}}
 }
 
-// mergeResponse{{.ResourceName}} merges API response values into the plan state.
-// Only computed or required fields are merged from the response. Optional fields
-// are skipped to preserve user-provided values and avoid overwriting with API defaults.
+// mergeResponse{{.ResourceName}} merges API response values into Terraform state.
+// Optional fields are intentionally preserved because platform-managed or
+// service-set fields may be omitted from public API responses. Treating those
+// omissions as null would create a plan that clears values the platform owns.
+// Computed and required fields are refreshed from the response when present.
 func mergeResponse{{.ResourceName}}(plan, response *{{.ResourceName}}State) {
 	if response == nil {
 		return

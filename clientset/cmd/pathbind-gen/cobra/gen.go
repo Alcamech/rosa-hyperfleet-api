@@ -52,7 +52,15 @@ func Run(draftPath, overridesPath, outputDir string) error {
 			sdkType = pkg.SDKTypeForOwner[pkg.TitleCase(resKey)]
 		}
 
-		aliases := pkg.BuildMergedAliases(draftIndex[resKey], ovRes.Aliases)
+		aliases, err := pkg.BuildMergedAliases(draftIndex[resKey], ovRes.Aliases)
+		if err != nil {
+			return fmt.Errorf("building aliases for %s: %w", resKey, err)
+		}
+		for _, alias := range aliases {
+			if alias.Type == "map" || alias.Type == "string[]" {
+				return fmt.Errorf("cobra does not support %s field %s", alias.Type, alias.Path)
+			}
+		}
 
 		createFields, createFlagFields, reqCreate, updateFields, updateFlagFields, reqUpdate := pkg.CategorizeAliases(aliases)
 
@@ -123,7 +131,9 @@ func emitFile(tmpl *template.Template, data pkg.CobraTemplateData, path string, 
 	formatted, err := format.Source(buf.Bytes())
 	if err != nil {
 		debugPath := path + ".debug"
-		_ = os.WriteFile(debugPath, buf.Bytes(), 0o644)
+		if debugErr := os.WriteFile(debugPath, buf.Bytes(), 0o644); debugErr != nil {
+			return fmt.Errorf("formatting %s: %w (also failed to write debug file %s: %v)", path, err, debugPath, debugErr)
+		}
 		return fmt.Errorf("formatting %s: %w\n(unformatted written to %s)", path, err, debugPath)
 	}
 
@@ -163,6 +173,11 @@ func buildFuncMap() template.FuncMap {
 					a.GoName, a.GoName, a.Flag, a.Description)
 			case "int64":
 				inner = fmt.Sprintf("f.Int64Var(&input.%s, %q, 0, %q)", a.GoName, a.Flag, a.Description)
+			case "*string":
+				inner = fmt.Sprintf("input.%s = new(string); f.StringVar(input.%s, %q, \"\", %q)",
+					a.GoName, a.GoName, a.Flag, a.Description)
+			case "string":
+				inner = fmt.Sprintf("f.StringVar(&input.%s, %q, \"\", %q)", a.GoName, a.Flag, a.Description)
 			default:
 				inner = fmt.Sprintf("f.StringVar(&input.%s, %q, \"\", %q)", a.GoName, a.Flag, a.Description)
 			}

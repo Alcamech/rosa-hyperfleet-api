@@ -106,11 +106,11 @@ resources:
               operations:
                 - create
             - path: spec.hostedCluster.configuration.machineConfig.allowedKernelArguments
-              goType: array
+              goType: array(string)
               operations:
                 - create
             - path: spec.hostedCluster.imageContentSources
-              goType: array
+              goType: array(object)
               operations:
                 - create
                 - update
@@ -125,7 +125,7 @@ resources:
                 - create
                 - update
             - path: spec.hostedCluster.networking.apiServer.allowedCIDRBlocks
-              goType: array
+              goType: array(string)
               operations:
                 - create
                 - update
@@ -135,12 +135,12 @@ resources:
                 - create
                 - update
             - path: spec.hostedCluster.networking.clusterNetwork
-              goType: array
+              goType: array(object)
               operations:
                 - create
                 - update
             - path: spec.hostedCluster.networking.machineNetwork
-              goType: array
+              goType: array(object)
               operations:
                 - create
                 - update
@@ -150,17 +150,17 @@ resources:
                 - create
                 - update
             - path: spec.hostedCluster.networking.serviceNetwork
-              goType: array
+              goType: array(object)
               operations:
                 - create
                 - update
             - path: spec.hostedCluster.platform.aws.additionalAllowedPrincipals
-              goType: array
+              goType: array(string)
               operations:
                 - create
                 - update
             - path: spec.hostedCluster.platform.aws.cloudProviderConfig.subnet.filters
-              goType: array
+              goType: array(object)
               operations:
                 - create
                 - update
@@ -195,7 +195,7 @@ resources:
                 - create
                 - update
             - path: spec.hostedCluster.platform.aws.resourceTags
-              goType: array
+              goType: array(object)
               operations:
                 - create
                 - update
@@ -235,7 +235,7 @@ resources:
                 - create
                 - update
             - path: spec.hostedCluster.platform.aws.serviceEndpoints
-              goType: array
+              goType: array(object)
               operations:
                 - create
                 - update
@@ -364,7 +364,7 @@ resources:
                 - create
                 - update
             - path: spec.nodePool.platform.aws.resourceTags
-              goType: array
+              goType: array(object)
               operations:
                 - create
                 - update
@@ -394,12 +394,12 @@ resources:
                 - create
                 - update
             - path: spec.nodePool.platform.aws.securityGroups
-              goType: array
+              goType: array(object)
               operations:
                 - create
                 - update
             - path: spec.nodePool.platform.aws.subnet.filters
-              goType: array
+              goType: array(object)
               operations:
                 - create
                 - update

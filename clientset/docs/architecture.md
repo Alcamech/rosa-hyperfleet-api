@@ -138,6 +138,14 @@ including `ObjectMeta`, `metav1.Condition`, and `metav1.Status`. Request and
 response bodies pass through unchanged; there is no metadata flattening,
 response projection, or custom error-envelope translation in the SDK.
 
+The generated NodePool client has one routing-specific exception on Create:
+the platform wrapper compares the object's `ObjectMeta.Namespace` with the
+namespace supplied to `NodePools(namespace)`. If they differ, it deep-copies
+the object, sets the copy's namespace to the client namespace, and serializes
+that copy. The caller's object is never mutated. This is namespace routing,
+not a custom wire-format conversion; generated Kubernetes types remain the
+request and response model.
+
 The remaining adapter concern is pagination. `platform.ListOptions.Offset` is
 encoded as a numeric string in `metav1.ListOptions.Continue`, because that is
 what the generated client serializes. The adapter rewrites numeric
