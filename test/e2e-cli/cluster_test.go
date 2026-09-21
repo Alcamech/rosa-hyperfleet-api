@@ -666,21 +666,43 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		}
 		GinkgoWriter.Printf("Validating kubeconfig with kubectl (file=%s)\n", kubeconfigFile.Name())
 
-		// Add timeout context to prevent kubectl from hanging indefinitely
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
+		// Retry kubectl healthz with backoff — ExternalDNS may take several
+		// minutes to become reachable after cluster creation.
+		const (
+			healthzMaxAttempts = 6
+			healthzPerAttempt  = 30 * time.Second
+			healthzBackoff     = 15 * time.Second
+		)
 
-		healthCmd := exec.CommandContext(ctx, "kubectl", "--kubeconfig", kubeconfigFile.Name(), "get", "--raw", "/healthz")
-		healthCmd.Env = append(os.Environ(), customerEnv()...)
-		healthOutput, err := healthCmd.CombinedOutput()
+		var healthOutput []byte
+		var healthErr error
 
-		if err != nil {
-			// Provide better diagnostics on failure
-			GinkgoWriter.Printf("kubectl healthz failed. Output:\n%s\n", string(healthOutput))
-			if ctx.Err() == context.DeadlineExceeded {
-				Fail(fmt.Sprintf("kubectl healthz timed out after 30s - cluster may not be ready or kubeconfig is invalid"))
+		for attempt := 1; attempt <= healthzMaxAttempts; attempt++ {
+			ctx, cancel := context.WithTimeout(context.Background(), healthzPerAttempt)
+			healthCmd := exec.CommandContext(ctx, "kubectl", "--kubeconfig", kubeconfigFile.Name(), "get", "--raw", "/healthz")
+			healthCmd.Env = append(os.Environ(), customerEnv()...)
+			healthOutput, healthErr = healthCmd.CombinedOutput()
+			cancel()
+
+			if healthErr == nil {
+				GinkgoWriter.Printf("kubectl healthz succeeded on attempt %d/%d\n", attempt, healthzMaxAttempts)
+				break
 			}
-			Fail(fmt.Sprintf("kubectl get --raw /healthz failed: %v\nOutput:\n%s", err, string(healthOutput)))
+
+			GinkgoWriter.Printf("kubectl healthz attempt %d/%d failed: %v\nOutput: %s\n",
+				attempt, healthzMaxAttempts, healthErr, string(healthOutput))
+
+			if attempt < healthzMaxAttempts {
+				GinkgoWriter.Printf("Retrying in %v...\n", healthzBackoff)
+				time.Sleep(healthzBackoff)
+			}
+		}
+
+		if healthErr != nil {
+			Fail(fmt.Sprintf("kubectl healthz failed after %d attempts (total ~%v). Last error: %v\nLast output:\n%s",
+				healthzMaxAttempts,
+				time.Duration(healthzMaxAttempts)*healthzPerAttempt+time.Duration(healthzMaxAttempts-1)*healthzBackoff,
+				healthErr, string(healthOutput)))
 		}
 
 		Expect(strings.TrimSpace(string(healthOutput))).To(Equal("ok"), "healthz should return ok")
