@@ -19,8 +19,8 @@ type HostedClusterSpecPassthrough struct {
 	// +optional
 	Channel string `json:"channel,omitempty"`
 	// platform specifies the underlying infrastructure provider for the cluster
-	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=mutable
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
 	// +required
 	Platform PlatformSpec `json:"platform"`
 	// dns specifies the DNS configuration for the hosted cluster ingress.

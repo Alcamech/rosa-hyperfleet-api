@@ -473,12 +473,16 @@ make generate
 This runs in order:
 
 1. `codegen-registry` — marker-scanner → `field_metadata.json`
-2. `codegen-passthrough` — passthrough type stubs
+2. `codegen-conversion` — public CRD types and conversion functions
 3. `generate-deepcopy` — deepcopy methods
-4. `manifests` — CRD YAML
-5. `generate-clientset` — typed client SDK
+4. `manifests` — CRD YAML and feature-set variants
+5. `generate-clientset` — typed client SDK and platform wrappers
 6. `generate-openapi` — OpenAPI spec from public types
 7. `generate-pathbind-draft` — `pathbind-draft.yaml` (leaf paths via OpenAPI walk)
+
+`codegen-passthrough` also refreshes the field registry after rewriting the
+passthrough types, so downstream generators consume the regenerated markers.
+It is the first prerequisite of `make generate`.
 
 Commit all generated files. CI verifies generation is up to date via `make verify`.
 

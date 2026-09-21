@@ -1,8 +1,14 @@
 # Platform API Migration to v1alpha1/public Types
 
+> **Status: implemented.** This document records the migration from custom REST
+> types to generated public CRD types. The `api/v1alpha1/public` types are now
+> the Platform API contract, and request/response bodies use Kubernetes-native
+> JSON end to end.
+
 ## Overview
 
-This document describes the migration of platform-api from custom REST types (`pkg/types/`) to generated K8s-native types (`api/v1alpha1/public/`).
+This document describes the completed migration of platform-api from custom REST
+types to generated K8s-native types (`api/v1alpha1/public/`).
 
 **Ticket:** ROSAENG-64871
 
@@ -41,7 +47,7 @@ HTTP Response
 5. **Future-proof**: Enables kubectl/client-go integration
 6. **No data migration**: Storage layer (FleetDB) unchanged
 
-## Current Architecture (Already Using K8s Types)
+## Current Architecture (K8s-Native End to End)
 
 ### Storage Layer
 
@@ -74,7 +80,7 @@ c, cleanup, err := hyperfleetdb.NewClient(hyperfleetdb.Options{
 
 ## Architecture
 
-### Before (Current: Custom REST on top of K8s storage)
+### Before (Historical: Custom REST on top of K8s storage)
 
 ```
 HTTP Request
@@ -96,7 +102,7 @@ Custom types add conversion layer between REST and storage:
 - `types.Condition` (custom condition type with time.Time)
 - `types.APIEndpoint`, `types.PlacementReference`
 
-### After (Target: K8s-native throughout)
+### After (Implemented: K8s-native throughout)
 
 ```
 HTTP Request
@@ -174,7 +180,7 @@ No conversion to custom types:
 - `created_at` → `metadata.creationTimestamp`
 - `updated_at` → computed from metadata
 
-## Implementation Phases
+## Implementation Phases (Completed)
 
 ### Phase 1: Conversion Layer
 
@@ -356,15 +362,15 @@ PATCH /api/v0/clusters/{id}
 
 ### Checklist
 
-- [ ] Phase 1: Conversion layer implemented and tested (convert.go, convert_test.go)
-- [ ] Phase 2: Handlers updated (cluster.go, nodepool.go)
-- [ ] Phase 3: Old types deleted (pkg/types/)
-- [ ] Phase 4: Tests updated (handler tests + conversion tests)
-- [ ] Build succeeds: `make build-api`
-- [ ] All tests pass: `make test-api`
-- [ ] No regressions: Validation, pagination, filtering work correctly
-- [ ] Documentation: API docs updated with K8s-native structure
-- [ ] Code review: Approved and merged
+- [x] Phase 1: Conversion layer implemented and tested (convert.go, convert_test.go)
+- [x] Phase 2: Handlers updated (cluster.go, nodepool.go)
+- [x] Phase 3: Old custom REST types deleted
+- [x] Phase 4: Tests updated (handler tests + conversion tests)
+- [x] Build succeeds: `make build-api`
+- [x] All tests pass: `make test-api`
+- [x] No regressions: Validation, pagination, filtering work correctly
+- [x] Documentation: API docs updated with K8s-native structure
+- [ ] Code review and release tracking
 
 ## References
 

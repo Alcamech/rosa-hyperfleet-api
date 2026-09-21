@@ -11,7 +11,7 @@ cs.HyperfleetV1alpha1().Clusters().Get(ctx, "my-cluster", platform.GetOptions{})
 It is built in two parts:
 
 - **Generated layer** — typed clientset produced by `k8s.io/code-generator`'s `client-gen` from the operator CRD types
-- **Custom wiring** — hand-written code that adapts the generated client to the platform API's auth model, URL structure, and wire format
+- **Custom wiring** — hand-written code that adapts the generated client to the platform API's auth model, URL structure, and pagination
 
 ---
 
@@ -105,9 +105,8 @@ The platform API differs from a standard Kubernetes API in three ways that requi
 | Difference                                               | Solution                                                                                                                                  |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Requests are signed with AWS SigV4                       | `transport/sigv4.go` — custom RoundTripper                                                                                                |
-| Resources are account-scoped, not namespace-scoped       | SigV4 transport extracts the Kubernetes namespace from the URL, maps it to `X-Amz-Account-Id`, and strips the `/namespaces/{ns}/` segment |
-| NodePools are scoped to a parent cluster                  | The adapter maps the generated namespace path to the Platform API `clusterId` query parameter                                             |
-| Wire format is flat JSON, not Kubernetes nested metadata | `transport/bridge.go` — request/response adapter                                                                                          |
+| The API is account-scoped while generated clients may use namespace paths | SigV4 transport extracts the generated namespace path value, maps it to `X-Amz-Account-Id`, and strips the `/namespaces/{ns}/` segment |
+| Pagination uses `offset` rather than Kubernetes `continue` | `transport/bridge.go` — query adapter                                                                                                      |
 
 ### `rest/config.go` — SDK configuration
 
@@ -127,68 +126,22 @@ type Config struct {
 
 Every outbound request goes through `SigV4RoundTripper.RoundTrip`:
 
-1. The generated client appends `/namespaces/{accountID}/` to namespaced URLs. For NodePools, the adapter first converts that namespace to the parent `clusterId` query parameter. For other namespaced resources, the signing transport strips the segment and promotes its value to the `X-Amz-Account-Id` signed header.
+1. For generated namespaced clients, the request path contains `/namespaces/{value}/`. The transport strips this segment and promotes the value to the `X-Amz-Account-Id` signed header. Non-namespaced resources do not include this segment.
 2. The request body is buffered, hashed (SHA-256), and restored so SigV4 can include the payload hash in the signature.
 3. The request is signed with `aws/signer/v4` against the `execute-api` service.
 
-### `transport/bridge.go` — request/response adapter
+### `transport/bridge.go` — pagination adapter
 
-The `Adapter` RoundTripper handles four transformations:
+The migration to `api/v1alpha1/public` removed the separate REST wire model. The
+Platform API now accepts and returns the generated public Kubernetes types,
+including `ObjectMeta`, `metav1.Condition`, and `metav1.Status`. Request and
+response bodies pass through unchanged; there is no metadata flattening,
+response projection, or custom error-envelope translation in the SDK.
 
-**Response rewriting** — platform API returns flat JSON objects:
-
-```json
-{
-  "id": "abc-123",
-  "name": "my-cluster",
-  "resource_version": "1",
-  "spec": {},
-  "status": {}
-}
-```
-
-The Kubernetes decoder populates `v1alpha1.Cluster` from `metadata.*` fields. The adapter rewrites each response before the decoder sees it:
-
-| Wire field          | →   | Kubernetes field           |
-| ------------------- | --- | -------------------------- |
-| `name`              | →   | `metadata.name`            |
-| `id`                | →   | `metadata.uid`             |
-| `resource_version`  | →   | `metadata.resourceVersion` |
-| `generation`        | →   | `metadata.generation`      |
-| `spec`, `status`, … | →   | unchanged                  |
-
-Both single-object and list (`{"items": [...]}`) responses are handled.
-
-**Request rewriting** — the Kubernetes serializer produces nested metadata. The adapter flattens it back to the platform wire format before sending. For namespaced POST requests (e.g. nodepool create), the namespace segment encodes the parent cluster ID; the adapter injects it as `"cluster_id"` in the body before the SigV4 transport strips the namespace from the URL.
-
-**NodePool scope rewrite** — the generated namespaced NodePool path is rewritten to the flat Platform API path, and its namespace becomes `?clusterId=<id>`. This scopes list, get, update, delete, and wait operations without replacing the configured AWS account identity.
-
-**Pagination rewrite** — `platform.ListOptions.Offset` is bridged by encoding the integer as a numeric string in `metav1.ListOptions.Continue`. The adapter detects this encoding and rewrites `?continue=N` to `?offset=N` so the platform API receives the parameter it expects.
-
-**Error response translation** — platform API errors use a different envelope from `metav1.Status`:
-
-```json
-{
-  "kind": "Error",
-  "code": "CLUSTERS-MGMT-001",
-  "reason": "account not authorized"
-}
-```
-
-client-go's `transformResponse` cannot parse this format and falls back to `StatusReasonUnknown`, silently discarding the server's error message. The adapter intercepts any non-2xx response that matches the platform envelope and rewrites it to a minimal `metav1.Status` JSON body before client-go sees it:
-
-```json
-{
-  "apiVersion": "v1",
-  "kind": "Status",
-  "status": "Failure",
-  "message": "CLUSTERS-MGMT-001: account not authorized",
-  "reason": "Forbidden",
-  "code": 403
-}
-```
-
-This ensures `k8s.io/apimachinery/pkg/api/errors` helpers (`IsNotFound`, `IsForbidden`, etc.) classify errors correctly and that callers receive the full server message rather than a generic unknown error.
+The remaining adapter concern is pagination. `platform.ListOptions.Offset` is
+encoded as a numeric string in `metav1.ListOptions.Continue`, because that is
+what the generated client serializes. The adapter rewrites numeric
+`?continue=N` to `?offset=N` before the request reaches the Platform API.
 
 ### `platform/options.go` — platform-scoped option types
 
@@ -216,7 +169,7 @@ HTTP call flow:
   Generated client code
         │
         ▼
-  Adapter.RoundTrip          ← wire format rewrite (request + response)
+  Adapter.RoundTrip          ← pagination query rewrite only
         │
         ▼
   SigV4RoundTripper.RoundTrip ← namespace→account rewrite + SigV4 signing
@@ -277,7 +230,7 @@ func (c *Clientset) HyperfleetV1alpha1() platform.V1alpha1PublicInterface {
 The Hyperfleet platform API does not support the Kubernetes watch stream protocol. The `platform` package provides generated wrapper types that:
 
 1. Expose only the operations the platform API supports, using platform-specific option types from `platform/options.go`.
-2. Route `Update` calls by UID — the wrapper deep-copies the object and sets `Name = UID` before calling the inner client, so the generated client builds the PUT URL with the UID regardless of what the caller has in `metadata.name`. The `name` field in the body is discarded by the server's update DTO.
+2. Route `Update` calls by UID — the wrapper deep-copies the object and sets `Name = UID` before calling the inner client, so the generated client builds the PUT URL with the UID regardless of what the caller has in `metadata.name`.
 3. Add `WaitUntil` — a polling-based alternative to Watch that repeatedly calls `Get` and evaluates a caller-supplied condition.
 
 **Markers**

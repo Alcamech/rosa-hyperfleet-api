@@ -386,6 +386,7 @@ codegen-passthrough: codegen-registry
 		-package v1alpha1 \
 		-registry ../hack/api-codegen/pkg/registry/field_metadata.json
 	rm -f api/v1alpha1/zz_generated.passthrough.go.raw
+	$(MAKE) codegen-registry
 
 codegen-passthrough-clobber:
 	rm -f api/v1alpha1/zz_generated.passthrough.go
@@ -425,7 +426,7 @@ generate-pathbind-draft: $(PATHBIND_GEN) codegen-registry generate-openapi
 # codegen-conversion must run before manifests (generate-deepcopy) because
 # conversion-gen creates public REST types (e.g. platformspec_types.go) that
 # the deepcopy generator needs to resolve type references in passthrough files.
-generate: codegen-registry codegen-conversion generate-deepcopy manifests generate-clientset generate-openapi generate-pathbind-draft
+generate: codegen-passthrough codegen-conversion generate-deepcopy manifests generate-clientset generate-openapi generate-pathbind-draft
 
 verify-pathbind-draft: generate-pathbind-draft
 	git diff --exit-code clientset/pathbind/pathbind-draft.yaml
