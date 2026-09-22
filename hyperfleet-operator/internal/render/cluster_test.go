@@ -67,8 +67,8 @@ func TestClusterResourcesCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ClusterResources: %v", err)
 	}
-	if got := len(resources); got != 7 {
-		t.Errorf("expected 7 resources, got %d", got)
+	if got := len(resources); got != 6 {
+		t.Errorf("expected 6 resources, got %d", got)
 	}
 }
 
@@ -84,7 +84,6 @@ func TestClusterResourcesTypes(t *testing.T) {
 	}{
 		{"namespaces", "cluster-abc12345"},
 		{"configmaps", "cluster-config"},
-		{"configmaps", "aws-iam-auth-config"},
 		{"externalsecrets", "pull-secret"},
 		{"certificates", "api-serving-cert"},
 		{"hostedclusters", "my-cluster"},
@@ -109,8 +108,8 @@ func TestClusterResourcesWithOidcConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ClusterResources: %v", err)
 	}
-	if got := len(resources); got != 8 {
-		t.Fatalf("expected 8 resources, got %d", got)
+	if got := len(resources); got != 7 {
+		t.Fatalf("expected 7 resources, got %d", got)
 	}
 
 	last := resources[len(resources)-1]
@@ -308,43 +307,4 @@ func TestHostedClusterDNS(t *testing.T) {
 	if got := hc.Spec.InfraID; got != "abc12345" {
 		t.Errorf("infraID = %q, want %q (extracted from issuerURL)", got, "abc12345")
 	}
-}
-
-func TestCreatorARNInAuthConfig(t *testing.T) {
-	resources, err := ClusterResources(testCluster(), false, "f7a3.0.example.com")
-	if err != nil {
-		t.Fatalf("ClusterResources: %v", err)
-	}
-
-	var cm *corev1.ConfigMap
-	for _, m := range resources {
-		if m.Name == "aws-iam-auth-config" {
-			cm = m.Object.(*corev1.ConfigMap)
-			break
-		}
-	}
-
-	cfg := cm.Data["config.yaml"]
-	if cfg == "" {
-		t.Fatal("config.yaml is empty")
-	}
-	if !contains(cfg, "arn:aws:iam::123456789012:user/admin") {
-		t.Error("config.yaml should contain the creator ARN")
-	}
-	if !contains(cfg, "cluster-creator") {
-		t.Error("config.yaml should contain the cluster-creator username")
-	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
