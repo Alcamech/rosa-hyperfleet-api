@@ -49,10 +49,10 @@ var _ = Describe("Cluster lifecycle", func() {
 		specsTable := mc + "-specs-applydesires"
 		Eventually(func(g Gomega) {
 			items := scanTable(specsTable)
-			g.Expect(len(items)).To(BeNumerically(">=", 7), "expected at least 7 ApplyDesires, got %d", len(items))
+			g.Expect(len(items)).To(BeNumerically(">=", 6), "expected at least 6 ApplyDesires, got %d", len(items))
 		}).Should(Succeed())
 
-		By("verifying the 7 expected resources are present")
+		By("verifying the 6 expected resources are present")
 		items := scanTable(specsTable)
 		resourceNames := map[string]bool{}
 		for _, item := range items {
@@ -64,7 +64,6 @@ var _ = Describe("Cluster lifecycle", func() {
 		expectedResources := []string{
 			"namespaces/" + testNS,
 			"configmaps/cluster-config",
-			"configmaps/aws-iam-auth-config",
 			"externalsecrets/pull-secret",
 			"certificates/api-serving-cert",
 			"hostedclusters/" + clusterName,
@@ -140,7 +139,7 @@ var _ = Describe("Cluster lifecycle", func() {
 		specsTable := mc + "-specs-applydesires"
 		Eventually(func(g Gomega) {
 			items := scanTable(specsTable)
-			g.Expect(len(items)).To(BeNumerically(">=", 8), "expected at least 8 ApplyDesires, got %d", len(items))
+			g.Expect(len(items)).To(BeNumerically(">=", 7), "expected at least 7 ApplyDesires, got %d", len(items))
 			found := false
 			for _, item := range items {
 				resource := attrString(item, "spec", "targetItem", "resource")

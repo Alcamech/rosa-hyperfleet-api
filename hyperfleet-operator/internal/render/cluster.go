@@ -33,7 +33,6 @@ func ClusterResources(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExterna
 	resources := []Resource{
 		namespace(clusterID, ns),
 		clusterConfig(clusterID, clusterName, ns),
-		awsIAMAuthConfig(clusterID, clusterName, ns, cluster.Spec.CreatorARN),
 		pullSecret(clusterID, ns),
 		apiServingCert(clusterID, clusterName, baseDomain, ns),
 		hc,
@@ -128,41 +127,6 @@ func clusterConfig(clusterID, clusterName, ns string) Resource {
 			Data: map[string]string{
 				"cluster_id":   clusterID,
 				"cluster_name": clusterName,
-			},
-		},
-	}
-}
-
-func awsIAMAuthConfig(clusterID, clusterName, ns, creatorARN string) Resource {
-	mapUsers := "      mapUsers: []\n"
-	if creatorARN != "" {
-		mapUsers = fmt.Sprintf(`      mapUsers:
-        - userARN: %s
-          username: cluster-creator
-          groups:
-            - system:masters
-`, creatorARN)
-	}
-
-	configYAML := fmt.Sprintf("clusterID: %s\nserver:\n%s", clusterID, mapUsers)
-
-	return Resource{
-		Group: "", Version: "v1", Resource: "configmaps",
-		Name: "aws-iam-auth-config", Namespace: ns,
-		Object: &corev1.ConfigMap{
-			TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "aws-iam-auth-config",
-				Namespace: ns,
-				Labels: map[string]string{
-					"hyperfleet.io/cluster-id": clusterID,
-				},
-				Annotations: map[string]string{
-					"hypershift.openshift.io/cluster": fmt.Sprintf("%s/%s", ns, clusterName),
-				},
-			},
-			Data: map[string]string{
-				"config.yaml": configYAML,
 			},
 		},
 	}
@@ -343,8 +307,6 @@ func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal b
 				},
 				Annotations: map[string]string{
 					hypershiftv1beta1.PodSecurityAdmissionLabelOverrideAnnotation: "privileged",
-					hypershiftv1beta1.ControlPlaneOperatorImageAnnotation:         "quay.io/cbusse_openshift/control-plane-operator:4.23-iam-auth",
-					"hypershift.openshift.io/aws-iam-authenticator":               "true",
 				},
 			},
 			Spec: *hcSpec,

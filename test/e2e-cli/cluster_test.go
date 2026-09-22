@@ -23,7 +23,7 @@ package e2e_cli_test
 //
 // Available labels:
 //   help, login, vpc-create, vpc-list, iam-create, iam-list, account-add,
-//   hcp-create, oidc-create, oidc-list, cluster-status, kubeconfig,
+//   hcp-create, oidc-create, oidc-list, cluster-status,
 //   silence-installing, silence-ready,
 //   nodepool-create, nodepool-list, dns-verify, nodepools-wait, nodepool-delete,
 //   hcp-patch, cluster-delete, bundles-delete, bundles-wait, oidc-delete, iam-delete, vpc-delete
@@ -48,8 +48,8 @@ import (
 	. "github.com/onsi/gomega"
 
 	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	awstest "github.com/openshift-online/rosa-hyperfleet-api/test/helpers/aws"
 	amhelper "github.com/openshift-online/rosa-hyperfleet-api/test/helpers/alertmanager"
+	awstest "github.com/openshift-online/rosa-hyperfleet-api/test/helpers/aws"
 	"github.com/openshift-online/rosa-hyperfleet-api/test/helpers/thanos"
 )
 
@@ -623,90 +623,6 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 			g.Expect(silences).To(BeEmpty())
 		}).WithTimeout(35*time.Minute).WithPolling(5*time.Second).Should(Succeed(),
 			"lifecycle silences should be expired once the cluster is Ready")
-	})
-
-	It("should generate a working kubeconfig", Label("kubeconfig", "monitor"), func() {
-		defer recordTiming("hcp-kubeconfig")()
-		id := clusterID
-		if id == "" {
-			id = os.Getenv("HCP_INSTANCE_ID")
-		}
-		Expect(id).ToNot(BeEmpty(), "clusterID required — run full Ordered suite or set HCP_INSTANCE_ID")
-
-		name := clusterName
-		if name == "" {
-			name = os.Getenv("HCP_CLUSTER_NAME")
-		}
-		Expect(name).ToNot(BeEmpty(), "clusterName required — run full Ordered suite or set HCP_CLUSTER_NAME")
-
-		GinkgoWriter.Printf("Generating kubeconfig for cluster %s (id=%s)\n", name, id)
-
-		cmd := exec.Command(ROSACTL_BIN, "cluster", "kubeconfig", name, "--region", region)
-		cmd.Env = append(os.Environ(), customerEnv()...)
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
-		err := cmd.Run()
-		Expect(err).ToNot(HaveOccurred(), "rosactl cluster kubeconfig failed: %s", stderr.String())
-		Expect(stdout.Len()).To(BeNumerically(">", 0), "kubeconfig output should not be empty")
-
-		kubeconfigFile, err := os.CreateTemp("", "e2e-kubeconfig-*.yaml")
-		Expect(err).ToNot(HaveOccurred())
-		defer func() {
-			kubeconfigFile.Close()
-			os.Remove(kubeconfigFile.Name())
-		}()
-		_, err = kubeconfigFile.Write(stdout.Bytes())
-		Expect(err).ToNot(HaveOccurred())
-		Expect(kubeconfigFile.Close()).To(Succeed())
-
-		if _, lookErr := exec.LookPath("kubectl"); lookErr != nil {
-			GinkgoWriter.Printf("kubectl not found in PATH, skipping healthz validation\n")
-			Skip("kubectl not available in this environment")
-		}
-		GinkgoWriter.Printf("Validating kubeconfig with kubectl (file=%s)\n", kubeconfigFile.Name())
-
-		// Retry kubectl healthz with backoff — ExternalDNS may take several
-		// minutes to become reachable after cluster creation.
-		const (
-			healthzMaxAttempts = 6
-			healthzPerAttempt  = 30 * time.Second
-			healthzBackoff     = 15 * time.Second
-		)
-
-		var healthOutput []byte
-		var healthErr error
-
-		for attempt := 1; attempt <= healthzMaxAttempts; attempt++ {
-			ctx, cancel := context.WithTimeout(context.Background(), healthzPerAttempt)
-			healthCmd := exec.CommandContext(ctx, "kubectl", "--kubeconfig", kubeconfigFile.Name(), "get", "--raw", "/healthz")
-			healthCmd.Env = append(os.Environ(), customerEnv()...)
-			healthOutput, healthErr = healthCmd.CombinedOutput()
-			cancel()
-
-			if healthErr == nil {
-				GinkgoWriter.Printf("kubectl healthz succeeded on attempt %d/%d\n", attempt, healthzMaxAttempts)
-				break
-			}
-
-			GinkgoWriter.Printf("kubectl healthz attempt %d/%d failed: %v\nOutput: %s\n",
-				attempt, healthzMaxAttempts, healthErr, string(healthOutput))
-
-			if attempt < healthzMaxAttempts {
-				GinkgoWriter.Printf("Retrying in %v...\n", healthzBackoff)
-				time.Sleep(healthzBackoff)
-			}
-		}
-
-		if healthErr != nil {
-			Fail(fmt.Sprintf("kubectl healthz failed after %d attempts (total ~%v). Last error: %v\nLast output:\n%s",
-				healthzMaxAttempts,
-				time.Duration(healthzMaxAttempts)*healthzPerAttempt+time.Duration(healthzMaxAttempts-1)*healthzBackoff,
-				healthErr, string(healthOutput)))
-		}
-
-		Expect(strings.TrimSpace(string(healthOutput))).To(Equal("ok"), "healthz should return ok")
-		GinkgoWriter.Printf("kubectl healthz check passed\n")
 	})
 
 	It("should be able to create a nodepool via CLI", Label("nodepool-create", "monitor"), func() {
