@@ -307,6 +307,7 @@ func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal b
 				},
 				Annotations: map[string]string{
 					hypershiftv1beta1.PodSecurityAdmissionLabelOverrideAnnotation: "privileged",
+					hypershiftv1beta1.CleanupCloudResourcesAnnotation:             "true",
 				},
 			},
 			Spec: *hcSpec,
