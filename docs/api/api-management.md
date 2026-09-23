@@ -52,7 +52,7 @@ func FromHyperShiftNodePool(np *hypershiftv1beta1.NodePool) v1alpha1.NodePoolSta
 A code generator keeps the passthrough types in sync with upstream HyperShift:
 
 1. **Bump** the HyperShift module in `go.mod`
-2. **Run the generator** (`make generate-passthrough`), which reads upstream types and produces/updates the passthrough Go structs
+2. **Run the generator** (`make codegen-passthrough`), which reads upstream types and produces/updates the passthrough Go structs
 3. **New upstream fields** appear with safe defaults: `+k8s:openapi-gen=false` (hidden) and `+hyperfleet:write-mode=service-set` (not customer-writable)
 4. **Removed upstream fields** are dropped from the passthrough types
 5. **Developer reviews** the diff, sets the appropriate boundary 2 markers on new fields, and runs `make manifests openapi`
