@@ -103,6 +103,9 @@ func TestServeCmd(t *testing.T) {
 	expectedFlags := []string{
 		"log-level",
 		"log-format",
+		"allowed-accounts",
+		"dynamodb-region",
+		"dynamodb-prefix",
 		"api-port",
 		"health-port",
 		"metrics-port",
@@ -115,9 +118,4 @@ func TestServeCmd(t *testing.T) {
 		}
 	}
 
-	for _, flagName := range []string{"allowed-accounts", "dynamodb-region", "dynamodb-prefix"} {
-		if flag := flags.Lookup(flagName); flag != nil {
-			t.Errorf("did not expect obsolete flag %s, got %v", flagName, flag)
-		}
-	}
 }
