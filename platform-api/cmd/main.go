@@ -22,6 +22,7 @@ var (
 	// Config flags
 	logLevel                 string
 	logFormat                string
+	legacyDynamoDBRegion     string
 	postgresDSN              string
 	oidcIssuerBaseURL        string
 	defaultClusterExpiration time.Duration
@@ -52,6 +53,9 @@ var serveCmd = &cobra.Command{
 func init() {
 	serveCmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	serveCmd.Flags().StringVar(&logFormat, "log-format", "json", "Log format (json, text)")
+	serveCmd.Flags().String("allowed-accounts", "", "Deprecated compatibility flag; ignored")
+	serveCmd.Flags().StringVar(&legacyDynamoDBRegion, "dynamodb-region", "", "Deprecated compatibility flag; used only as a region fallback")
+	serveCmd.Flags().String("dynamodb-prefix", "", "Deprecated compatibility flag; ignored")
 	serveCmd.Flags().StringVar(&postgresDSN, "postgres-dsn", "", "PostgreSQL connection string (required)")
 	serveCmd.Flags().StringVar(&oidcIssuerBaseURL, "oidc-issuer-base-url", "", "Base URL for OIDC issuer (e.g. https://<cloudfront-domain>)")
 	serveCmd.Flags().DurationVar(&defaultClusterExpiration, "default-cluster-expiration", 0, "Default cluster lifetime (e.g. 24h). Clusters created without an explicit expirationTimestamp get one stamped at creation. Zero means no default.")
@@ -75,6 +79,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to detect AWS region: %w", err)
+	}
+	if awsCfg.Region == "" && legacyDynamoDBRegion != "" {
+		awsCfg.Region = legacyDynamoDBRegion
 	}
 	if awsCfg.Region == "" {
 		return fmt.Errorf("AWS region could not be detected from environment; set AWS_REGION")
