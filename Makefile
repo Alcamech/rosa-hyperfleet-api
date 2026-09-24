@@ -350,11 +350,11 @@ deps:
 CRD_VARIANTS     := $(abspath bin/crd-variants)
 CRD_BASES_DIR    := hyperfleet-operator/config/crd/bases
 
-manifests: codegen-conversion $(CONTROLLER_GEN) build-api-codegen
+manifests: codegen-passthrough codegen-conversion $(CONTROLLER_GEN) build-api-codegen
 	cd hyperfleet-operator && $(CONTROLLER_GEN) crd:allowDangerousTypes=true paths="../api/v1alpha1" output:crd:dir=config/crd/bases
 	$(CRD_VARIANTS) --strip-passthrough-cel --api-dir api/v1alpha1 --crd-dir $(CRD_BASES_DIR)
 
-generate-deepcopy: $(CONTROLLER_GEN)
+generate-deepcopy: codegen-passthrough $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) object paths="./api/..."
 
 generate-clientset: codegen-conversion $(CLIENT_GEN) $(BRIDGE_GEN)
@@ -386,6 +386,7 @@ codegen-passthrough: codegen-registry
 		-package v1alpha1 \
 		-registry ../hack/api-codegen/pkg/registry/field_metadata.json
 	rm -f api/v1alpha1/zz_generated.passthrough.go.raw
+	$(MAKE) codegen-registry
 
 codegen-passthrough-clobber:
 	rm -f api/v1alpha1/zz_generated.passthrough.go
@@ -413,8 +414,8 @@ verify-codegen: codegen
 	git diff --exit-code hack/api-codegen/pkg/registry/
 
 # generate runs all code generators in dependency order.
-# manifests depends on codegen-conversion, ensuring conversion REST types are
-# generated before deepcopy processes passthrough files that reference them.
+# manifests and generate-deepcopy depend on codegen-passthrough so regenerated
+# passthrough types complete before downstream generators run, including -j.
 generate-pathbind-draft: $(PATHBIND_GEN) codegen-registry generate-openapi
 	$(PATHBIND_GEN) \
 		--mode=init \
@@ -422,10 +423,9 @@ generate-pathbind-draft: $(PATHBIND_GEN) codegen-registry generate-openapi
 		--openapi=api/v1alpha1/public/openapi.yaml \
 		--output=clientset/pathbind/pathbind-draft.yaml
 
-# codegen-conversion must run before manifests (generate-deepcopy) because
-# conversion-gen creates public REST types (e.g. platformspec_types.go) that
-# the deepcopy generator needs to resolve type references in passthrough files.
-generate: codegen-registry codegen-conversion generate-deepcopy manifests generate-clientset generate-openapi generate-pathbind-draft
+# codegen-passthrough must complete before conversion-gen, manifests, and
+# generate-deepcopy so all downstream generators see the regenerated markers.
+generate: codegen-passthrough codegen-conversion generate-deepcopy manifests generate-clientset generate-openapi generate-pathbind-draft
 
 verify-pathbind-draft: generate-pathbind-draft
 	git diff --exit-code clientset/pathbind/pathbind-draft.yaml
@@ -438,7 +438,7 @@ CONVERSION_CRD_PKG      ?= github.com/openshift-online/rosa-hyperfleet-api/api/v
 CONVERSION_REST_DIR     ?= api/v1alpha1/public
 CONVERSION_REST_PKG     ?= github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public
 
-codegen-conversion: codegen-registry build-api-codegen
+codegen-conversion: codegen-passthrough codegen-registry build-api-codegen
 	./bin/conversion-gen \
 		--api-version=v1alpha1 \
 		--crd-package=$(CONVERSION_CRD_PKG) \

@@ -20,12 +20,12 @@ import (
 // ClusterResources generates the Kubernetes resources for a cluster on the MC.
 // baseDomain is the fully assembled DNS base domain from the DNSReservation
 // (e.g. "f7a3.0.openshiftapps.com").
-func ClusterResources(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal bool, baseDomain string) ([]Resource, error) {
+func ClusterResources(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal bool, baseDomain, controlPlaneOperatorImage string) ([]Resource, error) {
 	clusterID := ClusterIDFromNamespace(cluster.Namespace)
 	clusterName := cluster.Name // human-readable
 	ns := cluster.Namespace     // already "cluster-<uuid>"
 
-	hc, err := hostedCluster(cluster, oidcSigningKeyExternal, baseDomain)
+	hc, err := hostedCluster(cluster, oidcSigningKeyExternal, baseDomain, controlPlaneOperatorImage)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +33,6 @@ func ClusterResources(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExterna
 	resources := []Resource{
 		namespace(clusterID, ns),
 		clusterConfig(clusterID, clusterName, ns),
-		awsIAMAuthConfig(clusterID, clusterName, ns, cluster.Spec.CreatorARN),
 		pullSecret(clusterID, ns),
 		apiServingCert(clusterID, clusterName, baseDomain, ns),
 		hc,
@@ -133,41 +132,6 @@ func clusterConfig(clusterID, clusterName, ns string) Resource {
 	}
 }
 
-func awsIAMAuthConfig(clusterID, clusterName, ns, creatorARN string) Resource {
-	mapUsers := "      mapUsers: []\n"
-	if creatorARN != "" {
-		mapUsers = fmt.Sprintf(`      mapUsers:
-        - userARN: %s
-          username: cluster-creator
-          groups:
-            - system:masters
-`, creatorARN)
-	}
-
-	configYAML := fmt.Sprintf("clusterID: %s\nserver:\n%s", clusterID, mapUsers)
-
-	return Resource{
-		Group: "", Version: "v1", Resource: "configmaps",
-		Name: "aws-iam-auth-config", Namespace: ns,
-		Object: &corev1.ConfigMap{
-			TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "aws-iam-auth-config",
-				Namespace: ns,
-				Labels: map[string]string{
-					"hyperfleet.io/cluster-id": clusterID,
-				},
-				Annotations: map[string]string{
-					"hypershift.openshift.io/cluster": fmt.Sprintf("%s/%s", ns, clusterName),
-				},
-			},
-			Data: map[string]string{
-				"config.yaml": configYAML,
-			},
-		},
-	}
-}
-
 func pullSecret(clusterID, ns string) Resource {
 	return Resource{
 		Group: "external-secrets.io", Version: "v1", Resource: "externalsecrets",
@@ -252,7 +216,7 @@ func extractUUIDFromIssuerURL(issuerURL string) string {
 	return ""
 }
 
-func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal bool, baseDomain string) (Resource, error) {
+func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal bool, baseDomain, controlPlaneOperatorImage string) (Resource, error) {
 	clusterID := ClusterIDFromNamespace(cluster.Namespace)
 	clusterName := cluster.Name // human-readable
 	ns := cluster.Namespace     // already "cluster-<uuid>"
@@ -327,6 +291,16 @@ func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal b
 		hcSpec.ServiceAccountSigningKey = nil
 	}
 
+	annotations := map[string]string{
+		hypershiftv1beta1.PodSecurityAdmissionLabelOverrideAnnotation: "privileged",
+        hypershiftv1beta1.CleanupCloudResourcesAnnotation:             "true",
+	}
+	// Development override: pin the control-plane-operator image so hosted
+	// clusters run a chosen CPO build (e.g. from an openshift/hypershift PR).
+	if controlPlaneOperatorImage != "" {
+		annotations[hypershiftv1beta1.ControlPlaneOperatorImageAnnotation] = controlPlaneOperatorImage
+	}
+
 	return Resource{
 		Group: "hypershift.openshift.io", Version: "v1beta1", Resource: "hostedclusters",
 		Name: clusterName, Namespace: ns,
@@ -341,11 +315,7 @@ func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal b
 				Labels: map[string]string{
 					"hyperfleet.io/cluster-id": clusterID,
 				},
-				Annotations: map[string]string{
-					hypershiftv1beta1.PodSecurityAdmissionLabelOverrideAnnotation: "privileged",
-					hypershiftv1beta1.ControlPlaneOperatorImageAnnotation:         "quay.io/cbusse_openshift/control-plane-operator:4.23-iam-auth",
-					"hypershift.openshift.io/aws-iam-authenticator":               "true",
-				},
+				Annotations: annotations,
 			},
 			Spec: *hcSpec,
 		},

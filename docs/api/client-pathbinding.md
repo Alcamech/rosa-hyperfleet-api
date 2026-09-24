@@ -137,7 +137,7 @@ resources:
         goType: string
         operations: [create, update]
       - path: spec.hostedCluster.platform.aws.resourceTags
-        goType: array
+        goType: array(string)
         operations: [create, update]
       - path: spec.hostedCluster.networking.apiServer.port
         goType: integer(int32)
@@ -215,7 +215,9 @@ resources:
 | `boolean`        | `*bool`                                                          |
 | `integer(int32)` | `*int32`                                                         |
 | `integer(int64)` | `*int64`                                                         |
-| `array`, `map`   | `string` (JSON-encoded; override with explicit `type` if needed) |
+| `array(string)`  | `string[]` for supported consumers; Cobra rejects collection flags |
+| `array(object)`  | Unsupported automatically; add an explicit consumer representation |
+| `map`            | `map` for Terraform; Cobra rejects map fields                  |
 
 **Consumer-only entries** (no `path`): generator emits the field with `hfsdk:"-"` — Expand skips it; consumer sets it in `PostExpand` or `PreRequest`.
 
@@ -473,12 +475,14 @@ make generate
 This runs in order:
 
 1. `codegen-registry` — marker-scanner → `field_metadata.json`
-2. `codegen-passthrough` — passthrough type stubs
-3. `generate-deepcopy` — deepcopy methods
-4. `manifests` — CRD YAML
-5. `generate-clientset` — typed client SDK
-6. `generate-openapi` — OpenAPI spec from public types
-7. `generate-pathbind-draft` — `pathbind-draft.yaml` (leaf paths via OpenAPI walk)
+2. `codegen-passthrough` — regenerate HyperShift passthrough types, then refresh
+   `field_metadata.json` so downstream generators consume the regenerated markers
+3. `codegen-conversion` — public CRD types and conversion functions
+4. `generate-deepcopy` — deepcopy methods
+5. `manifests` — CRD YAML and feature-set variants
+6. `generate-clientset` — typed client SDK and platform wrappers
+7. `generate-openapi` — OpenAPI spec from public types
+8. `generate-pathbind-draft` — `pathbind-draft.yaml` (leaf paths via OpenAPI walk)
 
 Commit all generated files. CI verifies generation is up to date via `make verify`.
 

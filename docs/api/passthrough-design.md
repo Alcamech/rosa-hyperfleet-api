@@ -132,7 +132,9 @@ codegen-passthrough
        └─ build-api-codegen    (builds passthrough-gen, marker-scanner, etc.)
 ```
 
-`codegen-passthrough` depends on `codegen-registry` to ensure the registry JSON is fresh before regeneration.
+`codegen-passthrough` depends on `codegen-registry` to ensure the registry JSON
+is fresh before regeneration, then rescans the regenerated passthrough file so
+downstream generators consume the final curated markers.
 
 ## Verification
 
