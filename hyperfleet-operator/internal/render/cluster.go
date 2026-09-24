@@ -293,7 +293,7 @@ func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal b
 
 	annotations := map[string]string{
 		hypershiftv1beta1.PodSecurityAdmissionLabelOverrideAnnotation: "privileged",
-    hypershiftv1beta1.CleanupCloudResourcesAnnotation:             "true",
+        hypershiftv1beta1.CleanupCloudResourcesAnnotation:             "true",
 	}
 	// Development override: pin the control-plane-operator image so hosted
 	// clusters run a chosen CPO build (e.g. from an openshift/hypershift PR).
