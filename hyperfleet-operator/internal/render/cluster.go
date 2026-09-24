@@ -20,12 +20,12 @@ import (
 // ClusterResources generates the Kubernetes resources for a cluster on the MC.
 // baseDomain is the fully assembled DNS base domain from the DNSReservation
 // (e.g. "f7a3.0.openshiftapps.com").
-func ClusterResources(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal bool, baseDomain string) ([]Resource, error) {
+func ClusterResources(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal bool, baseDomain, controlPlaneOperatorImage string) ([]Resource, error) {
 	clusterID := ClusterIDFromNamespace(cluster.Namespace)
 	clusterName := cluster.Name // human-readable
 	ns := cluster.Namespace     // already "cluster-<uuid>"
 
-	hc, err := hostedCluster(cluster, oidcSigningKeyExternal, baseDomain)
+	hc, err := hostedCluster(cluster, oidcSigningKeyExternal, baseDomain, controlPlaneOperatorImage)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +216,7 @@ func extractUUIDFromIssuerURL(issuerURL string) string {
 	return ""
 }
 
-func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal bool, baseDomain string) (Resource, error) {
+func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal bool, baseDomain, controlPlaneOperatorImage string) (Resource, error) {
 	clusterID := ClusterIDFromNamespace(cluster.Namespace)
 	clusterName := cluster.Name // human-readable
 	ns := cluster.Namespace     // already "cluster-<uuid>"
@@ -291,6 +291,16 @@ func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal b
 		hcSpec.ServiceAccountSigningKey = nil
 	}
 
+	annotations := map[string]string{
+		hypershiftv1beta1.PodSecurityAdmissionLabelOverrideAnnotation: "privileged",
+    hypershiftv1beta1.CleanupCloudResourcesAnnotation:             "true",
+	}
+	// Development override: pin the control-plane-operator image so hosted
+	// clusters run a chosen CPO build (e.g. from an openshift/hypershift PR).
+	if controlPlaneOperatorImage != "" {
+		annotations[hypershiftv1beta1.ControlPlaneOperatorImageAnnotation] = controlPlaneOperatorImage
+	}
+
 	return Resource{
 		Group: "hypershift.openshift.io", Version: "v1beta1", Resource: "hostedclusters",
 		Name: clusterName, Namespace: ns,
@@ -305,10 +315,7 @@ func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal b
 				Labels: map[string]string{
 					"hyperfleet.io/cluster-id": clusterID,
 				},
-				Annotations: map[string]string{
-					hypershiftv1beta1.PodSecurityAdmissionLabelOverrideAnnotation: "privileged",
-					hypershiftv1beta1.CleanupCloudResourcesAnnotation:             "true",
-				},
+				Annotations: annotations,
 			},
 			Spec: *hcSpec,
 		},
