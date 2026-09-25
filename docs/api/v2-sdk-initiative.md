@@ -288,6 +288,7 @@ The `test/e2e-api/` tests exercise the Platform API directly:
 | Test file           | What it exercises      |
 | ------------------- | ---------------------- |
 | `e2e_test.go`       | Basic API connectivity |
+| `authz_e2e_test.go` | Authorization policies |
 
 ### Acceptance Criteria for V2 SDK
 
