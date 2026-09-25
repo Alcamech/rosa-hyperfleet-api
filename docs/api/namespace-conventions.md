@@ -48,8 +48,9 @@ Cluster `metadata.name` is a DNS label up to 63 characters. NodePool names use
 `<cluster>.<child>` with each part independently validated as a DNS label up to 63
 characters. HyperShift NodePool resources use only the child portion of that name.
 
-## Authorization
+## Access Control
 
-Cedar/AVP performs authorization at the API layer. The account namespace provides
-storage isolation; it is derived from authenticated identity, not trusted as a
-client-provided authorization claim.
+API Gateway authenticates AWS callers, and the Platform API uses the resulting
+identity for request handling. The account namespace provides storage isolation;
+it is derived from authenticated identity, not trusted as a client-provided
+authorization claim.
