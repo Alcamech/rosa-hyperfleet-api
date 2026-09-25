@@ -5,7 +5,7 @@ ROSA HCP regional cluster management — platform API, operator, and backing dat
 | Directory              | Description                                             |
 | ---------------------- | ------------------------------------------------------- |
 | `api/`                 | CRD types and API definitions (v1alpha1)                |
-| `seaplane-api/`        | REST gateway (SigV4 auth, Cedar/AVP authz)              |
+| `seaplane-api/`        | REST gateway for API Gateway SigV4-authenticated AWS callers       |
 | `seaplane-operator/` | Kubernetes operator (cluster lifecycle controller for Cluster, NodePool, DNSReservation, OidcConfig, Placement, ManagementCluster, Manifest, and other CRDs) |
 | `seaplane-db/`       | PostgreSQL-backed controller-runtime library            |
 | `clientset/`           | Generated typed Kubernetes client for Seaplane CRDs   |
