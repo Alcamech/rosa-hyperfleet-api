@@ -1,13 +1,19 @@
 package config
 
-import "time"
+import (
+	"time"
+
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/authz"
+)
 
 type Config struct {
-	Server    ServerConfig
-	DB        DBConfig
-	Regional  RegionalConfig
-	Logging   LoggingConfig
-	RateLimit RateLimitConfig
+	Server          ServerConfig
+	DB              DBConfig
+	Regional        RegionalConfig
+	Logging         LoggingConfig
+	Authz           *authz.Config
+	RateLimit       RateLimitConfig
+	AllowedAccounts []string
 }
 
 type RateLimitConfig struct {
@@ -64,5 +70,6 @@ func NewConfig() *Config {
 			Level:  "info",
 			Format: "json",
 		},
+		Authz: authz.DefaultConfig(),
 	}
 }
