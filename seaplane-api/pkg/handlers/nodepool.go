@@ -311,7 +311,6 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Reject semantically empty specs (nil, empty decoded maps, whitespace variants).
 	var rawSpec map[string]any
 	if err := json.Unmarshal(envelope.Spec, &rawSpec); err != nil {
 		writeAPIError(w, ErrNodePoolUpdateInvalidBody, h.logger)
@@ -330,7 +329,7 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		errs := h.validator.ValidateUpdateWithRawSpec(&req.Spec, rawSpec, &current.Spec, featuregate.Default)
+		errs := h.validator.ValidateUpdate(rawSpec, &current.Spec, featuregate.Default)
 		errs = append(errs, validateNodePoolReplicas(&req.Spec)...)
 		if len(errs) > 0 {
 			validationErr = errs
@@ -340,7 +339,11 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 			mergeErr = err
 			return fmt.Errorf("merge nodepool spec: %w", err)
 		}
-		if err := h.db.UpdateNodePool(ctx, current); err != nil {
+		if errs := validateNodePoolReplicas(&seaplanedb.InternalToPublicNodePool(current).Spec); len(errs) > 0 {
+			validationErr = errs
+			return fmt.Errorf("invalid nodepool replicas: %w", errs)
+		}
+		if err := h.db.UpdateNodePool(ctx, accountID, current); err != nil {
 			return err
 		}
 		updated = current

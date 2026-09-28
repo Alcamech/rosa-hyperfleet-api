@@ -574,6 +574,21 @@ func newNodePoolValidationTestHandler(t *testing.T, objects ...client.Object) *N
 	if err := seaplanev1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("register NodePool API types: %v", err)
 	}
+	// Keep parent-ownership checks from masking the validation under test.
+	for _, object := range objects {
+		switch resource := object.(type) {
+		case *seaplanev1alpha1.Cluster:
+			if resource.UID == "" {
+				resource.UID = "validation-parent"
+			}
+		case *seaplanev1alpha1.NodePool:
+			parent := testClusterCR("validation-parent", resource.Name, resource.Labels["seaplane.io/account-id"])
+			resource.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(parent, seaplanev1alpha1.GroupVersion.WithKind("Cluster"))}
+			resource.Labels[clusterUIDLabel] = string(parent.UID)
+			resource.Spec.NodePool.ClusterName = parent.Name
+			objects = append(objects, parent)
+		}
+	}
 	dbClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return NewNodePoolHandler(seaplanedb.NewClientFrom(dbClient, logger), logger)

@@ -8,8 +8,12 @@ import (
 	"testing"
 	"time"
 
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/clients/seaplanedb"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/config"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/middleware"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func TestNew(t *testing.T) {
@@ -170,6 +174,43 @@ func TestServer_NodePoolUpdateRouteAcceptsPatch(t *testing.T) {
 
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("PATCH nodepool status = %d, want %d (route matched and reached authorization)", recorder.Code, http.StatusForbidden)
+	}
+}
+
+func TestServer_RequiresIdentity(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := seaplanev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	db := seaplanedb.NewClientFrom(fake.NewClientBuilder().WithScheme(scheme).Build(), logger)
+	srv, err := New(config.NewConfig(), db, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{
+		"/api/v0/clusters", "/api/v0/nodepools", "/api/v0/oidc_configs", "/api/v0/management_clusters",
+	} {
+		for _, tc := range []struct {
+			name, accountID, callerARN string
+			wantStatus                 int
+		}{
+			{"no identity", "", "", http.StatusForbidden},
+			{"missing ARN", "123456789012", "", http.StatusForbidden},
+			{"missing account", "", "arn:aws:iam::123456789012:user/test", http.StatusForbidden},
+		} {
+			t.Run(path+"/"+tc.name, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, path, nil)
+				req.Header.Set(middleware.HeaderAccountID, tc.accountID)
+				req.Header.Set(middleware.HeaderCallerARN, tc.callerARN)
+				w := httptest.NewRecorder()
+				srv.apiServer.Handler.ServeHTTP(w, req)
+				if w.Code != tc.wantStatus {
+					t.Errorf("want %d, got %d: %s", tc.wantStatus, w.Code, w.Body.String())
+				}
+			})
+		}
 	}
 }
 

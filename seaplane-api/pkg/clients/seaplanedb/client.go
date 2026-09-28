@@ -65,6 +65,7 @@ func (c *Client) Close() {
 func (c *Client) CreateCluster(ctx context.Context, accountID string, cluster *seaplanev1alpha1.Cluster) error {
 	cluster.Namespace = accountNamespace(accountID)
 	setAccountLabel(cluster, accountID)
+	cluster.Spec.AccountID = accountID
 	return c.client.Create(ctx, cluster)
 }
 
@@ -91,8 +92,10 @@ func (c *Client) ListClusters(ctx context.Context, accountID string) (*seaplanev
 	return &list, nil
 }
 
-// UpdateCluster updates the spec of an existing Cluster via CAS.
-func (c *Client) UpdateCluster(ctx context.Context, cluster *seaplanev1alpha1.Cluster) error {
+// UpdateCluster CAS-updates a cluster and re-pins account ownership.
+func (c *Client) UpdateCluster(ctx context.Context, accountID string, cluster *seaplanev1alpha1.Cluster) error {
+	setAccountLabel(cluster, accountID)
+	cluster.Spec.AccountID = accountID
 	return c.client.Update(ctx, cluster)
 }
 
@@ -240,11 +243,39 @@ func (c *Client) ReleaseSpotTerminationQueue(ctx context.Context, accountID, que
 
 // --- NodePool operations ---
 
-// CreateNodePool creates a NodePool in the caller's account namespace.
+// CreateNodePool creates a NodePool under an account-owned parent cluster.
 func (c *Client) CreateNodePool(ctx context.Context, accountID string, np *seaplanev1alpha1.NodePool) error {
 	np.Namespace = accountNamespace(accountID)
+	if err := c.requireOwnedCluster(ctx, accountID, np); err != nil {
+		return err
+	}
 	setAccountLabel(np, accountID)
+	np.Spec.AccountID = accountID
 	return c.client.Create(ctx, np)
+}
+
+// requireOwnedCluster checks the stored parent name and UID, not child ownership labels.
+func (c *Client) requireOwnedCluster(ctx context.Context, accountID string, np *seaplanev1alpha1.NodePool) error {
+	parent := nodePoolParent(np)
+	if parent == nil {
+		return apierrors.NewNotFound(nodePoolGR, np.Name)
+	}
+	cluster, err := c.GetCluster(ctx, accountID, parent.Name)
+	if err != nil {
+		return err
+	}
+	if cluster.UID != parent.UID {
+		return apierrors.NewNotFound(nodePoolGR, np.Name)
+	}
+	return nil
+}
+
+func nodePoolParent(np *seaplanev1alpha1.NodePool) *metav1.OwnerReference {
+	parent := metav1.GetControllerOf(np)
+	if parent == nil || parent.Kind != "Cluster" || parent.UID == "" || np.Labels[clusterUIDLabel] != string(parent.UID) {
+		return nil
+	}
+	return parent
 }
 
 // GetNodePool retrieves a NodePool by its account-scoped metadata.name.
@@ -255,6 +286,9 @@ func (c *Client) GetNodePool(ctx context.Context, accountID, name string) (*seap
 		Name:      name,
 	}, &nodePool)
 	if err != nil {
+		return nil, err
+	}
+	if err := c.requireOwnedCluster(ctx, accountID, &nodePool); err != nil {
 		return nil, err
 	}
 	return &nodePool, nil
@@ -272,11 +306,32 @@ func (c *Client) ListNodePools(ctx context.Context, accountID, clusterUID string
 	if err := c.client.List(ctx, &list, opts...); err != nil {
 		return nil, err
 	}
+
+	// Resolve parent ownership in one batch, including the current object incarnation.
+	parents, err := c.ListClusters(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	owned := make(map[string]k8stypes.UID, len(parents.Items))
+	for i := range parents.Items {
+		owned[parents.Items[i].Name] = parents.Items[i].UID
+	}
+	items := list.Items[:0]
+	for i := range list.Items {
+		parent := nodePoolParent(&list.Items[i])
+		if parent == nil || owned[parent.Name] != parent.UID {
+			continue
+		}
+		items = append(items, list.Items[i])
+	}
+	list.Items = items
 	return &list, nil
 }
 
-// UpdateNodePool updates the spec of an existing NodePool via CAS.
-func (c *Client) UpdateNodePool(ctx context.Context, np *seaplanev1alpha1.NodePool) error {
+// UpdateNodePool CAS-updates a node pool and re-pins account ownership.
+func (c *Client) UpdateNodePool(ctx context.Context, accountID string, np *seaplanev1alpha1.NodePool) error {
+	setAccountLabel(np, accountID)
+	np.Spec.AccountID = accountID
 	return c.client.Update(ctx, np)
 }
 
@@ -534,6 +589,7 @@ func setAccountLabel(obj client.Object, accountID string) {
 }
 
 var (
+	nodePoolGR       = seaplanev1alpha1.GroupVersion.WithResource("nodepools").GroupResource()
 	dnsReservationGR = seaplanev1alpha1.GroupVersion.WithResource("dnsreservations").GroupResource()
 )
 

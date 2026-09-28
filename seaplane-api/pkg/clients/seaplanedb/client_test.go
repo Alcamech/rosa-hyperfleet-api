@@ -45,6 +45,24 @@ func newUIDIndexedClient(t *testing.T) client.Client {
 		Build()
 }
 
+func testNodePoolFor(parent *seaplanev1alpha1.Cluster) *seaplanev1alpha1.NodePool {
+	return &seaplanev1alpha1.NodePool{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      parent.Name + ".workers",
+			Namespace: parent.Namespace,
+			Labels: map[string]string{
+				accountIDLabel:  parent.Labels[accountIDLabel],
+				clusterUIDLabel: string(parent.UID),
+			},
+			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(parent, seaplanev1alpha1.GroupVersion.WithKind("Cluster"))},
+		},
+		Spec: seaplanev1alpha1.NodePoolSpec{
+			AccountID: parent.Spec.AccountID,
+			NodePool:  seaplanev1alpha1.NodePoolSpecPassthrough{ClusterName: parent.Name},
+		},
+	}
+}
+
 func TestClient_CreateCluster_SetsAccountLabel(t *testing.T) {
 	fc := fake.NewClientBuilder().WithScheme(testScheme()).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -70,18 +88,18 @@ func TestClient_CreateCluster_SetsAccountLabel(t *testing.T) {
 }
 
 func TestClient_CreateNodePool_SetsNamespaceAndLabel(t *testing.T) {
-	fc := fake.NewClientBuilder().WithScheme(testScheme()).Build()
+	parent := &seaplanev1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
+		Name: "parent", Namespace: "account-acct-123", UID: types.UID("parent-uid"),
+		Labels: map[string]string{accountIDLabel: "acct-123"},
+	}}
+	fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(parent).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	c := NewClientFrom(fc, logger)
 
-	np := &seaplanev1alpha1.NodePool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-nodepool",
-			Namespace: "account-wrong-account",
-		},
-		Spec: seaplanev1alpha1.NodePoolSpec{},
-	}
-
+	np := testNodePoolFor(parent)
+	np.Namespace = "account-wrong-account"
+	np.Labels[accountIDLabel] = "forged"
+	np.Spec.AccountID = "forged"
 	if err := c.CreateNodePool(context.Background(), "acct-123", np); err != nil {
 		t.Fatalf("CreateNodePool: %v", err)
 	}
@@ -91,6 +109,72 @@ func TestClient_CreateNodePool_SetsNamespaceAndLabel(t *testing.T) {
 	}
 	if np.Namespace != accountNamespace("acct-123") {
 		t.Errorf("namespace = %q, want %q", np.Namespace, accountNamespace("acct-123"))
+	}
+	if np.Spec.AccountID != "acct-123" {
+		t.Errorf("spec.accountID = %q, want %q", np.Spec.AccountID, "acct-123")
+	}
+}
+
+func TestClient_CreateNodePool_RequiresOwnedParent(t *testing.T) {
+	foreign := &seaplanev1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
+		Name: "foreign", Namespace: "account-acct-2", UID: types.UID("foreign-uid"),
+		Labels: map[string]string{accountIDLabel: "acct-2"},
+	}}
+	fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(foreign).Build()
+	c := NewClientFrom(fc, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+
+	np := testNodePoolFor(foreign)
+	if err := c.CreateNodePool(context.Background(), "acct-1", np); !IsNotFound(err) {
+		t.Fatalf("CreateNodePool into foreign parent: want NotFound, got %v", err)
+	}
+}
+
+func TestClient_UpdateCluster_RepinsAccount(t *testing.T) {
+	cr := &seaplanev1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "owned", Namespace: "account-acct-1",
+			Labels: map[string]string{accountIDLabel: "acct-1"},
+		},
+		Spec: seaplanev1alpha1.ClusterSpec{AccountID: "acct-1", Properties: map[string]string{"state": "before"}},
+	}
+	fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(cr).Build()
+	c := NewClientFrom(fc, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+
+	cr.Labels[accountIDLabel] = "forged"
+	cr.Spec.AccountID = "forged"
+	cr.Spec.Properties["state"] = "after"
+	if err := c.UpdateCluster(context.Background(), "acct-1", cr); err != nil {
+		t.Fatalf("UpdateCluster: %v", err)
+	}
+	if cr.Labels[accountIDLabel] != "acct-1" || cr.Spec.AccountID != "acct-1" {
+		t.Errorf("ownership = (%q, %q), want acct-1", cr.Labels[accountIDLabel], cr.Spec.AccountID)
+	}
+	if cr.Spec.Properties["state"] != "after" {
+		t.Errorf("properties.state = %q, want after", cr.Spec.Properties["state"])
+	}
+}
+
+func TestClient_UpdateNodePool_RepinsAccount(t *testing.T) {
+	parent := &seaplanev1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
+		Name: "owned", Namespace: "account-acct-1", UID: types.UID("owned-uid"),
+		Labels: map[string]string{accountIDLabel: "acct-1"},
+	}}
+	np := testNodePoolFor(parent)
+	np.Spec.AccountID = "acct-1"
+	fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(parent, np).Build()
+	c := NewClientFrom(fc, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+
+	np.Labels[accountIDLabel] = "forged"
+	np.Spec.AccountID = "forged"
+	np.Spec.Labels = map[string]string{"state": "after"}
+	if err := c.UpdateNodePool(context.Background(), "acct-1", np); err != nil {
+		t.Fatalf("UpdateNodePool: %v", err)
+	}
+	if np.Labels[accountIDLabel] != "acct-1" || np.Spec.AccountID != "acct-1" {
+		t.Errorf("ownership = (%q, %q), want acct-1", np.Labels[accountIDLabel], np.Spec.AccountID)
+	}
+	if np.Spec.Labels["state"] != "after" {
+		t.Errorf("labels.state = %q, want after", np.Spec.Labels["state"])
 	}
 }
 
@@ -125,19 +209,16 @@ func TestClient_ListClusters_FiltersByAccount(t *testing.T) {
 }
 
 func TestClient_GetNodePool_ScopedToAccount(t *testing.T) {
+	alpha := &seaplanev1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
+		Name: "alpha", Namespace: "account-acct-1", UID: types.UID("alpha-uid"),
+		Labels: map[string]string{accountIDLabel: "acct-1"},
+	}}
+	beta := &seaplanev1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
+		Name: "beta", Namespace: "account-acct-1", UID: types.UID("beta-uid"),
+		Labels: map[string]string{accountIDLabel: "acct-1"},
+	}}
 	fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(
-		&seaplanev1alpha1.NodePool{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "alpha.workers", Namespace: "account-acct-1",
-				Labels: map[string]string{accountIDLabel: "acct-1"},
-			},
-		},
-		&seaplanev1alpha1.NodePool{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "beta.workers", Namespace: "account-acct-1",
-				Labels: map[string]string{accountIDLabel: "acct-1"},
-			},
-		},
+		alpha, beta, testNodePoolFor(alpha), testNodePoolFor(beta),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	c := NewClientFrom(fc, logger)
@@ -153,6 +234,9 @@ func TestClient_GetNodePool_ScopedToAccount(t *testing.T) {
 
 func TestClient_GetNodePool_NotFoundOutsideAccount(t *testing.T) {
 	fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(
+		&seaplanev1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
+			Name: "one", Namespace: "account-acct-1", Labels: map[string]string{accountIDLabel: "acct-1"},
+		}},
 		&seaplanev1alpha1.NodePool{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "alpha.workers", Namespace: "account-acct-2",
@@ -165,6 +249,61 @@ func TestClient_GetNodePool_NotFoundOutsideAccount(t *testing.T) {
 	_, err := c.GetNodePool(context.Background(), "acct-1", "alpha.workers")
 	if !IsNotFound(err) {
 		t.Fatalf("GetNodePool across account namespace: expected NotFound, got %v", err)
+	}
+}
+
+func TestClient_GetNodePool_RequiresOwnedParent(t *testing.T) {
+	ctx := context.Background()
+	owned := &seaplanev1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "owned", Namespace: "account-acct-1", UID: types.UID("owned-uid"),
+			Labels: map[string]string{accountIDLabel: "acct-1"},
+		},
+	}
+	foreign := &seaplanev1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "foreign", Namespace: "account-acct-2", UID: types.UID("foreign-uid"),
+			Labels: map[string]string{accountIDLabel: "acct-2"},
+		},
+	}
+	forged := testNodePoolFor(foreign)
+	forged.Namespace = owned.Namespace
+	forged.Labels[accountIDLabel] = "acct-1"
+	stale := testNodePoolFor(owned)
+	stale.Name = "owned.stale"
+	stale.OwnerReferences[0].UID = types.UID("old-uid")
+	stale.Labels[clusterUIDLabel] = "old-uid"
+	unbound := testNodePoolFor(owned)
+	unbound.Name = "owned.unbound"
+	unbound.OwnerReferences = nil
+
+	for _, tc := range []struct {
+		name string
+		pool *seaplanev1alpha1.NodePool
+	}{
+		{"foreign parent with forged account label", forged},
+		{"previous parent incarnation", stale},
+		{"missing parent binding", unbound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			valid := testNodePoolFor(owned)
+			fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(owned, foreign, valid, tc.pool).Build()
+			c := NewClientFrom(fc, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+
+			if _, err := c.GetNodePool(ctx, "acct-1", tc.pool.Name); !IsNotFound(err) {
+				t.Errorf("GetNodePool(%q) should hide an unowned parent, got %v", tc.pool.Name, err)
+			}
+			list, err := c.ListNodePools(ctx, "acct-1", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(list.Items) != 1 || list.Items[0].Name != valid.Name {
+				t.Errorf("account list should contain only the owned nodepool, got %v", list.Items)
+			}
+			if _, err := c.GetNodePool(ctx, "acct-1", valid.Name); err != nil {
+				t.Errorf("owned nodepool should remain accessible: %v", err)
+			}
+		})
 	}
 }
 
@@ -209,7 +348,7 @@ func TestClient_ClusterUpdateAndDelete(t *testing.T) {
 		t.Fatalf("GetCluster: %v", err)
 	}
 	cluster.Labels = map[string]string{"updated": "true"}
-	if err := c.UpdateCluster(ctx, cluster); err != nil {
+	if err := c.UpdateCluster(ctx, "acct-1", cluster); err != nil {
 		t.Fatalf("UpdateCluster: %v", err)
 	}
 	updated, err := c.GetCluster(ctx, "acct-1", "update-me")
@@ -241,16 +380,19 @@ func TestClient_ClusterUpdateAndDelete(t *testing.T) {
 
 func TestClient_NodePoolListUpdateAndDelete(t *testing.T) {
 	ctx := context.Background()
+	alpha := &seaplanev1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
+		Name: "alpha", Namespace: "account-acct-1", UID: types.UID("cluster-1"),
+		Labels: map[string]string{accountIDLabel: "acct-1"},
+	}}
+	beta := &seaplanev1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
+		Name: "beta", Namespace: "account-acct-1", UID: types.UID("cluster-2"),
+		Labels: map[string]string{accountIDLabel: "acct-1"},
+	}}
+	foreign := testNodePoolFor(alpha)
+	foreign.Name = "foreign.workers"
+	foreign.Namespace = "account-acct-2"
 	fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(
-		&seaplanev1alpha1.NodePool{
-			ObjectMeta: metav1.ObjectMeta{Name: "alpha.workers", Namespace: "account-acct-1", Labels: map[string]string{clusterUIDLabel: "cluster-1"}},
-		},
-		&seaplanev1alpha1.NodePool{
-			ObjectMeta: metav1.ObjectMeta{Name: "beta.workers", Namespace: "account-acct-1", Labels: map[string]string{clusterUIDLabel: "cluster-2"}},
-		},
-		&seaplanev1alpha1.NodePool{
-			ObjectMeta: metav1.ObjectMeta{Name: "foreign.workers", Namespace: "account-acct-2", Labels: map[string]string{clusterUIDLabel: "cluster-1"}},
-		},
+		alpha, beta, testNodePoolFor(alpha), testNodePoolFor(beta), foreign,
 	).Build()
 	c := NewClientFrom(fc, slog.New(slog.NewTextHandler(os.Stdout, nil)))
 
@@ -268,7 +410,7 @@ func TestClient_NodePoolListUpdateAndDelete(t *testing.T) {
 		t.Fatalf("GetNodePool: %v", err)
 	}
 	nodepool.Labels["updated"] = "true"
-	if err := c.UpdateNodePool(ctx, nodepool); err != nil {
+	if err := c.UpdateNodePool(ctx, "acct-1", nodepool); err != nil {
 		t.Fatalf("UpdateNodePool: %v", err)
 	}
 	updated, err := c.GetNodePool(ctx, "acct-1", "alpha.workers")

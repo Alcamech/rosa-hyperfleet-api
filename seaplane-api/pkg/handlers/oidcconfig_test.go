@@ -32,6 +32,7 @@ func testOidcConfigCR(configID, accountID string, spec seaplanev1alpha1.OidcConf
 			Name:      configID,
 			Namespace: "account-" + accountID,
 			UID:       types.UID(configID),
+			Labels:    map[string]string{"seaplane.io/account-id": accountID},
 		},
 		Spec: spec,
 	}
@@ -140,6 +141,7 @@ func TestOidcConfigHandler_List_Pagination(t *testing.T) {
 		testOidcConfigCR("oidc-1", testAccountID, testManagedOidcConfigSpec(testAccountID)),
 		testOidcConfigCR("oidc-2", testAccountID, testManagedOidcConfigSpec(testAccountID)),
 		testOidcConfigCR("oidc-3", testAccountID, testManagedOidcConfigSpec(testAccountID)),
+		testOidcConfigCR("foreign", "999999999999", testManagedOidcConfigSpec("999999999999")),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handler := NewOidcConfigHandler(seaplanedb.NewClientFrom(fc, logger), testOidcIssuerBaseURL, logger)
@@ -209,7 +211,17 @@ func TestOidcConfigHandler_Create_Success(t *testing.T) {
 	handler := NewOidcConfigHandler(seaplanedb.NewClientFrom(fc, logger), testOidcIssuerBaseURL, logger)
 	handler.generateID = func() string { return "generated-config-id" }
 
-	body := oidcConfigCreateBody("test-config", map[string]any{"type": "managed"})
+	body, _ := json.Marshal(map[string]any{
+		"metadata": map[string]any{
+			"name":      "test-config",
+			"namespace": "account-" + testAccountID,
+			"labels":    map[string]any{"seaplane.io/account-id": "999999999999"},
+		},
+		"spec": map[string]any{
+			"type":      "managed",
+			"accountId": "999999999999",
+		},
+	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/oidc_configs", bytes.NewReader(body))
 	req = req.WithContext(testContext(testAccountID))
@@ -234,6 +246,36 @@ func TestOidcConfigHandler_Create_Success(t *testing.T) {
 	wantIssuerURL := testOidcIssuerBaseURL + "/generated-config-id"
 	if spec["issuerUrl"] != wantIssuerURL {
 		t.Errorf("expected spec.issuerUrl=%s, got %v", wantIssuerURL, spec["issuerUrl"])
+	}
+
+	stored, err := handler.db.GetOidcConfig(req.Context(), testAccountID, "test-config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Spec.AccountID != testAccountID || stored.Labels["seaplane.io/account-id"] != testAccountID {
+		t.Errorf("stored ownership = (%q, %q), want caller account %q", stored.Spec.AccountID, stored.Labels["seaplane.io/account-id"], testAccountID)
+	}
+}
+
+func TestOIDCCreateRejectsNamespace(t *testing.T) {
+	fc := fake.NewClientBuilder().WithScheme(newTestScheme()).Build()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewOidcConfigHandler(seaplanedb.NewClientFrom(fc, logger), testOidcIssuerBaseURL, logger)
+	body := `{"metadata":{"name":"test-config","namespace":"account-999999999999"},"spec":{"type":"managed"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/oidc_configs", strings.NewReader(body))
+	req = req.WithContext(testContext(testAccountID))
+	w := httptest.NewRecorder()
+
+	handler.Create(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if message := decodeErrorMessage(t, w); !strings.Contains(message, ErrOidcConfigCreateNamespaceMismatch.Code) {
+		t.Errorf("error message = %q, want code %s", message, ErrOidcConfigCreateNamespaceMismatch.Code)
+	}
+	if _, err := handler.db.GetOidcConfig(req.Context(), testAccountID, "test-config"); !seaplanedb.IsNotFound(err) {
+		t.Errorf("rejected OIDC config was stored: %v", err)
 	}
 }
 
@@ -771,6 +813,27 @@ func TestOidcConfigHandler_Get_WrongAccount(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for config owned by a different account, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestOidcConfigHandler_Delete_WrongAccount(t *testing.T) {
+	const foreignAccount = "999999999999"
+	foreign := testOidcConfigCR("oidc-foreign", foreignAccount, testManagedOidcConfigSpec(foreignAccount))
+	fc := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(foreign).Build()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewOidcConfigHandler(seaplanedb.NewClientFrom(fc, logger), testOidcIssuerBaseURL, logger)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v0/oidc_configs/oidc-foreign", nil)
+	req = req.WithContext(testContext(testAccountID))
+	req = mux.SetURLVars(req, map[string]string{"id": "oidc-foreign"})
+	w := httptest.NewRecorder()
+
+	handler.Delete(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+	if _, err := handler.db.GetOidcConfig(req.Context(), foreignAccount, "oidc-foreign"); err != nil {
+		t.Fatalf("foreign OIDC config was deleted: %v", err)
 	}
 }
 

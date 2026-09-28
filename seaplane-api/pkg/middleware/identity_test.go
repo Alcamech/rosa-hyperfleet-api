@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -255,4 +257,41 @@ func TestGetRequestID_WithValue(t *testing.T) {
 	if requestID != "req-abc-123" {
 		t.Errorf("expected request_id=req-abc-123, got %s", requestID)
 	}
+}
+
+func TestRequireIdentity(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	handler := RequireIdentity(logger)(next)
+
+	t.Run("allows health without identity", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v0/live", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != http.StatusNoContent {
+			t.Errorf("want %d, got %d", http.StatusNoContent, w.Code)
+		}
+	})
+
+	t.Run("rejects protected without identity", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != http.StatusForbidden {
+			t.Errorf("want %d, got %d", http.StatusForbidden, w.Code)
+		}
+	})
+
+	t.Run("allows protected with identity", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil)
+		ctx := context.WithValue(req.Context(), ContextKeyAccountID, "123456789012")
+		ctx = context.WithValue(ctx, ContextKeyCallerARN, "arn:aws:iam::123456789012:user/test")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req.WithContext(ctx))
+		if w.Code != http.StatusNoContent {
+			t.Errorf("want %d, got %d", http.StatusNoContent, w.Code)
+		}
+	})
 }
