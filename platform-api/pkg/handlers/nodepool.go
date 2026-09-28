@@ -198,8 +198,10 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req public.NodePool
-	if err := json.Unmarshal(body, &req); err != nil {
+	var envelope struct {
+		Spec json.RawMessage `json:"spec"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
 		writeAPIError(w, ErrNodePoolUpdateInvalidBody, h.logger)
 		return
 	}
@@ -217,20 +219,6 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if errs := h.validator.ValidateUpdate(&req.Spec, &cr.Spec, featuregate.Default); errs != nil {
-		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
-		return
-	}
-
-	var envelope struct {
-		Spec json.RawMessage `json:"spec"`
-	}
-	if err := json.Unmarshal(body, &envelope); err != nil {
-		writeAPIError(w, ErrNodePoolUpdateInvalidBody, h.logger)
-		return
-	}
-
-	// Reject semantically empty specs (nil, empty decoded maps, whitespace variants).
 	var rawSpec map[string]any
 	if err := json.Unmarshal(envelope.Spec, &rawSpec); err != nil {
 		writeAPIError(w, ErrNodePoolUpdateInvalidBody, h.logger)
@@ -240,13 +228,18 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, ErrNodePoolUpdateMissingFields, h.logger)
 		return
 	}
+	if errs := h.validator.ValidateUpdate(rawSpec, &cr.Spec, featuregate.Default); errs != nil {
+		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
+		return
+	}
+
 	if err := hyperfleetdb.MergeSpecJSON(&cr.Spec, envelope.Spec); err != nil {
 		h.logger.Error("failed to merge nodepool spec", "error", err)
 		writeAPIError(w, ErrNodePoolUpdateInvalidSpec, h.logger)
 		return
 	}
 
-	if err := h.db.UpdateNodePool(ctx, cr); err != nil {
+	if err := h.db.UpdateNodePool(ctx, accountID, cr); err != nil {
 		h.logger.Error("failed to update nodepool", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
 		writeAPIError(w, ErrNodePoolUpdateFailed, h.logger)
 		return
