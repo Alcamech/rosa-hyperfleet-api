@@ -297,7 +297,7 @@ func (h *ClusterHandler) updateManagedIssuerURL(ctx context.Context, accountID, 
 			return fmt.Errorf("cluster UID changed from %s to %s during create", clusterUID, cluster.UID)
 		}
 		cluster.Spec.HostedCluster.IssuerURL = issuerURL
-		return h.db.UpdateCluster(ctx, cluster)
+		return h.db.UpdateCluster(ctx, accountID, cluster)
 	})
 }
 
@@ -397,7 +397,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 			mergeErr = err
 			return err
 		}
-		if err := h.db.UpdateCluster(ctx, current); err != nil {
+		if err := h.db.UpdateCluster(ctx, accountID, current); err != nil {
 			return err
 		}
 		updated = current

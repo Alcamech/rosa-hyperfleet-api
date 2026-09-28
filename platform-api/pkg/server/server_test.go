@@ -8,8 +8,12 @@ import (
 	"testing"
 	"time"
 
+	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/config"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func TestNew(t *testing.T) {
@@ -154,6 +158,43 @@ func TestServer_IdentityMiddleware(t *testing.T) {
 	// The health endpoint should still return OK
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", w.Code)
+	}
+}
+
+func TestServer_RequiresIdentity(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hyperfleetv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	db := hyperfleetdb.NewClientFrom(fake.NewClientBuilder().WithScheme(scheme).Build(), logger)
+	srv, err := New(config.NewConfig(), db, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{
+		"/api/v0/clusters", "/api/v0/nodepools", "/api/v0/oidc_configs", "/api/v0/management_clusters",
+	} {
+		for _, tc := range []struct {
+			name, accountID, callerARN string
+			wantStatus                 int
+		}{
+			{"no identity", "", "", http.StatusForbidden},
+			{"missing ARN", "123456789012", "", http.StatusForbidden},
+			{"missing account", "", "arn:aws:iam::123456789012:user/test", http.StatusForbidden},
+		} {
+			t.Run(path+"/"+tc.name, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, path, nil)
+				req.Header.Set(middleware.HeaderAccountID, tc.accountID)
+				req.Header.Set(middleware.HeaderCallerARN, tc.callerARN)
+				w := httptest.NewRecorder()
+				srv.apiServer.Handler.ServeHTTP(w, req)
+				if w.Code != tc.wantStatus {
+					t.Errorf("want %d, got %d: %s", tc.wantStatus, w.Code, w.Body.String())
+				}
+			})
+		}
 	}
 }
 

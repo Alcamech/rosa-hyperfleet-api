@@ -89,9 +89,9 @@ func (v *FieldValidator) validate(fields, existingFields map[string]any, op Oper
 	// Get the field metadata map for this resource type
 	fieldMetaMap := v.typedRegistry[v.resourceType]
 
-	for fieldPath := range fields {
-		meta, exists := fieldMetaMap[fieldPath]
-		if !exists {
+	for fieldPath, value := range fields {
+		meta, canonical, ok := lookupFieldMeta(fieldMetaMap, fieldPath)
+		if !ok {
 			continue
 		}
 
@@ -108,14 +108,14 @@ func (v *FieldValidator) validate(fields, existingFields map[string]any, op Oper
 		if meta.FeatureGate != "" && !isEmptyObject(fields[fieldPath]) {
 			if !featuregate.IsGateEnabled(meta.FeatureGate, fs) {
 				errs = append(errs, &ValidationError{
-					Field:  fieldPath,
+					Field:  canonical,
 					Reason: fmt.Sprintf("requires feature gate %s which is not enabled in %s feature set", meta.FeatureGate, fs),
 				})
 				continue
 			}
 		}
 
-		if err := v.validateWriteMode(fieldPath, meta, op, fields, existingFields, fs, pointers); err != nil {
+		if err := v.validateWriteMode(canonical, meta, op, value, existingFields, fs, pointers); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -149,7 +149,20 @@ func isStructuralContainer(fieldPath string, fieldMetaMap map[string]registry.Fi
 	return false
 }
 
-func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.FieldMeta, op Operation, fields, existingFields map[string]any, fs featuregate.FeatureSet, pointers map[string]bool) *ValidationError {
+// lookupFieldMeta finds registry metadata for a flattened path, matching keys case-insensitively.
+func lookupFieldMeta(fieldMetaMap map[string]registry.FieldMeta, fieldPath string) (registry.FieldMeta, string, bool) {
+	if meta, ok := fieldMetaMap[fieldPath]; ok {
+		return meta, fieldPath, true
+	}
+	for canonical, meta := range fieldMetaMap {
+		if strings.EqualFold(canonical, fieldPath) {
+			return meta, canonical, true
+		}
+	}
+	return registry.FieldMeta{}, "", false
+}
+
+func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.FieldMeta, op Operation, value any, existingFields map[string]any, fs featuregate.FeatureSet, pointers map[string]bool) *ValidationError {
 	effectiveMode := meta.WriteMode
 
 	if len(meta.FeatureGateAwareWriteModes) > 0 {
@@ -173,21 +186,16 @@ func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.Field
 
 	switch effectiveMode {
 	case registry.ServiceSet:
+		// Preserve round-trip updates without treating omitted zero values as changes.
 		if op == OperationUpdate && existingFields != nil {
 			oldValue, oldExists := existingFields[fieldPath]
-			newValue, newExists := fields[fieldPath]
-			if !newExists || (oldExists && reflect.DeepEqual(oldValue, newValue)) {
+			if oldExists && reflect.DeepEqual(oldValue, value) {
 				return nil
 			}
-			if !oldExists && isZeroValue(newValue) && !pointers[fieldPath] {
+			if !oldExists && isZeroValue(value) && !pointers[fieldPath] {
 				return nil
 			}
-		} else if isZeroValue(fields[fieldPath]) && !pointers[fieldPath] {
-			return nil
-		}
-		// Current Terraform will send the full object for resource update
-		// Skip validation if the field is not changed.
-		if op == OperationUpdate && existingFields != nil && !fieldChanged(fields, existingFields, fieldPath) {
+		} else if op == OperationCreate && isZeroValue(value) && !pointers[fieldPath] {
 			return nil
 		}
 		return &ValidationError{
@@ -195,12 +203,14 @@ func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.Field
 			Reason: "field is platform-managed and cannot be set by customers",
 		}
 	case registry.Immutable:
-		if op == OperationUpdate && fieldChanged(fields, existingFields, fieldPath) {
+		if op == OperationUpdate && existingFields != nil {
 			// A field absent from a flattened spec (e.g. an omitempty zero value) is
 			// treated as nil so that "unset" and "explicitly zero" compare as equal.
-			return &ValidationError{
-				Field:  fieldPath,
-				Reason: "field is immutable and cannot be changed after creation",
+			if oldVal := existingFields[fieldPath]; !reflect.DeepEqual(oldVal, value) {
+				return &ValidationError{
+					Field:  fieldPath,
+					Reason: "field is immutable and cannot be changed after creation",
+				}
 			}
 		}
 		return nil
@@ -318,12 +328,4 @@ func flattenMap(prefix string, m map[string]any, result map[string]any) {
 			flattenMap(path, nested, result)
 		}
 	}
-}
-
-func fieldChanged(fields, existingFields map[string]any, fieldPath string) bool {
-	if existingFields != nil {
-		oldVal, newVal := existingFields[fieldPath], fields[fieldPath]
-		return !reflect.DeepEqual(oldVal, newVal)
-	}
-	return false
 }

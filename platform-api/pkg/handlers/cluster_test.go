@@ -93,6 +93,20 @@ func testContext(accountID string) context.Context {
 	return ctx
 }
 
+func assertHandlerStatus(t *testing.T, want int, method, path, body string, vars map[string]string, accountID string, invoke func(http.ResponseWriter, *http.Request)) {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req = req.WithContext(testContext(accountID))
+	if vars != nil {
+		req = mux.SetURLVars(req, vars)
+	}
+	w := httptest.NewRecorder()
+	invoke(w, req)
+	if w.Code != want {
+		t.Errorf("expected %d, got %d: %s", want, w.Code, w.Body.String())
+	}
+}
+
 // testClusterCR creates a cluster CR with an account namespace, a database UID,
 // and the owning account label.
 func testClusterCR(clusterID, clusterName, accountID string) *hyperfleetv1alpha1.Cluster {
@@ -105,6 +119,7 @@ func testClusterCR(clusterID, clusterName, accountID string) *hyperfleetv1alpha1
 		},
 		Spec: hyperfleetv1alpha1.ClusterSpec{
 			DNSReservationID: testDNSReservationUID,
+			AccountID:        accountID,
 			HostedCluster: hyperfleetv1alpha1.HostedClusterSpecPassthrough{
 				Platform: hypershiftv1beta1.PlatformSpec{
 					Type: hypershiftv1beta1.AWSPlatform,
@@ -250,6 +265,7 @@ func TestClusterHandler_List_Pagination(t *testing.T) {
 		testClusterCR("uuid-c1", "c1", testAccountID),
 		testClusterCR("uuid-c2", "c2", testAccountID),
 		testClusterCR("uuid-c3", "c3", testAccountID),
+		testClusterCR("uuid-foreign", "foreign", "999999999999"),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
@@ -282,7 +298,18 @@ func TestClusterHandler_Create_Success(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", nil)))
+	spec := map[string]any{"accountId": "999999999999"}
+	for key, value := range minSpec {
+		spec[key] = value
+	}
+	body, _ := json.Marshal(map[string]any{
+		"metadata": map[string]any{
+			"name":   "my-cluster",
+			"labels": map[string]any{"hyperfleet.io/account-id": "999999999999"},
+		},
+		"spec": spec,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(body))
 	req = req.WithContext(testContext(testAccountID))
 
 	w := httptest.NewRecorder()
@@ -300,6 +327,14 @@ func TestClusterHandler_Create_Success(t *testing.T) {
 	}
 	if name := metaField(result, "name"); name != "my-cluster" {
 		t.Errorf("expected metadata.name=my-cluster, got %v", name)
+	}
+
+	var stored hyperfleetv1alpha1.Cluster
+	if err := fc.Get(req.Context(), client.ObjectKey{Namespace: "account-" + testAccountID, Name: "my-cluster"}, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.Spec.AccountID != testAccountID || stored.Labels["hyperfleet.io/account-id"] != testAccountID {
+		t.Errorf("stored ownership = (%q, %q), want caller account %q", stored.Spec.AccountID, stored.Labels["hyperfleet.io/account-id"], testAccountID)
 	}
 }
 
@@ -1036,6 +1071,9 @@ func TestClusterHandler_Create_DerivesIssuerURLAndUpdatesLastUsed(t *testing.T) 
 	if updated.Status.LastUsedTimestamp == nil {
 		t.Error("expected status.lastUsedTimestamp to be set after cluster creation")
 	}
+	if updated.Labels["hyperfleet.io/account-id"] != testAccountID {
+		t.Errorf("OIDC account label = %q, want %q", updated.Labels["hyperfleet.io/account-id"], testAccountID)
+	}
 }
 
 func TestClusterHandler_Get_Success(t *testing.T) {
@@ -1101,6 +1139,36 @@ func TestClusterHandler_Get_NotFound(t *testing.T) {
 	}
 }
 
+func TestClusterHandler_CrossAccountOperations(t *testing.T) {
+	foreign := testClusterCR("foreign-id", "foreign", "999999999999")
+	fc := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(foreign).Build()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+
+	tests := []struct {
+		name, method, body string
+		invoke             func(http.ResponseWriter, *http.Request)
+	}{
+		{"get", http.MethodGet, "", handler.Get},
+		{"update", http.MethodPut, `{"spec":{"properties":{"changed":"true"}}}`, handler.Update},
+		{"delete", http.MethodDelete, "", handler.Delete},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assertHandlerStatus(t, http.StatusNotFound, tc.method, "/api/v0/clusters/"+foreign.Name, tc.body,
+				map[string]string{"id": foreign.Name}, testAccountID, tc.invoke)
+		})
+	}
+
+	var stored hyperfleetv1alpha1.Cluster
+	if err := fc.Get(context.Background(), client.ObjectKeyFromObject(foreign), &stored); err != nil {
+		t.Fatalf("foreign cluster was modified: %v", err)
+	}
+	if stored.Spec.Properties["changed"] == "true" {
+		t.Error("foreign cluster was updated")
+	}
+}
+
 func TestClusterHandler_Delete_Success(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
@@ -1148,13 +1216,15 @@ func TestClusterHandler_Delete_NotFound(t *testing.T) {
 
 func TestClusterHandler_Update_Success(t *testing.T) {
 	scheme := newTestScheme()
-	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
-		testClusterCR("cluster-123", "test-cluster", testAccountID),
-	).Build()
+	cr := testClusterCR("cluster-123", "test-cluster", testAccountID)
+	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
 
 	body, _ := json.Marshal(map[string]any{
+		"metadata": map[string]any{
+			"labels": map[string]any{"hyperfleet.io/account-id": "999999999999"},
+		},
 		"spec": map[string]any{
 			"properties": map[string]string{"environment": "test"},
 		},
@@ -1179,6 +1249,14 @@ func TestClusterHandler_Update_Success(t *testing.T) {
 	properties, _ := spec["properties"].(map[string]any)
 	if properties["environment"] != "test" {
 		t.Errorf("expected spec.properties.environment=test, got %v", properties["environment"])
+	}
+
+	var stored hyperfleetv1alpha1.Cluster
+	if err := fc.Get(req.Context(), client.ObjectKeyFromObject(cr), &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.Labels["hyperfleet.io/account-id"] != testAccountID {
+		t.Errorf("stored account label = %q, want %q", stored.Labels["hyperfleet.io/account-id"], testAccountID)
 	}
 }
 
@@ -1238,6 +1316,34 @@ func TestClusterHandler_Update_AllowsUnchangedServiceManagedIssuerURL(t *testing
 	}
 	if updated.Spec.HostedCluster.IssuerURL != cluster.Spec.HostedCluster.IssuerURL {
 		t.Errorf("issuerURL = %q, want unchanged %q", updated.Spec.HostedCluster.IssuerURL, cluster.Spec.HostedCluster.IssuerURL)
+	}
+}
+
+// Spoofed ownership must not block valid updates or change the stored owner.
+func TestClusterUpdateOwnership(t *testing.T) {
+	for _, body := range []string{
+		`{"spec":{"accountId":"","properties":{"changed":"true"}}}`,
+		`{"spec":{"AccountId":"999999999999","properties":{"changed":"true"}}}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			cr := testClusterCR("uuid-1", "owned", testAccountID)
+			fc := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(cr).Build()
+			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+			handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+			assertHandlerStatus(t, http.StatusOK, http.MethodPut, "/api/v0/clusters/"+cr.Name,
+				body, map[string]string{"id": cr.Name}, testAccountID, handler.Update)
+
+			var stored hyperfleetv1alpha1.Cluster
+			if err := fc.Get(context.Background(), client.ObjectKeyFromObject(cr), &stored); err != nil {
+				t.Fatal(err)
+			}
+			if stored.Spec.AccountID != testAccountID || stored.Labels["hyperfleet.io/account-id"] != testAccountID {
+				t.Errorf("stored ownership = (%q, %q), want caller account %q", stored.Spec.AccountID, stored.Labels["hyperfleet.io/account-id"], testAccountID)
+			}
+			if stored.Spec.Properties["changed"] != "true" {
+				t.Error("valid property update was not saved")
+			}
+		})
 	}
 }
 

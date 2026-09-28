@@ -22,12 +22,20 @@ import (
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 )
 
-func testNodePoolCR(npName, accountID string) *hyperfleetv1alpha1.NodePool {
+func testNodePoolCR(npName string, parent *hyperfleetv1alpha1.Cluster) *hyperfleetv1alpha1.NodePool {
 	return &hyperfleetv1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      npName,
-			Namespace: "account-" + accountID,
-			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+			Namespace: parent.Namespace,
+			Labels: map[string]string{
+				"hyperfleet.io/account-id": parent.Labels["hyperfleet.io/account-id"],
+				clusterUIDLabel:            string(parent.UID),
+			},
+			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(parent, hyperfleetv1alpha1.GroupVersion.WithKind("Cluster"))},
+		},
+		Spec: hyperfleetv1alpha1.NodePoolSpec{
+			AccountID: parent.Spec.AccountID,
+			NodePool:  hyperfleetv1alpha1.NodePoolSpecPassthrough{ClusterName: parent.Name},
 		},
 	}
 }
@@ -40,11 +48,139 @@ func newTestNodePoolHandler(t *testing.T, objects ...client.Object) *NodePoolHan
 	return NewNodePoolHandler(hyperfleetdb.NewClientFrom(fc, logger), logger)
 }
 
+func TestNodePoolHandler_List_PaginationIsolation(t *testing.T) {
+	const ownCluster1 = "550e8400-e29b-41d4-a716-446655440000"
+	const ownCluster2 = "550e8400-e29b-41d4-a716-446655440001"
+	const foreignCluster = "550e8400-e29b-41d4-a716-446655440002"
+	first := testClusterCR(ownCluster1, "own-1", testAccountID)
+	second := testClusterCR(ownCluster2, "own-2", testAccountID)
+	foreign := testClusterCR(foreignCluster, "foreign", "999999999999")
+	forged := testNodePoolCR("foreign.workers", foreign)
+	forged.Namespace = "account-" + testAccountID
+	forged.Labels["hyperfleet.io/account-id"] = testAccountID
+	handler := newTestNodePoolHandler(t,
+		first, second, foreign, forged,
+		testNodePoolCR("own-1.workers", first), testNodePoolCR("own-2.workers", second),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/api/v0/nodepools?limit=1&offset=1", nil)
+	req = req.WithContext(testContext(testAccountID))
+	w := httptest.NewRecorder()
+
+	handler.List(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var response struct {
+		Items []any `json:"items"`
+		Total int   `json:"total"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Total != 2 || len(response.Items) != 1 {
+		t.Errorf("got total=%d items=%d, want total=2 items=1", response.Total, len(response.Items))
+	}
+}
+
+func TestNodePoolHandler_Create_SetsAccountOwnership(t *testing.T) {
+	const clusterID = "550e8400-e29b-41d4-a716-446655440000"
+	handler := newTestNodePoolHandler(t, testClusterCR(clusterID, "parent", testAccountID))
+	body := mustMarshal(t, map[string]any{
+		"metadata": map[string]any{
+			"name":      "parent.workers",
+			"namespace": "account-" + testAccountID,
+			"labels":    map[string]any{"hyperfleet.io/account-id": "999999999999"},
+		},
+		"spec": map[string]any{"nodePool": map[string]any{"replicas": 2}, "accountId": "999999999999"},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/nodepools", bytes.NewReader(body))
+	req = req.WithContext(testContext(testAccountID))
+	w := httptest.NewRecorder()
+
+	handler.Create(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	stored, err := handler.db.GetNodePool(req.Context(), testAccountID, "parent.workers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Spec.AccountID != testAccountID || stored.Labels["hyperfleet.io/account-id"] != testAccountID {
+		t.Errorf("stored ownership = (%q, %q), want caller account %q", stored.Spec.AccountID, stored.Labels["hyperfleet.io/account-id"], testAccountID)
+	}
+}
+
+func TestNodePoolHandler_CrossAccountOperations(t *testing.T) {
+	const clusterID = "550e8400-e29b-41d4-a716-446655440000"
+	parent := testClusterCR(clusterID, "foreign", "999999999999")
+	foreign := testNodePoolCR("foreign.workers", parent)
+	foreign.Namespace = "account-" + testAccountID
+	foreign.Labels["hyperfleet.io/account-id"] = testAccountID
+	handler := newTestNodePoolHandler(t, parent, foreign)
+
+	tests := []struct {
+		name, method, path, body string
+		invoke                   func(http.ResponseWriter, *http.Request)
+	}{
+		{"create", http.MethodPost, "/api/v0/nodepools", `{"metadata":{"name":"foreign.new"},"spec":{"nodePool":{}}}`, handler.Create},
+		{"get", http.MethodGet, "/api/v0/nodepools/foreign.workers", "", handler.Get},
+		{"update", http.MethodPut, "/api/v0/nodepools/foreign.workers", `{"spec":{"labels":{"changed":"true"}}}`, handler.Update},
+		{"delete", http.MethodDelete, "/api/v0/nodepools/foreign.workers", "", handler.Delete},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assertHandlerStatus(t, http.StatusNotFound, tc.method, tc.path, tc.body,
+				map[string]string{"id": foreign.Name}, testAccountID, tc.invoke)
+		})
+	}
+}
+
+func TestNodePoolHandler_SameAccountOperations(t *testing.T) {
+	const clusterID = "550e8400-e29b-41d4-a716-446655440000"
+	tests := []struct {
+		name, method, body string
+		wantStatus         int
+		invoke             func(*NodePoolHandler, http.ResponseWriter, *http.Request)
+	}{
+		{"get", http.MethodGet, "", http.StatusOK, func(h *NodePoolHandler, w http.ResponseWriter, r *http.Request) { h.Get(w, r) }},
+		{"update", http.MethodPut, `{"metadata":{"labels":{"hyperfleet.io/account-id":"999999999999"}},"spec":{"labels":{"changed":"true"}}}`, http.StatusOK, func(h *NodePoolHandler, w http.ResponseWriter, r *http.Request) { h.Update(w, r) }},
+		{"delete", http.MethodDelete, "", http.StatusAccepted, func(h *NodePoolHandler, w http.ResponseWriter, r *http.Request) { h.Delete(w, r) }},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			parent := testClusterCR(clusterID, "parent", testAccountID)
+			handler := newTestNodePoolHandler(t, parent, testNodePoolCR("parent.workers", parent))
+			req := httptest.NewRequest(tc.method, "/api/v0/nodepools/parent.workers", bytes.NewBufferString(tc.body))
+			req = req.WithContext(testContext(testAccountID))
+			req = mux.SetURLVars(req, map[string]string{"id": "parent.workers"})
+			w := httptest.NewRecorder()
+
+			tc.invoke(handler, w, req)
+
+			if w.Code != tc.wantStatus {
+				t.Errorf("expected %d, got %d: %s", tc.wantStatus, w.Code, w.Body.String())
+			}
+			if tc.name == "update" {
+				stored, err := handler.db.GetNodePool(req.Context(), testAccountID, "parent.workers")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if stored.Labels["hyperfleet.io/account-id"] != testAccountID {
+					t.Errorf("stored account label = %q, want %q", stored.Labels["hyperfleet.io/account-id"], testAccountID)
+				}
+			}
+		})
+	}
+}
+
 // TestNodePoolHandler_Update_MissingSpec verifies that PUT /nodepools/{id} with
 // an absent or empty spec is rejected with 400 before any DB write.
 func TestNodePoolHandler_Update_MissingSpec(t *testing.T) {
-	np := testNodePoolCR("test-cluster.workers", testAccountID)
-	handler := newTestNodePoolHandler(t, np)
+	parent := testClusterCR("parent-uid", "test-cluster", testAccountID)
+	np := testNodePoolCR("test-cluster.workers", parent)
+	handler := newTestNodePoolHandler(t, parent, np)
 
 	cases := []struct {
 		name string
@@ -84,7 +220,8 @@ func TestNodePoolHandler_Update_MissingSpec(t *testing.T) {
 func TestNodePoolHandler_Update_AllowsUnchangedServiceManagedManagement(t *testing.T) {
 	autoRepair := true
 	replicas := int32(2)
-	nodePool := testNodePoolCR("my-cluster.workers", testAccountID)
+	parent := testClusterCR("parent-uid", "my-cluster", testAccountID)
+	nodePool := testNodePoolCR("my-cluster.workers", parent)
 	nodePool.Spec = hyperfleetv1alpha1.NodePoolSpec{
 		AutoRepair: &autoRepair,
 		NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
@@ -97,7 +234,7 @@ func TestNodePoolHandler_Update_AllowsUnchangedServiceManagedManagement(t *testi
 	}
 
 	scheme := newTestScheme()
-	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(nodePool).Build()
+	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(parent, nodePool).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handler := NewNodePoolHandler(hyperfleetdb.NewClientFrom(fc, logger), logger)
 	request := hyperfleetdb.InternalToPublicNodePool(nodePool)
@@ -128,11 +265,11 @@ func TestNodePoolHandler_Update_AllowsUnchangedServiceManagedManagement(t *testi
 
 func TestNodePoolHandler_List_ClusterIDParameterFiltersByParentUID(t *testing.T) {
 	clusterUID := "550e8400-e29b-41d4-a716-446655440000"
-	matching := testNodePoolCR("my-cluster.workers", testAccountID)
-	matching.Labels[clusterUIDLabel] = clusterUID
-	nonmatching := testNodePoolCR("other-cluster.workers", testAccountID)
-	nonmatching.Labels[clusterUIDLabel] = "550e8400-e29b-41d4-a716-446655440001"
-	handler := newTestNodePoolHandler(t, matching, nonmatching)
+	parent := testClusterCR(clusterUID, "my-cluster", testAccountID)
+	other := testClusterCR("550e8400-e29b-41d4-a716-446655440001", "other-cluster", testAccountID)
+	matching := testNodePoolCR("my-cluster.workers", parent)
+	nonmatching := testNodePoolCR("other-cluster.workers", other)
+	handler := newTestNodePoolHandler(t, parent, other, matching, nonmatching)
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/nodepools?clusterId="+clusterUID, nil)
 	req = req.WithContext(testContext(testAccountID))
 	w := httptest.NewRecorder()
@@ -207,9 +344,40 @@ func TestNodePoolHandler_List_InvalidSelector(t *testing.T) {
 	}
 }
 
+// Valid updates must survive ignored account-ID overrides, including case variants.
+func TestNodePoolUpdateOwnership(t *testing.T) {
+	for _, body := range []string{
+		`{"spec":{"accountId":"999999999999","labels":{"changed":"true"}}}`,
+		`{"spec":{"AccountId":"","labels":{"changed":"true"}}}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			parent := testClusterCR("parent-uid", "owned", testAccountID)
+			np := testNodePoolCR("owned.workers", parent)
+			fc := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(parent, np).Build()
+			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+			handler := NewNodePoolHandler(hyperfleetdb.NewClientFrom(fc, logger), logger)
+			assertHandlerStatus(t, http.StatusOK, http.MethodPut,
+				"/api/v0/nodepools/"+np.Name, body,
+				map[string]string{"id": np.Name}, testAccountID, handler.Update)
+
+			var stored hyperfleetv1alpha1.NodePool
+			if err := fc.Get(context.Background(), client.ObjectKeyFromObject(np), &stored); err != nil {
+				t.Fatal(err)
+			}
+			if stored.Spec.AccountID != testAccountID || stored.Labels["hyperfleet.io/account-id"] != testAccountID {
+				t.Errorf("stored ownership = (%q, %q), want caller account %q", stored.Spec.AccountID, stored.Labels["hyperfleet.io/account-id"], testAccountID)
+			}
+			if stored.Spec.Labels["changed"] != "true" {
+				t.Error("valid label update was not saved")
+			}
+		})
+	}
+}
+
 func TestNodePoolHandler_Get_Success(t *testing.T) {
-	nodepool := testNodePoolCR("my-cluster.workers", testAccountID)
-	handler := newTestNodePoolHandler(t, nodepool)
+	parent := testClusterCR("parent-uid", "my-cluster", testAccountID)
+	nodepool := testNodePoolCR("my-cluster.workers", parent)
+	handler := newTestNodePoolHandler(t, parent, nodepool)
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/nodepools/"+nodepool.Name, nil)
 	req = req.WithContext(testContext(testAccountID))
 	req = mux.SetURLVars(req, map[string]string{"id": nodepool.Name})
@@ -245,8 +413,9 @@ func TestNodePoolHandler_Get_NotFound(t *testing.T) {
 }
 
 func TestNodePoolHandler_Delete_Success(t *testing.T) {
-	nodepool := testNodePoolCR("my-cluster.workers", testAccountID)
-	handler := newTestNodePoolHandler(t, nodepool)
+	parent := testClusterCR("parent-uid", "my-cluster", testAccountID)
+	nodepool := testNodePoolCR("my-cluster.workers", parent)
+	handler := newTestNodePoolHandler(t, parent, nodepool)
 	req := httptest.NewRequest(http.MethodDelete, "/api/v0/nodepools/"+nodepool.Name, nil)
 	req = req.WithContext(testContext(testAccountID))
 	req = mux.SetURLVars(req, map[string]string{"id": nodepool.Name})
@@ -281,8 +450,9 @@ func TestNodePoolHandler_Delete_NotFound(t *testing.T) {
 }
 
 func TestNodePoolHandler_Update_NamespaceMismatch(t *testing.T) {
-	nodePool := testNodePoolCR("test-cluster.workers", testAccountID)
-	handler := newTestNodePoolHandler(t, nodePool)
+	parent := testClusterCR("parent-uid", "test-cluster", testAccountID)
+	nodePool := testNodePoolCR("test-cluster.workers", parent)
+	handler := newTestNodePoolHandler(t, parent, nodePool)
 	body := mustMarshal(t, map[string]any{
 		"metadata": map[string]any{"namespace": "account-999999999999"},
 		"spec":     map[string]any{"nodePool": map[string]any{"replicas": 3}},
