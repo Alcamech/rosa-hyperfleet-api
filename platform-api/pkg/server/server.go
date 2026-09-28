@@ -99,6 +99,8 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 		apiRouter.Use(rl.Middleware)
 	}
 
+	apiRouter.Use(middleware.RequireIdentity(logger))
+
 	// Management cluster routes
 	mgmtRouter := apiRouter.PathPrefix("/api/v0/management_clusters").Subrouter()
 	mgmtRouter.HandleFunc("", mgmtClusterHandler.Create).Methods(http.MethodPost)

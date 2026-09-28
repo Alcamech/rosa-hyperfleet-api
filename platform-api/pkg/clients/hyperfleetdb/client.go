@@ -59,6 +59,7 @@ func (c *Client) Close() {
 // Name = human-readable name. Labeled with the account ID.
 func (c *Client) CreateCluster(ctx context.Context, accountID string, cluster *hyperfleetv1alpha1.Cluster) error {
 	setAccountLabel(cluster, accountID)
+	cluster.Spec.AccountID = accountID
 	return c.client.Create(ctx, cluster)
 }
 
@@ -89,8 +90,10 @@ func (c *Client) ListClusters(ctx context.Context, accountID string) (*hyperflee
 	return &list, nil
 }
 
-// UpdateCluster updates the spec of an existing Cluster via CAS.
-func (c *Client) UpdateCluster(ctx context.Context, cluster *hyperfleetv1alpha1.Cluster) error {
+// UpdateCluster CAS-updates a cluster and re-pins account ownership.
+func (c *Client) UpdateCluster(ctx context.Context, accountID string, cluster *hyperfleetv1alpha1.Cluster) error {
+	setAccountLabel(cluster, accountID)
+	cluster.Spec.AccountID = accountID
 	return c.client.Update(ctx, cluster)
 }
 
@@ -105,11 +108,20 @@ func (c *Client) DeleteCluster(ctx context.Context, accountID, clusterID string)
 
 // --- NodePool operations ---
 
-// CreateNodePool creates a NodePool resource. Namespace = clusterID,
-// Name = human-readable name. Labeled with the account ID.
+// CreateNodePool creates a NodePool under an account-owned parent cluster.
 func (c *Client) CreateNodePool(ctx context.Context, accountID string, np *hyperfleetv1alpha1.NodePool) error {
+	if err := c.requireOwnedCluster(ctx, accountID, clusterIDFromNamespace(np.Namespace)); err != nil {
+		return err
+	}
 	setAccountLabel(np, accountID)
+	np.Spec.AccountID = accountID
 	return c.client.Create(ctx, np)
+}
+
+// requireOwnedCluster checks parent ownership; child labels alone are not enough.
+func (c *Client) requireOwnedCluster(ctx context.Context, accountID, clusterID string) error {
+	_, err := c.GetCluster(ctx, accountID, clusterID)
+	return err
 }
 
 // GetNodePool retrieves a NodePool by name, scoped to the account and optionally cluster.
@@ -117,6 +129,9 @@ func (c *Client) GetNodePool(
 	ctx context.Context, accountID, clusterID, nodepoolName string,
 ) (*hyperfleetv1alpha1.NodePool, error) {
 	if clusterID != "" {
+		if err := c.requireOwnedCluster(ctx, accountID, clusterID); err != nil {
+			return nil, err
+		}
 		var np hyperfleetv1alpha1.NodePool
 		err := c.client.Get(ctx, k8stypes.NamespacedName{
 			Namespace: clusterNamespace(clusterID),
@@ -137,9 +152,16 @@ func (c *Client) GetNodePool(
 		return nil, err
 	}
 	for i := range list.Items {
-		if list.Items[i].Name == nodepoolName {
-			return &list.Items[i], nil
+		if list.Items[i].Name != nodepoolName {
+			continue
 		}
+		if err := c.requireOwnedCluster(ctx, accountID, clusterIDFromNamespace(list.Items[i].Namespace)); err != nil {
+			if IsNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+		return &list.Items[i], nil
 	}
 	return nil, apierrors.NewNotFound(nodePoolGR, nodepoolName)
 }
@@ -155,14 +177,44 @@ func (c *Client) ListNodePools(ctx context.Context, accountID, clusterID string)
 		opts = append(opts, client.InNamespace(clusterNamespace(clusterID)))
 	}
 
+	// Parent ownership is independent of child labels.
+	var owned map[string]bool
+	if clusterID != "" {
+		if err := c.requireOwnedCluster(ctx, accountID, clusterID); err != nil {
+			if IsNotFound(err) {
+				return &list, nil
+			}
+			return nil, err
+		}
+	} else {
+		parents, err := c.ListClusters(ctx, accountID)
+		if err != nil {
+			return nil, err
+		}
+		owned = make(map[string]bool, len(parents.Items))
+		for i := range parents.Items {
+			owned[parents.Items[i].Namespace] = true
+		}
+	}
 	if err := c.client.List(ctx, &list, opts...); err != nil {
 		return nil, err
+	}
+	if owned != nil {
+		items := list.Items[:0]
+		for i := range list.Items {
+			if owned[list.Items[i].Namespace] {
+				items = append(items, list.Items[i])
+			}
+		}
+		list.Items = items
 	}
 	return &list, nil
 }
 
-// UpdateNodePool updates the spec of an existing NodePool via CAS.
-func (c *Client) UpdateNodePool(ctx context.Context, np *hyperfleetv1alpha1.NodePool) error {
+// UpdateNodePool CAS-updates a node pool and re-pins account ownership.
+func (c *Client) UpdateNodePool(ctx context.Context, accountID string, np *hyperfleetv1alpha1.NodePool) error {
+	setAccountLabel(np, accountID)
+	np.Spec.AccountID = accountID
 	return c.client.Update(ctx, np)
 }
 

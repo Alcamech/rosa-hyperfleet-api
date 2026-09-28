@@ -33,6 +33,7 @@ func testOidcConfigCR(configID, accountID string, spec hyperfleetv1alpha1.OidcCo
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      configID,
 			Namespace: "account-" + accountID,
+			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
 		},
 		Spec: spec,
 	}
@@ -133,6 +134,7 @@ func TestOidcConfigHandler_List_Pagination(t *testing.T) {
 		testOidcConfigCR("oidc-1", testAccountID, testManagedOidcConfigSpec(testAccountID)),
 		testOidcConfigCR("oidc-2", testAccountID, testManagedOidcConfigSpec(testAccountID)),
 		testOidcConfigCR("oidc-3", testAccountID, testManagedOidcConfigSpec(testAccountID)),
+		testOidcConfigCR("foreign", "999999999999", testManagedOidcConfigSpec("999999999999")),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handler := NewOidcConfigHandler(hyperfleetdb.NewClientFrom(fc, logger), testOidcIssuerBaseURL, testRegion, logger)
@@ -203,8 +205,13 @@ func TestOidcConfigHandler_Create_Success(t *testing.T) {
 	handler.generateID = func() string { return "generated-config-id" }
 
 	body, _ := json.Marshal(map[string]any{
+		"metadata": map[string]any{
+			"namespace": "account-999999999999",
+			"labels":    map[string]any{"hyperfleet.io/account-id": "999999999999"},
+		},
 		"spec": map[string]any{
-			"type": "managed",
+			"type":      "managed",
+			"accountId": "999999999999",
 		},
 	})
 
@@ -231,6 +238,14 @@ func TestOidcConfigHandler_Create_Success(t *testing.T) {
 	wantIssuerURL := testOidcIssuerBaseURL + "/" + testRegion + "-generated-config-id"
 	if spec["issuerUrl"] != wantIssuerURL {
 		t.Errorf("expected spec.issuerUrl=%s, got %v", wantIssuerURL, spec["issuerUrl"])
+	}
+
+	stored, err := handler.db.GetOidcConfig(req.Context(), testAccountID, "generated-config-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Spec.AccountID != testAccountID || stored.Labels["hyperfleet.io/account-id"] != testAccountID {
+		t.Errorf("stored ownership = (%q, %q), want caller account %q", stored.Spec.AccountID, stored.Labels["hyperfleet.io/account-id"], testAccountID)
 	}
 }
 
@@ -792,6 +807,27 @@ func TestOidcConfigHandler_Get_WrongAccount(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for config owned by a different account, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestOidcConfigHandler_Delete_WrongAccount(t *testing.T) {
+	const foreignAccount = "999999999999"
+	foreign := testOidcConfigCR("oidc-foreign", foreignAccount, testManagedOidcConfigSpec(foreignAccount))
+	fc := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(foreign).Build()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewOidcConfigHandler(hyperfleetdb.NewClientFrom(fc, logger), testOidcIssuerBaseURL, testRegion, logger)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v0/oidc_configs/oidc-foreign", nil)
+	req = req.WithContext(testContext(testAccountID))
+	req = mux.SetURLVars(req, map[string]string{"id": "oidc-foreign"})
+	w := httptest.NewRecorder()
+
+	handler.Delete(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+	if _, err := handler.db.GetOidcConfig(req.Context(), foreignAccount, "oidc-foreign"); err != nil {
+		t.Fatalf("foreign OIDC config was deleted: %v", err)
 	}
 }
 

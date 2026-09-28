@@ -2,7 +2,10 @@ package middleware
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
+
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 )
 
 type contextKey string
@@ -56,6 +59,27 @@ func Identity(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func RequireIdentity(logger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v0/live", "/api/v0/ready", "/api/v0/info":
+				next.ServeHTTP(w, r)
+				return
+			}
+			if GetAccountID(r.Context()) == "" || GetCallerARN(r.Context()) == "" {
+				if err := api.WriteError(w, api.APIError{
+					Code: "AUTH-001", HTTPStatus: http.StatusForbidden, Message: "Caller account ID and ARN are required",
+				}); err != nil {
+					logger.Error("failed to write identity error", "error", err)
+				}
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // GetAccountID retrieves the AWS account ID from context

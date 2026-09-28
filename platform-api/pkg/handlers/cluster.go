@@ -382,7 +382,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.db.UpdateCluster(ctx, cr); err != nil {
+	if err := h.db.UpdateCluster(ctx, accountID, cr); err != nil {
 		h.logger.Error("failed to update cluster", "error", err, "account_id", accountID, "cluster_id", clusterID)
 		writeAPIError(w, ErrClusterUpdateFailed, h.logger)
 		return
