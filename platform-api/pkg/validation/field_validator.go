@@ -67,7 +67,8 @@ func (v *FieldValidator) ValidateCreate(spec any, fs featuregate.FeatureSet) Val
 	return v.validate(fields, nil, OperationCreate, fs, pointers)
 }
 
-// ValidateUpdate checks that an update request does not change service-set or
+// ValidateUpdate checks that an update request does not change service-set
+// fields (echo of the server value, or both unset, is allowed), change
 // immutable fields, or use feature-gated fields without the gate enabled.
 func (v *FieldValidator) ValidateUpdate(newSpec, existingSpec any, fs featuregate.FeatureSet) ValidationErrors {
 	if newSpec == nil {

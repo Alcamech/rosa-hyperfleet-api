@@ -312,7 +312,7 @@ func TestNodePoolHandlerUpdateRejectsExplicitNullRootVolume(t *testing.T) {
 	}
 
 	// Confirm the stored RootVolume was NOT wiped out by a rejected request.
-	stored, err := handler.db.GetNodePool(context.Background(), accountID, poolName)
+	stored, err := handler.db.GetNodePool(request.Context(), poolName)
 	if err != nil {
 		t.Fatalf("GetNodePool: %v", err)
 	}
@@ -360,7 +360,7 @@ func TestNodePoolHandlerUpdateAllowsOmittedRootVolume(t *testing.T) {
 		t.Fatalf("Update() status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
 	}
 
-	stored, err := handler.db.GetNodePool(context.Background(), accountID, poolName)
+	stored, err := handler.db.GetNodePool(request.Context(), poolName)
 	if err != nil {
 		t.Fatalf("GetNodePool: %v", err)
 	}
@@ -422,7 +422,7 @@ func TestNodePoolHandlerUpdateRejectsExplicitNullAtParentLevels(t *testing.T) {
 				t.Fatalf("Update() response does not identify rootVolume.size: %s", response.Body.String())
 			}
 
-			stored, err := handler.db.GetNodePool(context.Background(), accountID, poolName)
+			stored, err := handler.db.GetNodePool(request.Context(), poolName)
 			if err != nil {
 				t.Fatalf("GetNodePool: %v", err)
 			}

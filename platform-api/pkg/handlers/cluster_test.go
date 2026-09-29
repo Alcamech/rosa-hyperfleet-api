@@ -362,7 +362,7 @@ func TestClusterHandler_Create_WithoutDNSReservationDefersAllocationToOperator(t
 		t.Errorf("DNSReservationID = %q before operator fallback, want empty", response.Spec.DNSReservationID)
 	}
 
-	stored, err := hyperfleetdb.NewClientFrom(fc, logger).GetCluster(context.Background(), testAccountID, "my-cluster")
+	stored, err := hyperfleetdb.NewClientFrom(fc, logger).GetCluster(req.Context(), "my-cluster")
 	if err != nil {
 		t.Fatalf("get created Cluster: %v", err)
 	}
@@ -391,7 +391,7 @@ func TestClusterHandler_Create_LongNameWithDNSReservation(t *testing.T) {
 		t.Fatalf("expected 201 for long name with DNS reservation, got %d: %s", w.Code, w.Body.String())
 	}
 
-	stored, err := hyperfleetdb.NewClientFrom(fc, logger).GetCluster(context.Background(), testAccountID, clusterName)
+	stored, err := hyperfleetdb.NewClientFrom(fc, logger).GetCluster(req.Context(), clusterName)
 	if err != nil {
 		t.Fatalf("get created Cluster: %v", err)
 	}
@@ -857,7 +857,7 @@ func TestClusterHandler_Create_OidcClaimFailureDeletesForOperatorCleanup(t *test
 	cluster := testClusterCR("rollback-cluster-uid", "rollback-cluster", testAccountID)
 	cluster.Spec.OidcConfigID = string(oidcConfig.UID)
 	cluster.Finalizers = []string{clusterCleanupFinalizer}
-	if err := handler.db.CreateCluster(context.Background(), testAccountID, cluster); err != nil {
+	if err := handler.db.CreateCluster(testContext(testAccountID), cluster); err != nil {
 		t.Fatalf("create Cluster: %v", err)
 	}
 	reservation, err := handler.db.GetDNSReservationByUID(context.Background(), testAccountID, testDNSReservationUID)
@@ -865,11 +865,11 @@ func TestClusterHandler_Create_OidcClaimFailureDeletesForOperatorCleanup(t *test
 		t.Fatalf("get DNS reservation: %v", err)
 	}
 
-	_, apiErr := handler.completeClusterCreate(context.Background(), testAccountID, cluster.Name, cluster, reservation, oidcConfig)
+	_, apiErr := handler.completeClusterCreate(testContext(testAccountID), testAccountID, cluster.Name, cluster, reservation, oidcConfig)
 	if apiErr == nil || apiErr.Code != ErrClusterCreateOidcConfigInUse.Code {
 		t.Fatalf("completeClusterCreate API error = %v, want %s", apiErr, ErrClusterCreateOidcConfigInUse.Code)
 	}
-	deletingCluster, err := handler.db.GetCluster(context.Background(), testAccountID, cluster.Name)
+	deletingCluster, err := handler.db.GetCluster(testContext(testAccountID), cluster.Name)
 	if err != nil {
 		t.Fatalf("get Cluster after failed claim: %v", err)
 	}
@@ -1001,7 +1001,7 @@ func TestClusterHandler_ClaimOidcConfigRetriesUpdateConflict(t *testing.T) {
 	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
 	clusterUID := "new-cluster-uid"
 
-	if apiErr := handler.claimOidcConfig(context.Background(), testAccountID, testOidcConfigID, clusterUID); apiErr != nil {
+	if apiErr := handler.claimOidcConfig(testContext(testAccountID), testAccountID, testOidcConfigID, clusterUID); apiErr != nil {
 		t.Fatalf("claimOidcConfig returned error: %v", apiErr)
 	}
 	if updateCalls != 2 {
