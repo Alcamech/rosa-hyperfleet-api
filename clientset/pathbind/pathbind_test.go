@@ -2,6 +2,7 @@ package pathbind_test
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -41,6 +42,11 @@ type nodePoolInput struct {
 	Replicas     *int32 `hfsdk:"spec.nodePool.replicas"`
 	InstanceType string `hfsdk:"spec.nodePool.platform.aws.instanceType"`
 	SubnetID     string `hfsdk:"spec.nodePool.platform.aws.subnet.id"`
+}
+
+type nodePoolAutoscalingInput struct {
+	Min *int32 `hfsdk:"spec.nodePool.autoScaling.min"`
+	Max *int32 `hfsdk:"spec.nodePool.autoScaling.max"`
 }
 
 func TestExpand_ClusterDirectMappings(t *testing.T) {
@@ -177,6 +183,131 @@ func TestExpand_NilPointerFieldSkipped(t *testing.T) {
 	}
 	if np.Spec.NodePool.Replicas != nil {
 		t.Errorf("Replicas should be nil when input is nil, got %v", np.Spec.NodePool.Replicas)
+	}
+}
+
+func TestExpand_NodePoolAutoScalingRequest(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name string
+		min  int32
+		max  int32
+	}{
+		{name: "normal bounds", min: 1, max: 3},
+		{name: "explicit scale from zero", min: 0, max: 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			min, max := tt.min, tt.max
+			np := &v1alpha1.NodePool{}
+			if err := pathbind.Expand(ctx, nodePoolAutoscalingInput{Min: &min, Max: &max}, np); err != nil {
+				t.Fatalf("Expand: %v", err)
+			}
+			if np.Spec.NodePool.AutoScaling == nil {
+				t.Fatal("AutoScaling is nil after expansion")
+			}
+			if np.Spec.NodePool.AutoScaling.Min == nil || *np.Spec.NodePool.AutoScaling.Min != tt.min {
+				t.Fatalf("AutoScaling.Min = %v, want %d", np.Spec.NodePool.AutoScaling.Min, tt.min)
+			}
+			if np.Spec.NodePool.AutoScaling.Max != tt.max {
+				t.Fatalf("AutoScaling.Max = %d, want %d", np.Spec.NodePool.AutoScaling.Max, tt.max)
+			}
+			if np.Spec.NodePool.Replicas != nil {
+				t.Fatalf("Replicas = %d with autoscaling set, want nil", *np.Spec.NodePool.Replicas)
+			}
+
+			assertNodePoolRequestScaling(t, np, true, tt.min, tt.max, nil)
+		})
+	}
+}
+
+func TestExpand_NodePoolAutoScalingUpdateRequest(t *testing.T) {
+	ctx := context.Background()
+	oldMin := int32(1)
+	np := &v1alpha1.NodePool{}
+	np.Spec.NodePool.AutoScaling = &hypershiftv1beta1.NodePoolAutoScaling{Min: &oldMin, Max: 3}
+
+	min, max := int32(2), int32(6)
+	if err := pathbind.Expand(ctx, nodePoolAutoscalingInput{Min: &min, Max: &max}, np); err != nil {
+		t.Fatalf("Expand update: %v", err)
+	}
+	if got := np.Spec.NodePool.AutoScaling; got == nil || got.Min == nil || *got.Min != min || got.Max != max {
+		t.Fatalf("AutoScaling after update expansion = %#v, want min=%d max=%d", got, min, max)
+	}
+	assertNodePoolRequestScaling(t, np, true, min, max, nil)
+}
+
+func TestExpand_NodePoolFixedReplicasRequest(t *testing.T) {
+	ctx := context.Background()
+	replicas := int32(3)
+	input := struct {
+		Replicas *int32 `hfsdk:"spec.nodePool.replicas"`
+	}{Replicas: &replicas}
+
+	np := &v1alpha1.NodePool{}
+	if err := pathbind.Expand(ctx, input, np); err != nil {
+		t.Fatalf("Expand: %v", err)
+	}
+	if np.Spec.NodePool.AutoScaling != nil {
+		t.Fatal("AutoScaling is set for a fixed replica request")
+	}
+	if np.Spec.NodePool.Replicas == nil || *np.Spec.NodePool.Replicas != replicas {
+		t.Fatalf("Replicas = %v, want %d", np.Spec.NodePool.Replicas, replicas)
+	}
+	assertNodePoolRequestScaling(t, np, false, 0, 0, &replicas)
+}
+
+func assertNodePoolRequestScaling(t *testing.T, np *v1alpha1.NodePool, wantAutoScaling bool, wantMin, wantMax int32, wantReplicas *int32) {
+	t.Helper()
+	body, err := json.Marshal(np)
+	if err != nil {
+		t.Fatalf("marshal NodePool request: %v", err)
+	}
+	var request struct {
+		Spec struct {
+			NodePool map[string]json.RawMessage `json:"nodePool"`
+		} `json:"spec"`
+	}
+	if err := json.Unmarshal(body, &request); err != nil {
+		t.Fatalf("decode NodePool request: %v", err)
+	}
+	autoScalingJSON, hasAutoScaling := request.Spec.NodePool["autoScaling"]
+	if hasAutoScaling != wantAutoScaling {
+		t.Fatalf("request autoScaling present = %t, want %t; body: %s", hasAutoScaling, wantAutoScaling, body)
+	}
+	replicasJSON, hasReplicas := request.Spec.NodePool["replicas"]
+	if wantReplicas == nil {
+		if hasReplicas {
+			t.Fatalf("request includes replicas with autoscaling enabled; body: %s", body)
+		}
+	} else {
+		var gotReplicas int32
+		if !hasReplicas {
+			t.Fatalf("request omits fixed replicas; body: %s", body)
+		}
+		if err := json.Unmarshal(replicasJSON, &gotReplicas); err != nil {
+			t.Fatalf("decode replicas request: %v", err)
+		}
+		if gotReplicas != *wantReplicas {
+			t.Fatalf("request replicas = %d, want %d; body: %s", gotReplicas, *wantReplicas, body)
+		}
+	}
+	if !wantAutoScaling {
+		return
+	}
+	var autoScaling struct {
+		Min *int32 `json:"min"`
+		Max int32  `json:"max"`
+	}
+	if err := json.Unmarshal(autoScalingJSON, &autoScaling); err != nil {
+		t.Fatalf("decode autoScaling request: %v", err)
+	}
+	if autoScaling.Min == nil || *autoScaling.Min != wantMin {
+		t.Fatalf("request autoScaling.min = %v, want %d; body: %s", autoScaling.Min, wantMin, body)
+	}
+	if autoScaling.Max != wantMax {
+		t.Fatalf("request autoScaling.max = %d, want %d; body: %s", autoScaling.Max, wantMax, body)
 	}
 }
 
