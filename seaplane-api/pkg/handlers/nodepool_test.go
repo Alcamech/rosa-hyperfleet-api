@@ -103,7 +103,7 @@ func TestNodePoolHandler_Create_SetsAccountOwnership(t *testing.T) {
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}
-	stored, err := handler.db.GetNodePool(req.Context(), testAccountID, "parent.workers")
+	stored, err := handler.db.GetNodePool(req.Context(), "parent.workers")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestNodePoolHandler_SameAccountOperations(t *testing.T) {
 				t.Errorf("expected %d, got %d: %s", tc.wantStatus, w.Code, w.Body.String())
 			}
 			if tc.name == "update" {
-				stored, err := handler.db.GetNodePool(req.Context(), testAccountID, "parent.workers")
+				stored, err := handler.db.GetNodePool(req.Context(), "parent.workers")
 				if err != nil {
 					t.Fatal(err)
 				}

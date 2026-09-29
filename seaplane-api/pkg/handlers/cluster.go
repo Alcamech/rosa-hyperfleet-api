@@ -78,7 +78,7 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("listing clusters", "account_id", accountID, "limit", limit, "offset", offset)
 
-	list, err := h.db.ListClusters(ctx, accountID)
+	list, err := h.db.ListClusters(ctx)
 	if err != nil {
 		h.logger.Error("failed to list clusters", "error", err, "account_id", accountID)
 		writeAPIError(w, ErrClusterList, h.logger)
@@ -148,7 +148,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	queueURL, region := requestedTerminationHandlerQueue(req.Spec.HostedCluster.Platform.AWS)
 	if queueURL != "" {
-		existing, err := h.db.ListClusters(ctx, accountID)
+		existing, err := h.db.ListClusters(ctx)
 		if err != nil {
 			h.logger.Error("failed to check Spot termination handler queue URL uniqueness", "error", err, "account_id", accountID)
 			writeAPIError(w, ErrClusterCreateNameCheck, h.logger)
@@ -210,7 +210,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		cr.Spec.HostedCluster.IssuerURL = oidcConfig.Spec.IssuerUrl
 	}
 
-	if err := h.db.CreateCluster(ctx, accountID, cr); err != nil {
+	if err := h.db.CreateCluster(ctx, cr); err != nil {
 		if queueClaimCreated {
 			if releaseErr := h.db.ReleaseSpotTerminationQueue(context.WithoutCancel(ctx), accountID, queueURL, req.Name); releaseErr != nil {
 				h.logger.Warn("failed to release Spot termination handler queue claim after cluster create failure", "error", releaseErr, "account_id", accountID)
@@ -287,7 +287,7 @@ func (h *ClusterHandler) completeClusterCreate(ctx context.Context, accountID, c
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), clusterCreateCleanupTimeout)
 		defer cancel()
 		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			current, err := h.db.GetCluster(cleanupCtx, accountID, clusterName)
+			current, err := h.db.GetCluster(cleanupCtx, clusterName)
 			if err != nil {
 				if seaplanedb.IsNotFound(err) {
 					return nil
@@ -324,19 +324,19 @@ func (h *ClusterHandler) completeClusterCreate(ctx context.Context, accountID, c
 			deleteClusterForCleanup()
 			return nil, apiErr
 		}
-		if err := h.db.UpdateOidcConfigLastUsedTimestamp(ctx, accountID, string(oidcConfig.UID), metav1.Now()); err != nil {
+		if err := h.db.UpdateOidcConfigLastUsedTimestamp(ctx, string(oidcConfig.UID), metav1.Now()); err != nil {
 			h.logger.Warn("failed to update oidc config lastUsedTimestamp", "error", err, "account_id", accountID, "oidc_config_uid", oidcConfig.UID)
 		}
 	}
 
-	if latest, err := h.db.GetCluster(ctx, accountID, clusterName); err == nil {
+	if latest, err := h.db.GetCluster(ctx, clusterName); err == nil {
 		cluster = latest
 	}
 	return cluster, nil
 }
 func (h *ClusterHandler) updateManagedIssuerURL(ctx context.Context, accountID, clusterName, clusterUID, issuerURL string) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		cluster, err := h.db.GetCluster(ctx, accountID, clusterName)
+		cluster, err := h.db.GetCluster(ctx, clusterName)
 		if err != nil {
 			return err
 		}
@@ -344,7 +344,7 @@ func (h *ClusterHandler) updateManagedIssuerURL(ctx context.Context, accountID, 
 			return fmt.Errorf("cluster UID changed from %s to %s during create", clusterUID, cluster.UID)
 		}
 		cluster.Spec.HostedCluster.IssuerURL = issuerURL
-		return h.db.UpdateCluster(ctx, accountID, cluster)
+		return h.db.UpdateCluster(ctx, cluster)
 	})
 }
 
@@ -357,7 +357,7 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("getting cluster", "account_id", accountID, "cluster_name", clusterName)
 
-	cr, err := h.db.GetCluster(ctx, accountID, clusterName)
+	cr, err := h.db.GetCluster(ctx, clusterName)
 	if err != nil {
 		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrClusterGetNotFound, h.logger)
@@ -432,7 +432,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var validationErr validation.ValidationErrors
 	var mergeErr error
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		current, err := h.db.GetCluster(ctx, accountID, clusterName)
+		current, err := h.db.GetCluster(ctx, clusterName)
 		if err != nil {
 			return err
 		}
@@ -448,7 +448,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		queueURL, region := clusterTerminationHandlerQueue(current)
 		queueChanged := queueURL != oldQueueURL || region != oldRegion
 		if queueChanged && queueURL != "" {
-			existing, err := h.db.ListClusters(ctx, accountID)
+			existing, err := h.db.ListClusters(ctx)
 			if err != nil {
 				return err
 			}
@@ -466,7 +466,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
-		if err := h.db.UpdateCluster(ctx, accountID, current); err != nil {
+		if err := h.db.UpdateCluster(ctx, current); err != nil {
 			return err
 		}
 		updated = current
@@ -537,7 +537,7 @@ func (h *ClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("deleting cluster", "account_id", accountID, "cluster_name", clusterName)
 
-	err := h.db.DeleteCluster(ctx, accountID, clusterName)
+	err := h.db.DeleteCluster(ctx, clusterName)
 	if err != nil {
 		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrClusterDeleteNotFound, h.logger)

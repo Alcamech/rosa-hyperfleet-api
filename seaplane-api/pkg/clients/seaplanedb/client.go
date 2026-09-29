@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/middleware"
 )
 
 const accountIDLabel = "seaplane.io/account-id"
@@ -61,16 +62,18 @@ func (c *Client) Close() {
 
 // --- Cluster operations ---
 
-// CreateCluster creates a Cluster in the caller's account namespace.
-func (c *Client) CreateCluster(ctx context.Context, accountID string, cluster *seaplanev1alpha1.Cluster) error {
+// CreateCluster creates a Cluster in the account namespace from ctx.
+func (c *Client) CreateCluster(ctx context.Context, cluster *seaplanev1alpha1.Cluster) error {
+	accountID := middleware.GetAccountID(ctx)
 	cluster.Namespace = accountNamespace(accountID)
 	setAccountLabel(cluster, accountID)
 	cluster.Spec.AccountID = accountID
 	return c.client.Create(ctx, cluster)
 }
 
-// GetCluster retrieves a Cluster by its account-scoped metadata.name.
-func (c *Client) GetCluster(ctx context.Context, accountID, name string) (*seaplanev1alpha1.Cluster, error) {
+// GetCluster retrieves a Cluster by name in the account namespace from ctx.
+func (c *Client) GetCluster(ctx context.Context, name string) (*seaplanev1alpha1.Cluster, error) {
+	accountID := middleware.GetAccountID(ctx)
 	var cluster seaplanev1alpha1.Cluster
 	err := c.client.Get(ctx, k8stypes.NamespacedName{
 		Namespace: accountNamespace(accountID),
@@ -82,8 +85,9 @@ func (c *Client) GetCluster(ctx context.Context, accountID, name string) (*seapl
 	return &cluster, nil
 }
 
-// ListClusters lists Clusters in the caller's account namespace.
-func (c *Client) ListClusters(ctx context.Context, accountID string) (*seaplanev1alpha1.ClusterList, error) {
+// ListClusters lists Clusters in the account namespace from ctx.
+func (c *Client) ListClusters(ctx context.Context) (*seaplanev1alpha1.ClusterList, error) {
+	accountID := middleware.GetAccountID(ctx)
 	var list seaplanev1alpha1.ClusterList
 	err := c.client.List(ctx, &list, client.InNamespace(accountNamespace(accountID)))
 	if err != nil {
@@ -92,16 +96,17 @@ func (c *Client) ListClusters(ctx context.Context, accountID string) (*seaplanev
 	return &list, nil
 }
 
-// UpdateCluster CAS-updates a cluster and re-pins account ownership.
-func (c *Client) UpdateCluster(ctx context.Context, accountID string, cluster *seaplanev1alpha1.Cluster) error {
+// UpdateCluster CAS-updates a cluster and re-pins account ownership from ctx.
+func (c *Client) UpdateCluster(ctx context.Context, cluster *seaplanev1alpha1.Cluster) error {
+	accountID := middleware.GetAccountID(ctx)
 	setAccountLabel(cluster, accountID)
 	cluster.Spec.AccountID = accountID
 	return c.client.Update(ctx, cluster)
 }
 
-// DeleteCluster deletes a Cluster by account-scoped metadata.name.
-func (c *Client) DeleteCluster(ctx context.Context, accountID, name string) error {
-	cluster, err := c.GetCluster(ctx, accountID, name)
+// DeleteCluster deletes a Cluster by name in the account namespace from ctx.
+func (c *Client) DeleteCluster(ctx context.Context, name string) error {
+	cluster, err := c.GetCluster(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -243,10 +248,11 @@ func (c *Client) ReleaseSpotTerminationQueue(ctx context.Context, accountID, que
 
 // --- NodePool operations ---
 
-// CreateNodePool creates a NodePool under an account-owned parent cluster.
-func (c *Client) CreateNodePool(ctx context.Context, accountID string, np *seaplanev1alpha1.NodePool) error {
+// CreateNodePool creates a NodePool under a parent owned by the account in ctx.
+func (c *Client) CreateNodePool(ctx context.Context, np *seaplanev1alpha1.NodePool) error {
+	accountID := middleware.GetAccountID(ctx)
 	np.Namespace = accountNamespace(accountID)
-	if err := c.requireOwnedCluster(ctx, accountID, np); err != nil {
+	if err := c.requireOwnedCluster(ctx, np); err != nil {
 		return err
 	}
 	setAccountLabel(np, accountID)
@@ -255,12 +261,12 @@ func (c *Client) CreateNodePool(ctx context.Context, accountID string, np *seapl
 }
 
 // requireOwnedCluster checks the stored parent name and UID, not child ownership labels.
-func (c *Client) requireOwnedCluster(ctx context.Context, accountID string, np *seaplanev1alpha1.NodePool) error {
+func (c *Client) requireOwnedCluster(ctx context.Context, np *seaplanev1alpha1.NodePool) error {
 	parent := nodePoolParent(np)
 	if parent == nil {
 		return apierrors.NewNotFound(nodePoolGR, np.Name)
 	}
-	cluster, err := c.GetCluster(ctx, accountID, parent.Name)
+	cluster, err := c.GetCluster(ctx, parent.Name)
 	if err != nil {
 		return err
 	}
@@ -278,8 +284,9 @@ func nodePoolParent(np *seaplanev1alpha1.NodePool) *metav1.OwnerReference {
 	return parent
 }
 
-// GetNodePool retrieves a NodePool by its account-scoped metadata.name.
-func (c *Client) GetNodePool(ctx context.Context, accountID, name string) (*seaplanev1alpha1.NodePool, error) {
+// GetNodePool retrieves a NodePool by name in the account namespace from ctx.
+func (c *Client) GetNodePool(ctx context.Context, name string) (*seaplanev1alpha1.NodePool, error) {
+	accountID := middleware.GetAccountID(ctx)
 	var nodePool seaplanev1alpha1.NodePool
 	err := c.client.Get(ctx, k8stypes.NamespacedName{
 		Namespace: accountNamespace(accountID),
@@ -288,15 +295,16 @@ func (c *Client) GetNodePool(ctx context.Context, accountID, name string) (*seap
 	if err != nil {
 		return nil, err
 	}
-	if err := c.requireOwnedCluster(ctx, accountID, &nodePool); err != nil {
+	if err := c.requireOwnedCluster(ctx, &nodePool); err != nil {
 		return nil, err
 	}
 	return &nodePool, nil
 }
 
-// ListNodePools lists NodePools in the account namespace, optionally filtered
-// by their parent Cluster UID label.
-func (c *Client) ListNodePools(ctx context.Context, accountID, clusterUID string) (*seaplanev1alpha1.NodePoolList, error) {
+// ListNodePools lists NodePools in the account namespace from ctx, optionally
+// filtered by their parent Cluster UID label.
+func (c *Client) ListNodePools(ctx context.Context, clusterUID string) (*seaplanev1alpha1.NodePoolList, error) {
+	accountID := middleware.GetAccountID(ctx)
 	var list seaplanev1alpha1.NodePoolList
 	opts := []client.ListOption{client.InNamespace(accountNamespace(accountID))}
 	if clusterUID != "" {
@@ -308,7 +316,7 @@ func (c *Client) ListNodePools(ctx context.Context, accountID, clusterUID string
 	}
 
 	// Resolve parent ownership in one batch, including the current object incarnation.
-	parents, err := c.ListClusters(ctx, accountID)
+	parents, err := c.ListClusters(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -328,16 +336,17 @@ func (c *Client) ListNodePools(ctx context.Context, accountID, clusterUID string
 	return &list, nil
 }
 
-// UpdateNodePool CAS-updates a node pool and re-pins account ownership.
-func (c *Client) UpdateNodePool(ctx context.Context, accountID string, np *seaplanev1alpha1.NodePool) error {
+// UpdateNodePool CAS-updates a node pool and re-pins account ownership from ctx.
+func (c *Client) UpdateNodePool(ctx context.Context, np *seaplanev1alpha1.NodePool) error {
+	accountID := middleware.GetAccountID(ctx)
 	setAccountLabel(np, accountID)
 	np.Spec.AccountID = accountID
 	return c.client.Update(ctx, np)
 }
 
-// DeleteNodePool deletes a NodePool by its account-scoped metadata.name.
-func (c *Client) DeleteNodePool(ctx context.Context, accountID, name string) error {
-	np, err := c.GetNodePool(ctx, accountID, name)
+// DeleteNodePool deletes a NodePool by name in the account namespace from ctx.
+func (c *Client) DeleteNodePool(ctx context.Context, name string) error {
+	np, err := c.GetNodePool(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -479,8 +488,9 @@ func (c *Client) CreateOidcConfig(ctx context.Context, accountID string, oc *sea
 	return c.client.Create(ctx, oc)
 }
 
-// GetOidcConfig retrieves an OidcConfig by account-scoped metadata.name.
-func (c *Client) GetOidcConfig(ctx context.Context, accountID, name string) (*seaplanev1alpha1.OidcConfig, error) {
+// GetOidcConfig retrieves an OidcConfig by name for the account in ctx.
+func (c *Client) GetOidcConfig(ctx context.Context, name string) (*seaplanev1alpha1.OidcConfig, error) {
+	accountID := middleware.GetAccountID(ctx)
 	var oc seaplanev1alpha1.OidcConfig
 	err := c.client.Get(ctx, k8stypes.NamespacedName{
 		Namespace: accountNamespace(accountID),
@@ -492,8 +502,9 @@ func (c *Client) GetOidcConfig(ctx context.Context, accountID, name string) (*se
 	return &oc, nil
 }
 
-// GetOidcConfigByUID resolves an OidcConfig UID within an account namespace.
-func (c *Client) GetOidcConfigByUID(ctx context.Context, accountID, uid string) (*seaplanev1alpha1.OidcConfig, error) {
+// GetOidcConfigByUID resolves an OidcConfig UID within the account namespace from ctx.
+func (c *Client) GetOidcConfigByUID(ctx context.Context, uid string) (*seaplanev1alpha1.OidcConfig, error) {
+	accountID := middleware.GetAccountID(ctx)
 	var list seaplanev1alpha1.OidcConfigList
 	if err := c.client.List(ctx, &list,
 		client.InNamespace(accountNamespace(accountID)),
@@ -507,8 +518,9 @@ func (c *Client) GetOidcConfigByUID(ctx context.Context, accountID, uid string) 
 	return &list.Items[0], nil
 }
 
-// ListOidcConfigs lists OidcConfigs for the given account by namespace.
-func (c *Client) ListOidcConfigs(ctx context.Context, accountID string) (*seaplanev1alpha1.OidcConfigList, error) {
+// ListOidcConfigs lists OidcConfigs for the account in ctx by namespace.
+func (c *Client) ListOidcConfigs(ctx context.Context) (*seaplanev1alpha1.OidcConfigList, error) {
+	accountID := middleware.GetAccountID(ctx)
 	var list seaplanev1alpha1.OidcConfigList
 	err := c.client.List(ctx, &list, client.InNamespace(accountNamespace(accountID)))
 	if err != nil {
@@ -517,9 +529,9 @@ func (c *Client) ListOidcConfigs(ctx context.Context, accountID string) (*seapla
 	return &list, nil
 }
 
-// DeleteOidcConfig deletes an OidcConfig by accountID and configID.
-func (c *Client) DeleteOidcConfig(ctx context.Context, accountID, configID string) error {
-	oc, err := c.GetOidcConfig(ctx, accountID, configID)
+// DeleteOidcConfig deletes an OidcConfig by configID for the account in ctx.
+func (c *Client) DeleteOidcConfig(ctx context.Context, configID string) error {
+	oc, err := c.GetOidcConfig(ctx, configID)
 	if err != nil {
 		return err
 	}
@@ -527,9 +539,9 @@ func (c *Client) DeleteOidcConfig(ctx context.Context, accountID, configID strin
 }
 
 // UpdateOidcConfigLastUsedTimestamp sets status.lastUsedTimestamp on an
-// OidcConfig, scoped to the given account.
-func (c *Client) UpdateOidcConfigLastUsedTimestamp(ctx context.Context, accountID, oidcConfigUID string, ts metav1.Time) error {
-	oc, err := c.GetOidcConfigByUID(ctx, accountID, oidcConfigUID)
+// OidcConfig, resolved by UID within the account in ctx.
+func (c *Client) UpdateOidcConfigLastUsedTimestamp(ctx context.Context, oidcConfigUID string, ts metav1.Time) error {
+	oc, err := c.GetOidcConfigByUID(ctx, oidcConfigUID)
 	if err != nil {
 		return err
 	}

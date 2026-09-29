@@ -129,7 +129,7 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("listing nodepools", "account_id", accountID, "limit", limit, "offset", offset, "cluster_uid", clusterUID)
 
-	list, err := h.db.ListNodePools(ctx, accountID, clusterUID)
+	list, err := h.db.ListNodePools(ctx, clusterUID)
 	if err != nil {
 		h.logger.Error("failed to list nodepools", "error", err, "account_id", accountID)
 		writeAPIError(w, ErrNodePoolList, h.logger)
@@ -214,7 +214,7 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cluster, err := h.db.GetCluster(ctx, accountID, clusterName)
+	cluster, err := h.db.GetCluster(ctx, clusterName)
 	if err != nil {
 		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolCreateClusterNotFound, h.logger)
@@ -238,7 +238,7 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	cr.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(cluster, seaplanev1alpha1.GroupVersion.WithKind("Cluster"))}
 	cr.Labels["seaplane.io/cluster-uid"] = string(cluster.UID)
 
-	if err := h.db.CreateNodePool(ctx, accountID, cr); err != nil {
+	if err := h.db.CreateNodePool(ctx, cr); err != nil {
 		h.logger.Error("failed to create nodepool", "error", err, "account_id", accountID)
 		if seaplanedb.IsAlreadyExists(err) {
 			writeAPIError(w, ErrNodePoolCreateNameConflict, h.logger)
@@ -261,7 +261,7 @@ func (h *NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("getting nodepool", "account_id", accountID, "nodepool_name", nodepoolName)
 
-	cr, err := h.db.GetNodePool(ctx, accountID, nodepoolName)
+	cr, err := h.db.GetNodePool(ctx, nodepoolName)
 	if err != nil {
 		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolGetNotFound, h.logger)
@@ -325,7 +325,7 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var validationErr validation.ValidationErrors
 	var mergeErr error
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		current, err := h.db.GetNodePool(ctx, accountID, nodepoolName)
+		current, err := h.db.GetNodePool(ctx, nodepoolName)
 		if err != nil {
 			return err
 		}
@@ -343,7 +343,7 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 			validationErr = errs
 			return fmt.Errorf("invalid nodepool replicas: %w", errs)
 		}
-		if err := h.db.UpdateNodePool(ctx, accountID, current); err != nil {
+		if err := h.db.UpdateNodePool(ctx, current); err != nil {
 			return err
 		}
 		updated = current
@@ -385,7 +385,7 @@ func (h *NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("deleting nodepool", "account_id", accountID, "nodepool_name", nodepoolName)
 
-	err := h.db.DeleteNodePool(ctx, accountID, nodepoolName)
+	err := h.db.DeleteNodePool(ctx, nodepoolName)
 	if err != nil {
 		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolDeleteNotFound, h.logger)
