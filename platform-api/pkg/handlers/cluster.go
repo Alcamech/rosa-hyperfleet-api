@@ -76,7 +76,7 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("listing clusters", "account_id", accountID, "limit", limit, "offset", offset)
 
-	list, err := h.db.ListClusters(ctx, accountID)
+	list, err := h.db.ListClusters(ctx)
 	if err != nil {
 		h.logger.Error("failed to list clusters", "error", err, "account_id", accountID)
 		writeAPIError(w, ErrClusterList, h.logger)
@@ -160,7 +160,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	existing, err := h.db.ListClusters(ctx, accountID)
+	existing, err := h.db.ListClusters(ctx)
 	if err != nil {
 		h.logger.Error("failed to check cluster name uniqueness", "error", err, "account_id", accountID)
 		writeAPIError(w, ErrClusterCreateNameCheck, h.logger)
@@ -202,7 +202,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		cr.Spec.HostedCluster.IssuerURL = h.oidcIssuerBaseURL + "/" + clusterID
 	}
 
-	if err := h.db.CreateCluster(ctx, accountID, cr); err != nil {
+	if err := h.db.CreateCluster(ctx, cr); err != nil {
 		// Release the claim taken above if it isn't left permanently bound to a cluster that was never actually created.
 		if oidcConfig != nil {
 			h.releaseOidcConfigClaim(ctx, accountID, req.Spec.OidcConfigID)
@@ -213,7 +213,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if oidcConfig != nil {
-		if err := h.db.UpdateOidcConfigLastUsedTimestamp(ctx, accountID, req.Spec.OidcConfigID, metav1.Now()); err != nil {
+		if err := h.db.UpdateOidcConfigLastUsedTimestamp(ctx, req.Spec.OidcConfigID, metav1.Now()); err != nil {
 			h.logger.Warn("failed to update oidc config lastUsedTimestamp", "error", err, "account_id", accountID, "oidc_config_id", req.Spec.OidcConfigID)
 		}
 	}
@@ -229,7 +229,7 @@ func (h *ClusterHandler) resolveAndClaimOidcConfig(ctx context.Context, accountI
 		return nil, nil
 	}
 
-	oidcConfig, err := h.db.GetOidcConfig(ctx, accountID, oidcConfigID)
+	oidcConfig, err := h.db.GetOidcConfig(ctx, oidcConfigID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
 			return nil, &ErrClusterCreateOidcConfigNotFound
@@ -273,7 +273,7 @@ func (h *ClusterHandler) releaseOidcConfigClaim(ctx context.Context, accountID, 
 	defer cancel()
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		oc, err := h.db.GetOidcConfig(releaseCtx, accountID, oidcConfigID)
+		oc, err := h.db.GetOidcConfig(releaseCtx, oidcConfigID)
 		if err != nil {
 			return err
 		}
@@ -297,7 +297,7 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("getting cluster", "account_id", accountID, "cluster_id", clusterID)
 
-	cr, err := h.db.GetCluster(ctx, accountID, clusterID)
+	cr, err := h.db.GetCluster(ctx, clusterID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
 			writeAPIError(w, ErrClusterGetNotFound, h.logger)
@@ -348,7 +348,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("updating cluster", "account_id", accountID, "cluster_id", clusterID)
 
-	cr, err := h.db.GetCluster(ctx, accountID, clusterID)
+	cr, err := h.db.GetCluster(ctx, clusterID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
 			writeAPIError(w, ErrClusterUpdateNotFound, h.logger)
@@ -382,7 +382,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.db.UpdateCluster(ctx, accountID, cr); err != nil {
+	if err := h.db.UpdateCluster(ctx, cr); err != nil {
 		h.logger.Error("failed to update cluster", "error", err, "account_id", accountID, "cluster_id", clusterID)
 		writeAPIError(w, ErrClusterUpdateFailed, h.logger)
 		return
@@ -402,7 +402,7 @@ func (h *ClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("deleting cluster", "account_id", accountID, "cluster_id", clusterID)
 
-	err := h.db.DeleteCluster(ctx, accountID, clusterID)
+	err := h.db.DeleteCluster(ctx, clusterID)
 	if err != nil {
 		if hyperfleetdb.IsNotFound(err) {
 			writeAPIError(w, ErrClusterDeleteNotFound, h.logger)

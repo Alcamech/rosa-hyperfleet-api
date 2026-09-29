@@ -940,7 +940,7 @@ func TestClusterHandler_Update_Success(t *testing.T) {
 	}
 }
 
-// Empty or cased accountId must not clear stored ownership (service-set on update).
+// Wrong or clearing accountId must not change stored ownership (service-set on update).
 func TestClusterHandler_Update_RejectsAccountID(t *testing.T) {
 	for _, body := range []string{
 		`{"spec":{"accountId":""}}`,

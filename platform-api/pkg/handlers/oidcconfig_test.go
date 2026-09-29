@@ -240,7 +240,7 @@ func TestOidcConfigHandler_Create_Success(t *testing.T) {
 		t.Errorf("expected spec.issuerUrl=%s, got %v", wantIssuerURL, spec["issuerUrl"])
 	}
 
-	stored, err := handler.db.GetOidcConfig(req.Context(), testAccountID, "generated-config-id")
+	stored, err := handler.db.GetOidcConfig(req.Context(), "generated-config-id")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestOidcConfigHandler_Create_ManagedRejectsWhenIssuerBaseURLNotConfigured(t
 		t.Errorf("expected message to contain %s, got %q", ErrOidcConfigCreateIssuerNotConfigured.Code, errResp["message"])
 	}
 
-	if _, err := handler.db.GetOidcConfig(req.Context(), testAccountID, "generated-config-id"); err == nil {
+	if _, err := handler.db.GetOidcConfig(req.Context(), "generated-config-id"); err == nil {
 		t.Error("expected no OidcConfig CR to be created when the issuer base URL is not configured")
 	}
 }
@@ -319,7 +319,7 @@ func TestOidcConfigHandler_Create_ManagedIgnoresClientIssuerUrl(t *testing.T) {
 		t.Errorf("expected client-supplied issuerUrl to be overridden with %q, got %q", wantIssuerURL, issuerURL)
 	}
 
-	cr, err := handler.db.GetOidcConfig(req.Context(), testAccountID, "generated-config-id")
+	cr, err := handler.db.GetOidcConfig(req.Context(), "generated-config-id")
 	if err != nil {
 		t.Fatalf("failed to fetch created CR: %v", err)
 	}
@@ -562,7 +562,7 @@ func TestOidcConfigHandler_Create_UnmanagedNormalizesIssuerUrl(t *testing.T) {
 		t.Errorf("expected normalized spec.issuerUrl=%s, got %v", want, spec["issuerUrl"])
 	}
 
-	cr, err := handler.db.GetOidcConfig(req.Context(), testAccountID, "generated-config-id")
+	cr, err := handler.db.GetOidcConfig(req.Context(), "generated-config-id")
 	if err != nil {
 		t.Fatalf("failed to fetch created CR: %v", err)
 	}
@@ -826,7 +826,7 @@ func TestOidcConfigHandler_Delete_WrongAccount(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
-	if _, err := handler.db.GetOidcConfig(req.Context(), foreignAccount, "oidc-foreign"); err != nil {
+	if _, err := handler.db.GetOidcConfig(testContext(foreignAccount), "oidc-foreign"); err != nil {
 		t.Fatalf("foreign OIDC config was deleted: %v", err)
 	}
 }
@@ -885,7 +885,7 @@ func TestOidcConfigHandler_Delete_InUse(t *testing.T) {
 		t.Errorf("expected message to contain %s, got %q", ErrOidcConfigDeleteInUse.Code, errResp["message"])
 	}
 
-	if _, err := handler.db.GetOidcConfig(req.Context(), testAccountID, "oidc-123"); err != nil {
+	if _, err := handler.db.GetOidcConfig(req.Context(), "oidc-123"); err != nil {
 		t.Errorf("expected OidcConfig to survive a blocked delete, got error: %v", err)
 	}
 }
@@ -915,7 +915,7 @@ func TestOidcConfigHandler_Delete_AfterClusterDeletedSucceeds(t *testing.T) {
 	if err := fc.Delete(context.Background(), referencingCluster); err != nil {
 		t.Fatalf("failed to delete referencing cluster: %v", err)
 	}
-	latest, err := handler.db.GetOidcConfig(context.Background(), testAccountID, "oidc-123")
+	latest, err := handler.db.GetOidcConfig(testContext(testAccountID), "oidc-123")
 	if err != nil {
 		t.Fatalf("failed to fetch oidc config: %v", err)
 	}

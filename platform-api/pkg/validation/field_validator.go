@@ -65,8 +65,9 @@ func (v *FieldValidator) ValidateCreate(spec any, fs featuregate.FeatureSet) Val
 	return v.validate(fields, nil, OperationCreate, fs)
 }
 
-// ValidateUpdate checks that an update request does not set service-set fields,
-// change immutable fields, or use feature-gated fields without the gate enabled.
+// ValidateUpdate checks that an update request does not change service-set
+// fields (echo of the server value, or both unset, is allowed), change
+// immutable fields, or use feature-gated fields without the gate enabled.
 func (v *FieldValidator) ValidateUpdate(newSpec, existingSpec any, fs featuregate.FeatureSet) ValidationErrors {
 	if newSpec == nil {
 		return nil
@@ -182,10 +183,20 @@ func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.Field
 
 	switch effectiveMode {
 	case registry.ServiceSet:
-		// Create still skips JSON zero values so typed create specs do not false-fail.
-		// Update rejects any present key (including "") so raw merge cannot clear ownership.
-		if op == OperationCreate && isZeroValue(value) {
-			return nil
+		// Create: skip JSON zero values so typed create specs do not false-fail.
+		// Update: allow echo of the server value (or both unset); reject changes.
+		if op == OperationCreate {
+			if isZeroValue(value) {
+				return nil
+			}
+		} else {
+			var oldVal any
+			if existingFields != nil {
+				oldVal = existingFields[fieldPath]
+			}
+			if serviceSetValuesMatch(oldVal, value) {
+				return nil
+			}
 		}
 		return &ValidationError{
 			Field:  fieldPath,
@@ -208,6 +219,15 @@ func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.Field
 	default:
 		return nil
 	}
+}
+
+// serviceSetValuesMatch reports whether a client value is an allowed echo of
+// the server value, including both unset (nil vs "").
+func serviceSetValuesMatch(oldVal, newVal any) bool {
+	if reflect.DeepEqual(oldVal, newVal) {
+		return true
+	}
+	return isZeroValue(oldVal) && isZeroValue(newVal)
 }
 
 func flattenToFieldPaths(v any) map[string]any {

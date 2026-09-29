@@ -69,7 +69,8 @@ func RequireIdentity(logger *slog.Logger) func(http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if GetAccountID(r.Context()) == "" || GetCallerARN(r.Context()) == "" {
+			accountID := GetAccountID(r.Context())
+			if accountID == "" || GetCallerARN(r.Context()) == "" {
 				if err := api.WriteError(w, api.APIError{
 					Code: "AUTH-001", HTTPStatus: http.StatusForbidden, Message: "Caller account ID and ARN are required",
 				}); err != nil {
@@ -77,9 +78,26 @@ func RequireIdentity(logger *slog.Logger) func(http.Handler) http.Handler {
 				}
 				return
 			}
+			// TODO: Enrollment check: stub until account registration is wired (ROSAENG-67482).
+			if !IsAccountRegistered(r.Context(), accountID) {
+				if err := api.WriteError(w, api.APIError{
+					Code: "AUTH-002", HTTPStatus: http.StatusForbidden, Message: "Account is not registered",
+				}); err != nil {
+					logger.Error("failed to write registration error", "error", err)
+				}
+				return
+			}
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// IsAccountRegistered reports whether accountID is an enrolled Hyperfleet tenant.
+// TODO: always-true stub until registration lookup exists; replace body with
+// FleetDB/registry query under ROSAENG-67482 without changing RequireIdentity.
+func IsAccountRegistered(ctx context.Context, accountID string) bool {
+	_ = ctx
+	return accountID != ""
 }
 
 // GetAccountID retrieves the AWS account ID from context
