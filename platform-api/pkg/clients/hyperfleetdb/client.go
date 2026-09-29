@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 )
 
 const accountIDLabel = "hyperfleet.io/account-id"
@@ -56,18 +57,21 @@ func (c *Client) Close() {
 // --- Cluster operations ---
 
 // CreateCluster creates a Cluster resource. Namespace = clusterID (UUID),
-// Name = human-readable name. Labeled with the account ID.
-func (c *Client) CreateCluster(ctx context.Context, accountID string, cluster *hyperfleetv1alpha1.Cluster) error {
+// Name = human-readable name. Labeled with the account ID from ctx.
+func (c *Client) CreateCluster(ctx context.Context, cluster *hyperfleetv1alpha1.Cluster) error {
+	accountID := middleware.GetAccountID(ctx)
 	setAccountLabel(cluster, accountID)
 	cluster.Spec.AccountID = accountID
 	return c.client.Create(ctx, cluster)
 }
 
-// GetCluster retrieves a Cluster by clusterID, scoped to the given account.
+// GetCluster retrieves a Cluster by clusterID, scoped to the account in ctx.
 // Namespace = clusterID, filtered by account-id label.
-func (c *Client) GetCluster(ctx context.Context, accountID, clusterID string) (*hyperfleetv1alpha1.Cluster, error) {
+func (c *Client) GetCluster(ctx context.Context, clusterID string) (*hyperfleetv1alpha1.Cluster, error) {
+	accountID := middleware.GetAccountID(ctx)
 	var list hyperfleetv1alpha1.ClusterList
-	err := c.client.List(ctx, &list,
+	err := c.client.List(
+		ctx, &list,
 		client.InNamespace(clusterNamespace(clusterID)),
 		client.MatchingLabels{accountIDLabel: accountID},
 	)
@@ -80,8 +84,9 @@ func (c *Client) GetCluster(ctx context.Context, accountID, clusterID string) (*
 	return &list.Items[0], nil
 }
 
-// ListClusters lists Clusters for the given account using the account-id label.
-func (c *Client) ListClusters(ctx context.Context, accountID string) (*hyperfleetv1alpha1.ClusterList, error) {
+// ListClusters lists Clusters for the account in ctx using the account-id label.
+func (c *Client) ListClusters(ctx context.Context) (*hyperfleetv1alpha1.ClusterList, error) {
+	accountID := middleware.GetAccountID(ctx)
 	var list hyperfleetv1alpha1.ClusterList
 	err := c.client.List(ctx, &list, client.MatchingLabels{accountIDLabel: accountID})
 	if err != nil {
@@ -90,16 +95,17 @@ func (c *Client) ListClusters(ctx context.Context, accountID string) (*hyperflee
 	return &list, nil
 }
 
-// UpdateCluster CAS-updates a cluster and re-pins account ownership.
-func (c *Client) UpdateCluster(ctx context.Context, accountID string, cluster *hyperfleetv1alpha1.Cluster) error {
+// UpdateCluster CAS-updates a cluster and re-pins account ownership from ctx.
+func (c *Client) UpdateCluster(ctx context.Context, cluster *hyperfleetv1alpha1.Cluster) error {
+	accountID := middleware.GetAccountID(ctx)
 	setAccountLabel(cluster, accountID)
 	cluster.Spec.AccountID = accountID
 	return c.client.Update(ctx, cluster)
 }
 
-// DeleteCluster deletes a Cluster, scoped to the given account.
-func (c *Client) DeleteCluster(ctx context.Context, accountID, clusterID string) error {
-	cluster, err := c.GetCluster(ctx, accountID, clusterID)
+// DeleteCluster deletes a Cluster, scoped to the account in ctx.
+func (c *Client) DeleteCluster(ctx context.Context, clusterID string) error {
+	cluster, err := c.GetCluster(ctx, clusterID)
 	if err != nil {
 		return err
 	}
@@ -108,30 +114,20 @@ func (c *Client) DeleteCluster(ctx context.Context, accountID, clusterID string)
 
 // --- NodePool operations ---
 
-// CreateNodePool creates a NodePool under an account-owned parent cluster.
-func (c *Client) CreateNodePool(ctx context.Context, accountID string, np *hyperfleetv1alpha1.NodePool) error {
-	if err := c.requireOwnedCluster(ctx, accountID, clusterIDFromNamespace(np.Namespace)); err != nil {
-		return err
-	}
+// CreateNodePool creates a NodePool labeled with the account in ctx.
+func (c *Client) CreateNodePool(ctx context.Context, np *hyperfleetv1alpha1.NodePool) error {
+	accountID := middleware.GetAccountID(ctx)
 	setAccountLabel(np, accountID)
 	np.Spec.AccountID = accountID
 	return c.client.Create(ctx, np)
 }
 
-// requireOwnedCluster checks parent ownership; child labels alone are not enough.
-func (c *Client) requireOwnedCluster(ctx context.Context, accountID, clusterID string) error {
-	_, err := c.GetCluster(ctx, accountID, clusterID)
-	return err
-}
-
-// GetNodePool retrieves a NodePool by name, scoped to the account and optionally cluster.
+// GetNodePool retrieves a NodePool by name, scoped to the account in ctx and optionally cluster.
 func (c *Client) GetNodePool(
-	ctx context.Context, accountID, clusterID, nodepoolName string,
+	ctx context.Context, clusterID, nodepoolName string,
 ) (*hyperfleetv1alpha1.NodePool, error) {
+	accountID := middleware.GetAccountID(ctx)
 	if clusterID != "" {
-		if err := c.requireOwnedCluster(ctx, accountID, clusterID); err != nil {
-			return nil, err
-		}
 		var np hyperfleetv1alpha1.NodePool
 		err := c.client.Get(ctx, k8stypes.NamespacedName{
 			Namespace: clusterNamespace(clusterID),
@@ -155,20 +151,15 @@ func (c *Client) GetNodePool(
 		if list.Items[i].Name != nodepoolName {
 			continue
 		}
-		if err := c.requireOwnedCluster(ctx, accountID, clusterIDFromNamespace(list.Items[i].Namespace)); err != nil {
-			if IsNotFound(err) {
-				continue
-			}
-			return nil, err
-		}
 		return &list.Items[i], nil
 	}
 	return nil, apierrors.NewNotFound(nodePoolGR, nodepoolName)
 }
 
 // ListNodePools lists NodePools. If clusterID is set, lists by namespace
-// scoped to the account. Otherwise lists all nodepools for the account.
-func (c *Client) ListNodePools(ctx context.Context, accountID, clusterID string) (*hyperfleetv1alpha1.NodePoolList, error) {
+// scoped to the account in ctx. Otherwise lists all nodepools for that account.
+func (c *Client) ListNodePools(ctx context.Context, clusterID string) (*hyperfleetv1alpha1.NodePoolList, error) {
+	accountID := middleware.GetAccountID(ctx)
 	var list hyperfleetv1alpha1.NodePoolList
 	var opts []client.ListOption
 
@@ -177,50 +168,23 @@ func (c *Client) ListNodePools(ctx context.Context, accountID, clusterID string)
 		opts = append(opts, client.InNamespace(clusterNamespace(clusterID)))
 	}
 
-	// Parent ownership is independent of child labels.
-	var owned map[string]bool
-	if clusterID != "" {
-		if err := c.requireOwnedCluster(ctx, accountID, clusterID); err != nil {
-			if IsNotFound(err) {
-				return &list, nil
-			}
-			return nil, err
-		}
-	} else {
-		parents, err := c.ListClusters(ctx, accountID)
-		if err != nil {
-			return nil, err
-		}
-		owned = make(map[string]bool, len(parents.Items))
-		for i := range parents.Items {
-			owned[parents.Items[i].Namespace] = true
-		}
-	}
 	if err := c.client.List(ctx, &list, opts...); err != nil {
 		return nil, err
-	}
-	if owned != nil {
-		items := list.Items[:0]
-		for i := range list.Items {
-			if owned[list.Items[i].Namespace] {
-				items = append(items, list.Items[i])
-			}
-		}
-		list.Items = items
 	}
 	return &list, nil
 }
 
-// UpdateNodePool CAS-updates a node pool and re-pins account ownership.
-func (c *Client) UpdateNodePool(ctx context.Context, accountID string, np *hyperfleetv1alpha1.NodePool) error {
+// UpdateNodePool CAS-updates a node pool and re-pins account ownership from ctx.
+func (c *Client) UpdateNodePool(ctx context.Context, np *hyperfleetv1alpha1.NodePool) error {
+	accountID := middleware.GetAccountID(ctx)
 	setAccountLabel(np, accountID)
 	np.Spec.AccountID = accountID
 	return c.client.Update(ctx, np)
 }
 
-// DeleteNodePool deletes a NodePool by name, scoped to the account and cluster.
-func (c *Client) DeleteNodePool(ctx context.Context, accountID, clusterID, nodepoolName string) error {
-	np, err := c.GetNodePool(ctx, accountID, clusterID, nodepoolName)
+// DeleteNodePool deletes a NodePool by name, scoped to the account in ctx and cluster.
+func (c *Client) DeleteNodePool(ctx context.Context, clusterID, nodepoolName string) error {
+	np, err := c.GetNodePool(ctx, clusterID, nodepoolName)
 	if err != nil {
 		return err
 	}
@@ -298,8 +262,9 @@ func (c *Client) CreateOidcConfig(ctx context.Context, oc *hyperfleetv1alpha1.Oi
 	return c.client.Create(ctx, oc)
 }
 
-// GetOidcConfig retrieves an OidcConfig by accountID and configID.
-func (c *Client) GetOidcConfig(ctx context.Context, accountID, configID string) (*hyperfleetv1alpha1.OidcConfig, error) {
+// GetOidcConfig retrieves an OidcConfig by configID for the account in ctx.
+func (c *Client) GetOidcConfig(ctx context.Context, configID string) (*hyperfleetv1alpha1.OidcConfig, error) {
+	accountID := middleware.GetAccountID(ctx)
 	var oc hyperfleetv1alpha1.OidcConfig
 	err := c.client.Get(ctx, k8stypes.NamespacedName{
 		Namespace: accountNamespace(accountID),
@@ -311,8 +276,9 @@ func (c *Client) GetOidcConfig(ctx context.Context, accountID, configID string) 
 	return &oc, nil
 }
 
-// ListOidcConfigs lists OidcConfigs for the given account by namespace.
-func (c *Client) ListOidcConfigs(ctx context.Context, accountID string) (*hyperfleetv1alpha1.OidcConfigList, error) {
+// ListOidcConfigs lists OidcConfigs for the account in ctx by namespace.
+func (c *Client) ListOidcConfigs(ctx context.Context) (*hyperfleetv1alpha1.OidcConfigList, error) {
+	accountID := middleware.GetAccountID(ctx)
 	var list hyperfleetv1alpha1.OidcConfigList
 	err := c.client.List(ctx, &list, client.InNamespace(accountNamespace(accountID)))
 	if err != nil {
@@ -321,9 +287,9 @@ func (c *Client) ListOidcConfigs(ctx context.Context, accountID string) (*hyperf
 	return &list, nil
 }
 
-// DeleteOidcConfig deletes an OidcConfig by accountID and configID.
-func (c *Client) DeleteOidcConfig(ctx context.Context, accountID, configID string) error {
-	oc, err := c.GetOidcConfig(ctx, accountID, configID)
+// DeleteOidcConfig deletes an OidcConfig by configID for the account in ctx.
+func (c *Client) DeleteOidcConfig(ctx context.Context, configID string) error {
+	oc, err := c.GetOidcConfig(ctx, configID)
 	if err != nil {
 		return err
 	}
@@ -331,9 +297,9 @@ func (c *Client) DeleteOidcConfig(ctx context.Context, accountID, configID strin
 }
 
 // UpdateOidcConfigLastUsedTimestamp sets status.lastUsedTimestamp on an
-// OidcConfig, scoped to the given account.
-func (c *Client) UpdateOidcConfigLastUsedTimestamp(ctx context.Context, accountID, configID string, ts metav1.Time) error {
-	oc, err := c.GetOidcConfig(ctx, accountID, configID)
+// OidcConfig, scoped to the account in ctx.
+func (c *Client) UpdateOidcConfigLastUsedTimestamp(ctx context.Context, configID string, ts metav1.Time) error {
+	oc, err := c.GetOidcConfig(ctx, configID)
 	if err != nil {
 		return err
 	}
