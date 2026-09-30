@@ -114,6 +114,21 @@ resources:
               goType: array(string)
               operations:
                 - create
+            - path: spec.hostedCluster.configuration.proxy.httpProxy
+              goType: string
+              operations:
+                - create
+                - update
+            - path: spec.hostedCluster.configuration.proxy.httpsProxy
+              goType: string
+              operations:
+                - create
+                - update
+            - path: spec.hostedCluster.configuration.proxy.noProxy
+              goType: string
+              operations:
+                - create
+                - update
             - path: spec.hostedCluster.imageContentSources
               goType: array(object)
               operations:
