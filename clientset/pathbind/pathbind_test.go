@@ -3,10 +3,12 @@ package pathbind_test
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
@@ -47,6 +49,13 @@ type nodePoolInput struct {
 type nodePoolAutoscalingInput struct {
 	Min *int32 `hfsdk:"spec.nodePool.autoScaling.min"`
 	Max *int32 `hfsdk:"spec.nodePool.autoScaling.max"`
+}
+
+type nodePoolAdditionalFieldsInput struct {
+	Config           []corev1.LocalObjectReference `hfsdk:"spec.nodePool.config"`
+	NodeDrainTimeout string                        `hfsdk:"spec.nodePool.nodeDrainTimeout"`
+	Taints           []hypershiftv1beta1.Taint     `hfsdk:"spec.nodePool.taints"`
+	TuningConfig     []corev1.LocalObjectReference `hfsdk:"spec.nodePool.tuningConfig"`
 }
 
 func TestExpand_ClusterDirectMappings(t *testing.T) {
@@ -256,6 +265,56 @@ func TestExpand_NodePoolFixedReplicasRequest(t *testing.T) {
 		t.Fatalf("Replicas = %v, want %d", np.Spec.NodePool.Replicas, replicas)
 	}
 	assertNodePoolRequestScaling(t, np, false, 0, 0, &replicas)
+}
+
+func TestNodePoolAdditionalFieldsExpandAndFlatten(t *testing.T) {
+	ctx := context.Background()
+	input := nodePoolAdditionalFieldsInput{
+		Config:           []corev1.LocalObjectReference{{Name: "kubelet-config"}},
+		NodeDrainTimeout: "5m",
+		Taints: []hypershiftv1beta1.Taint{{
+			Key:    "dedicated",
+			Value:  "batch",
+			Effect: corev1.TaintEffectNoSchedule,
+		}},
+		TuningConfig: []corev1.LocalObjectReference{{Name: "performance-tuning"}},
+	}
+
+	np := &v1alpha1.NodePool{}
+	if err := pathbind.Expand(ctx, input, np); err != nil {
+		t.Fatalf("Expand: %v", err)
+	}
+
+	got := np.Spec.NodePool
+	if !reflect.DeepEqual(got.Config, input.Config) {
+		t.Errorf("Config = %#v, want %#v", got.Config, input.Config)
+	}
+	if got.NodeDrainTimeout == nil || got.NodeDrainTimeout.Duration != 5*time.Minute {
+		t.Errorf("NodeDrainTimeout = %v, want 5m", got.NodeDrainTimeout)
+	}
+	if !reflect.DeepEqual(got.Taints, input.Taints) {
+		t.Errorf("Taints = %#v, want %#v", got.Taints, input.Taints)
+	}
+	if !reflect.DeepEqual(got.TuningConfig, input.TuningConfig) {
+		t.Errorf("TuningConfig = %#v, want %#v", got.TuningConfig, input.TuningConfig)
+	}
+
+	flattened := &nodePoolAdditionalFieldsInput{}
+	if err := pathbind.Flatten(ctx, np, flattened); err != nil {
+		t.Fatalf("Flatten: %v", err)
+	}
+	if !reflect.DeepEqual(flattened.Config, input.Config) {
+		t.Errorf("Flattened Config = %#v, want %#v", flattened.Config, input.Config)
+	}
+	if flattened.NodeDrainTimeout != (5 * time.Minute).String() {
+		t.Errorf("Flattened NodeDrainTimeout = %q, want %q", flattened.NodeDrainTimeout, (5 * time.Minute).String())
+	}
+	if !reflect.DeepEqual(flattened.Taints, input.Taints) {
+		t.Errorf("Flattened Taints = %#v, want %#v", flattened.Taints, input.Taints)
+	}
+	if !reflect.DeepEqual(flattened.TuningConfig, input.TuningConfig) {
+		t.Errorf("Flattened TuningConfig = %#v, want %#v", flattened.TuningConfig, input.TuningConfig)
+	}
 }
 
 func assertNodePoolRequestScaling(t *testing.T, np *v1alpha1.NodePool, wantAutoScaling bool, wantMin, wantMax int32, wantReplicas *int32) {
