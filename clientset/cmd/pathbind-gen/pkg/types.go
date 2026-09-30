@@ -67,6 +67,9 @@ type OverrideAlias struct {
 	Description string   `yaml:"description"`
 	Required    *bool    `yaml:"required"`
 	Operations  []string `yaml:"operations"`
+	// Bundle groups this leaf with other fields in generated consumer structs.
+	// The value is the generated field name (for example, "network").
+	Bundle string `yaml:"bundle"`
 	// TF-specific fields:
 	Immutable   *bool `yaml:"immutable"`
 	Computed    *bool `yaml:"computed"`
@@ -89,6 +92,7 @@ type MergedAlias struct {
 	Computed    bool
 	Sensitive   bool
 	JSONEncoded bool
+	Bundle      string
 }
 
 // UnsetPtrField tracks pointer flag fields needing normalization.
@@ -125,6 +129,8 @@ type TFTemplateData struct {
 	SDKType         string
 	SDKShortType    string
 	AllFields       []MergedAlias
+	TopFields       []MergedAlias
+	Bundles         []AliasBundle
 	CreateFields    []MergedAlias
 	UpdateFields    []MergedAlias
 	ImmutableList   []string
@@ -132,6 +138,16 @@ type TFTemplateData struct {
 	Namespaced      bool
 	IdentifierField string
 	HandlerFactory  string // e.g., "NewClusterHandlerImpl" for template to call
+}
+
+// AliasBundle describes a nested Terraform object made from leaf aliases.
+type AliasBundle struct {
+	Name     string
+	GoName   string
+	Fields   []MergedAlias
+	Required bool
+	Optional bool
+	Computed bool
 }
 
 // IsNamespacedResource returns true if the resource requires a namespace/parent argument.
@@ -280,6 +296,7 @@ func mergeDraftField(df DraftField, ov OverrideAlias, hasOv bool, allDraftPaths 
 		Computed:    computed,
 		Sensitive:   sensitive,
 		JSONEncoded: jsonEncoded,
+		Bundle:      ov.Bundle,
 	}, nil
 }
 
@@ -348,6 +365,7 @@ func mergeConsumerOnlyAliases(overrides []OverrideAlias) []MergedAlias {
 			Computed:    computed,
 			Sensitive:   sensitive,
 			JSONEncoded: jsonEncoded,
+			Bundle:      ov.Bundle,
 		})
 	}
 	return out

@@ -15,7 +15,7 @@ package {{.Package}}
 {{- $hasInt64Modifiers := false}}
 {{- $hasInt32 := false}}
 {{- $hasAttributes := false}}
-{{- range .AllFields}}
+{{- range .TopFields}}
 {{- $inSchema := or (ne .Path "-") (and (eq .Path "-") (gt (len .Operations) 0))}}
 {{- if and .Immutable $inSchema}}
 {{- $hasImmutable = true}}
@@ -86,7 +86,11 @@ import (
 {{- if $hasMap}}
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 {{- end}}
-{{- if or $hasAnyList $hasAnyMap}}
+{{- if and (or $hasAnyList $hasAnyMap) (eq (len .Bundles) 0)}}
+	"github.com/hashicorp/terraform-plugin-framework/types"
+{{- end}}
+{{- if gt (len .Bundles) 0}}
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 {{- end}}
 	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
@@ -190,7 +194,7 @@ func (r *{{.ResourceName}}Resource) Schema(
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages {{.ResourceName}} resources.",
 		Attributes: map[string]schema.Attribute{
-{{- range .AllFields}}
+{{- range .TopFields}}
 {{- if isConsumerOnly .}}
 			"{{attrName .}}": schema.StringAttribute{
 				MarkdownDescription: "Resource identifier (computed).",
@@ -264,6 +268,39 @@ func (r *{{.ResourceName}}Resource) Schema(
 {{- end}}
 			},
 {{- end}}
+{{- end}}
+{{- range .Bundles}}
+			"{{lower .Name}}": schema.SingleNestedAttribute{
+				Attributes: map[string]schema.Attribute{
+{{- range .Fields}}
+					"{{attrName .}}": schema.{{schemaType .}}Attribute{
+						MarkdownDescription: "{{.GoName}}.",
+{{- if .Computed}}
+						Computed: true,
+{{- else if .Required}}
+						Required: true,
+{{- else}}
+						Optional: true,
+{{- end}}
+{{- if eq (schemaType .) "List"}}
+						ElementType: types.StringType,
+{{- else if eq (schemaType .) "Map"}}
+						ElementType: types.StringType,
+{{- end}}
+					},
+{{- end}}
+				},
+				{{- if .Required}}
+				Required: true,
+				{{- else if and .Optional .Computed}}
+				Optional: true,
+				Computed: true,
+				{{- else if .Computed}}
+				Computed: true,
+				{{- else}}
+				Optional: true,
+				{{- end}}
+			},
 {{- end}}
 		},
 	}
@@ -603,7 +640,7 @@ func terraform{{.ResourceName}}ToNative(tf *{{.ResourceName}}State) (*{{.Resourc
 	}
 	native := &{{.ResourceName}}StateNative{}
 	var diags diag.Diagnostics
-{{- range .AllFields}}
+{{- range .TopFields}}
 {{- if hasSuffix .Type "[]"}}
 	if !tf.{{.GoName}}.IsNull() && !tf.{{.GoName}}.IsUnknown() {
 		items, collectionDiags := terraformListToStringSlice(tf.{{.GoName}})
@@ -668,6 +705,17 @@ func terraform{{.ResourceName}}ToNative(tf *{{.ResourceName}}State) (*{{.Resourc
 	}
 {{- end}}
 {{- end}}
+{{- range .Bundles}}
+	{{- $bundle := .}}
+	if !tf.{{$bundle.GoName}}.IsNull() && !tf.{{$bundle.GoName}}.IsUnknown() {
+		bundleDiags := objectToNative(tf.{{$bundle.GoName}}, &native.{{$bundle.GoName}}, map[string]string{
+{{- range $bundle.Fields}}
+			"{{attrName .}}": "{{.GoName}}",
+{{- end}}
+		})
+		diags = append(diags, bundleDiags...)
+	}
+{{- end}}
 	return native, diags
 }
 
@@ -678,7 +726,7 @@ func native{{.ResourceName}}ToTerraform(native *{{.ResourceName}}StateNative) *{
 		return nil
 	}
 	tf := &{{.ResourceName}}State{}
-{{- range .AllFields}}
+{{- range .TopFields}}
 {{- if hasSuffix .Type "[]"}}
 	tf.{{.GoName}} = toTerraformList(native.{{.GoName}})
 {{- else if eq .Type "string"}}
@@ -710,6 +758,20 @@ func native{{.ResourceName}}ToTerraform(native *{{.ResourceName}}StateNative) *{
 {{- else}}
 	tf.{{.GoName}} = toTerraformString(native.{{.GoName}})
 {{- end}}
+{{- end}}
+{{- range .Bundles}}
+	{
+		bundleAttrs := nativeBundleAttributes(native.{{.GoName}}, map[string]string{
+{{- range .Fields}}
+			"{{attrName .}}": "{{.GoName}}",
+{{- end}}
+		})
+		tf.{{.GoName}}, _ = types.ObjectValue(map[string]attr.Type{
+{{- range .Fields}}
+			"{{attrName .}}": {{if hasSuffix .Type "[]"}}types.ListType{ElemType: types.StringType}{{else if eq .Type "map"}}types.MapType{ElemType: types.StringType}{{else if or (eq .Type "bool") (eq .Type "*bool")}}types.BoolType{{else if or (eq .Type "int32") (eq .Type "*int32") (eq .Type "int64") (eq .Type "*int64")}}types.Int64Type{{else}}types.StringType{{end}},
+{{- end}}
+		}, bundleAttrs)
+	}
 {{- end}}
 	return tf
 }

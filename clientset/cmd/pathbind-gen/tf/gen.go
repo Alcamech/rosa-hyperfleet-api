@@ -91,6 +91,10 @@ func Run(draftPath, overridesPath, outputDir string) error {
 
 		// Categorize fields into create/update
 		createFields, _, _, updateFields, _, _ := pkg.CategorizeAliases(aliases)
+		topFields, bundles, err := buildBundles(aliases)
+		if err != nil {
+			return fmt.Errorf("building bundles for %s: %w", resKey, err)
+		}
 
 		resName := pkg.TitleCase(resKey)
 		sdkShort := pkg.SDKShortType(sdkType)
@@ -120,6 +124,8 @@ func Run(draftPath, overridesPath, outputDir string) error {
 			SDKType:         sdkType,
 			SDKShortType:    sdkShort,
 			AllFields:       aliases,
+			TopFields:       topFields,
+			Bundles:         bundles,
 			CreateFields:    createFields,
 			UpdateFields:    updateFields,
 			ImmutableList:   immutableList,
@@ -155,6 +161,43 @@ func Run(draftPath, overridesPath, outputDir string) error {
 	}
 
 	return nil
+}
+
+func buildBundles(aliases []pkg.MergedAlias) ([]pkg.MergedAlias, []pkg.AliasBundle, error) {
+	var top []pkg.MergedAlias
+	byName := map[string]*pkg.AliasBundle{}
+	var order []string
+	for _, alias := range aliases {
+		if alias.Bundle == "" {
+			top = append(top, alias)
+			continue
+		}
+		name := pkg.ToPascal(alias.Bundle)
+		if name == "" {
+			return nil, nil, fmt.Errorf("field %s has an empty bundle name", alias.Path)
+		}
+		bundle := byName[name]
+		if bundle == nil {
+			bundle = &pkg.AliasBundle{Name: alias.Bundle, GoName: name}
+			byName[name] = bundle
+			order = append(order, name)
+		}
+		bundle.Fields = append(bundle.Fields, alias)
+		if alias.Required {
+			bundle.Required = true
+		}
+		if !alias.Required {
+			bundle.Optional = true
+		}
+		if alias.Computed {
+			bundle.Computed = true
+		}
+	}
+	bundles := make([]pkg.AliasBundle, 0, len(order))
+	for _, name := range order {
+		bundles = append(bundles, *byName[name])
+	}
+	return top, bundles, nil
 }
 
 func loadOverrides(path string) (*pkg.Overrides, error) {

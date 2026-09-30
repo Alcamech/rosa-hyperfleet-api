@@ -178,11 +178,16 @@ resources:
       - path: spec.deleteProtection
         flag: delete-protection
         description: "Enable delete protection."
-      - path: spec.hostedCluster.platform.aws.cloudProviderConfig.subnet.id
-        alias: subnetID
+       - path: spec.hostedCluster.platform.aws.cloudProviderConfig.subnet.id
+         alias: subnetID
         flag: subnet-id
         description: "Subnet ID for the cluster."
-        required: true
+         required: true
+       # Terraform-only grouping of leaf fields into a nested object:
+       - path: spec.hostedCluster.networking.machineNetwork
+         bundle: network
+       - path: spec.hostedCluster.networking.serviceNetwork
+         bundle: network
       # Consumer-only field not in the draft (hfsdk:"-" in generated struct):
       - alias: operatorRolesPrefix
         type: string
@@ -206,6 +211,27 @@ resources:
 | `description` | no                                 | `""`                                                     |
 | `required`    | no                                 | `false`                                                  |
 | `operations`  | no                                 | Inherited from draft; required for consumer-only entries |
+| `bundle`      | no                                 | Leaf remains at the resource root                        |
+
+`bundle` is a consumer layout decision. In `--mode=tf`, aliases with the same
+bundle name are emitted as fields of one Terraform `SingleNestedAttribute`
+object and as fields of a nested native Go struct. Their original `hfsdk`
+paths are unchanged, so `Expand` and `Flatten` still map each leaf to the SDK.
+For example:
+
+```yaml
+resources:
+  cluster:
+    aliases:
+      - path: spec.hostedCluster.networking.machineNetwork
+        bundle: network
+      - path: spec.hostedCluster.networking.serviceNetwork
+        bundle: network
+```
+
+This produces a `network` Terraform object containing `machine_network` and
+`service_network`. Bundling is ignored by the Cobra layout, while nested
+consumer structs are supported by the shared pathbind engine.
 
 #### `goType` → consumer type defaults
 

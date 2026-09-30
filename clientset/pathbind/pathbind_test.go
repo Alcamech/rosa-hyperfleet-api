@@ -58,6 +58,40 @@ type nodePoolAdditionalFieldsInput struct {
 	TuningConfig     []corev1.LocalObjectReference `hfsdk:"spec.nodePool.tuningConfig"`
 }
 
+type networkInput struct {
+	NetworkType      string `hfsdk:"spec.hostedCluster.networking.networkType"`
+	AdvertiseAddress string `hfsdk:"spec.hostedCluster.networking.apiServer.advertiseAddress"`
+}
+
+type bundledClusterInput struct {
+	Network networkInput
+}
+
+func TestExpandAndFlatten_NestedConsumerBundle(t *testing.T) {
+	ctx := context.Background()
+	input := bundledClusterInput{Network: networkInput{
+		NetworkType:      "OVNKubernetes",
+		AdvertiseAddress: "api.example.com",
+	}}
+	cluster := &v1alpha1.Cluster{}
+	if err := pathbind.Expand(ctx, input, cluster); err != nil {
+		t.Fatalf("Expand: %v", err)
+	}
+	if cluster.Spec.HostedCluster.Networking.NetworkType != "OVNKubernetes" ||
+		cluster.Spec.HostedCluster.Networking.APIServer.AdvertiseAddress == nil ||
+		*cluster.Spec.HostedCluster.Networking.APIServer.AdvertiseAddress != "api.example.com" {
+		t.Fatalf("machine network was not expanded: %#v", cluster.Spec.HostedCluster.Networking)
+	}
+
+	var output bundledClusterInput
+	if err := pathbind.Flatten(ctx, cluster, &output); err != nil {
+		t.Fatalf("Flatten: %v", err)
+	}
+	if output.Network != input.Network {
+		t.Fatalf("bundle round trip: got %#v, want %#v", output.Network, input.Network)
+	}
+}
+
 func TestExpand_ClusterDirectMappings(t *testing.T) {
 	ctx := context.Background()
 	input := clusterInput{
