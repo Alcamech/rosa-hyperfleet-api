@@ -1116,8 +1116,7 @@
   },
   {
     "fieldPath": "spec.nodePool.autoScaling",
-    "writeMode": "service-set",
-    "hidden": true,
+    "writeMode": "mutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
@@ -1129,29 +1128,25 @@
   },
   {
     "fieldPath": "spec.nodePool.config",
-    "writeMode": "service-set",
-    "hidden": true,
+    "writeMode": "mutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
   {
     "fieldPath": "spec.nodePool.management",
     "writeMode": "service-set",
-    "hidden": true,
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
   {
     "fieldPath": "spec.nodePool.nodeDrainTimeout",
-    "writeMode": "service-set",
-    "hidden": true,
+    "writeMode": "mutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
   {
     "fieldPath": "spec.nodePool.nodeLabels",
     "writeMode": "service-set",
-    "hidden": true,
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
@@ -1202,15 +1197,13 @@
   },
   {
     "fieldPath": "spec.nodePool.taints",
-    "writeMode": "service-set",
-    "hidden": true,
+    "writeMode": "mutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
   {
     "fieldPath": "spec.nodePool.tuningConfig",
-    "writeMode": "service-set",
-    "hidden": true,
+    "writeMode": "mutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
