@@ -20,16 +20,17 @@ type terraformTypeMapping struct {
 }
 
 var terraformTypeMappings = map[string]terraformTypeMapping{
-	"string":   {FrameworkType: "types.StringType", ValueFunction: "types.StringValue", SchemaType: "String"},
-	"*string":  {FrameworkType: "types.StringType", ValueFunction: "types.StringValue", SchemaType: "String"},
-	"bool":     {FrameworkType: "types.BoolType", ValueFunction: "types.BoolValue", SchemaType: "Bool"},
-	"*bool":    {FrameworkType: "types.BoolType", ValueFunction: "types.BoolValue", SchemaType: "Bool"},
-	"int32":    {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
-	"*int32":   {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
-	"int64":    {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
-	"*int64":   {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
-	"string[]": {FrameworkType: "types.ListType", ValueFunction: "types.ListValue", SchemaType: "List"},
-	"map":      {FrameworkType: "types.MapType", ValueFunction: "types.MapValue", SchemaType: "Map"},
+	"string":       {FrameworkType: "types.StringType", ValueFunction: "types.StringValue", SchemaType: "String"},
+	"*string":      {FrameworkType: "types.StringType", ValueFunction: "types.StringValue", SchemaType: "String"},
+	"bool":         {FrameworkType: "types.BoolType", ValueFunction: "types.BoolValue", SchemaType: "Bool"},
+	"*bool":        {FrameworkType: "types.BoolType", ValueFunction: "types.BoolValue", SchemaType: "Bool"},
+	"int32":        {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
+	"*int32":       {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
+	"int64":        {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
+	"*int64":       {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
+	"string[]":     {FrameworkType: "types.ListType", ValueFunction: "types.ListValue", SchemaType: "List"},
+	"list(object)": {FrameworkType: "types.ListType", ValueFunction: "types.ListValue", SchemaType: "ListNested"},
+	"map":          {FrameworkType: "types.MapType", ValueFunction: "types.MapValue", SchemaType: "Map"},
 }
 
 func terraformTypeFor(typ string) (terraformTypeMapping, error) {
@@ -91,6 +92,10 @@ func Run(draftPath, overridesPath, outputDir string) error {
 
 		// Categorize fields into create/update
 		createFields, _, _, updateFields, _, _ := pkg.CategorizeAliases(aliases)
+		topFields, bundles, err := buildBundles(aliases)
+		if err != nil {
+			return fmt.Errorf("building bundles for %s: %w", resKey, err)
+		}
 
 		resName := pkg.TitleCase(resKey)
 		sdkShort := pkg.SDKShortType(sdkType)
@@ -120,6 +125,8 @@ func Run(draftPath, overridesPath, outputDir string) error {
 			SDKType:         sdkType,
 			SDKShortType:    sdkShort,
 			AllFields:       aliases,
+			TopFields:       topFields,
+			Bundles:         bundles,
 			CreateFields:    createFields,
 			UpdateFields:    updateFields,
 			ImmutableList:   immutableList,
@@ -155,6 +162,46 @@ func Run(draftPath, overridesPath, outputDir string) error {
 	}
 
 	return nil
+}
+
+func buildBundles(aliases []pkg.MergedAlias) ([]pkg.MergedAlias, []pkg.AliasBundle, error) {
+	var top []pkg.MergedAlias
+	byName := map[string]*pkg.AliasBundle{}
+	var order []string
+	for _, alias := range aliases {
+		if alias.Bundle == "" {
+			top = append(top, alias)
+			continue
+		}
+		if alias.Path == "metadata.uid" {
+			return nil, nil, fmt.Errorf("field metadata.uid cannot be placed in bundle %q: Terraform resource identity must remain top-level", alias.Bundle)
+		}
+		name := pkg.ToPascal(alias.Bundle)
+		if name == "" {
+			return nil, nil, fmt.Errorf("field %s has an empty bundle name", alias.Path)
+		}
+		bundle := byName[name]
+		if bundle == nil {
+			bundle = &pkg.AliasBundle{Name: alias.Bundle, GoName: name}
+			byName[name] = bundle
+			order = append(order, name)
+		}
+		bundle.Fields = append(bundle.Fields, alias)
+		if alias.Required {
+			bundle.Required = true
+		}
+		if !alias.Required {
+			bundle.Optional = true
+		}
+		if alias.Computed {
+			bundle.Computed = true
+		}
+	}
+	bundles := make([]pkg.AliasBundle, 0, len(order))
+	for _, name := range order {
+		bundles = append(bundles, *byName[name])
+	}
+	return top, bundles, nil
 }
 
 func loadOverrides(path string) (*pkg.Overrides, error) {
@@ -235,6 +282,7 @@ func buildFuncMap() template.FuncMap {
 			}
 			return strings.Join(modifiers, ", ")
 		},
+		"planModifierField": planModifierField,
 		// isConsumerOnly checks if field is hidden from Terraform schema.
 		// Fields with hfsdk:"-" but Operations defined are Terraform inputs (not consumer-only).
 		// Only truly hidden fields have hfsdk:"-" AND no Operations.
@@ -271,5 +319,55 @@ func buildFuncMap() template.FuncMap {
 			}
 			return mapping.SchemaType, nil
 		},
+		"objectSchemaType": func(a pkg.MergedObjectAttribute) string {
+			mapping, _ := terraformTypeFor(a.Type)
+			return mapping.SchemaType
+		},
+		"objectAttrType": func(a pkg.MergedObjectAttribute) string {
+			mapping, _ := terraformTypeFor(a.Type)
+			return mapping.FrameworkType
+		},
+		"objectPlanModifierField": func(a pkg.MergedObjectAttribute) string {
+			return planModifierField(pkg.MergedAlias{
+				Type:      a.Type,
+				Immutable: a.Immutable,
+				Computed:  a.Computed,
+			})
+		},
 	}
+}
+
+func planModifierField(alias pkg.MergedAlias) string {
+	if !alias.Immutable && !alias.Computed {
+		return ""
+	}
+	modifierType := ""
+	modifierPackage := ""
+	switch mapping, err := terraformTypeFor(alias.Type); {
+	case err != nil:
+		return ""
+	case mapping.SchemaType == "String":
+		modifierType, modifierPackage = "String", "stringplanmodifier"
+	case mapping.SchemaType == "Bool":
+		modifierType, modifierPackage = "Bool", "boolplanmodifier"
+	case mapping.SchemaType == "Int64":
+		modifierType, modifierPackage = "Int64", "int64planmodifier"
+	case mapping.SchemaType == "List":
+		modifierType, modifierPackage = "List", "listplanmodifier"
+	case mapping.SchemaType == "ListNested":
+		modifierType, modifierPackage = "List", "listplanmodifier"
+	case mapping.SchemaType == "Map":
+		modifierType, modifierPackage = "Map", "mapplanmodifier"
+	default:
+		return ""
+	}
+
+	var modifiers []string
+	if alias.Immutable {
+		modifiers = append(modifiers, modifierPackage+".RequiresReplace()")
+	}
+	if alias.Computed {
+		modifiers = append(modifiers, modifierPackage+".UseStateForUnknown()")
+	}
+	return fmt.Sprintf("PlanModifiers: []planmodifier.%s{%s},", modifierType, strings.Join(modifiers, ", "))
 }

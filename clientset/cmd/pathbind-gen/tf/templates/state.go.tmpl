@@ -12,8 +12,11 @@ import (
 // Fields are tagged with tfsdk (Terraform state key) only.
 // DO NOT use hfsdk tags here; use {{.ResourceName}}StateNative for pathbind operations.
 type {{.ResourceName}}State struct {
-{{- range .AllFields}}
-	{{.GoName}} {{if hasSuffix .Type "[]"}}types.List{{else if eq .Type "string"}}types.String{{else if eq .Type "*string"}}types.String{{else if eq .Type "bool"}}types.Bool{{else if eq .Type "*bool"}}types.Bool{{else if eq .Type "int32"}}types.Int64{{else if eq .Type "*int32"}}types.Int64{{else if eq .Type "int64"}}types.Int64{{else if eq .Type "*int64"}}types.Int64{{else if eq .Type "map"}}types.Map{{else}}types.String{{end}} `tfsdk:"{{attrName .}}"`
+{{- range .TopFields}}
+	{{.GoName}} {{if or (hasSuffix .Type "[]") (eq .Type "list(object)")}}types.List{{else if eq .Type "string"}}types.String{{else if eq .Type "*string"}}types.String{{else if eq .Type "bool"}}types.Bool{{else if eq .Type "*bool"}}types.Bool{{else if eq .Type "int32"}}types.Int64{{else if eq .Type "*int32"}}types.Int64{{else if eq .Type "int64"}}types.Int64{{else if eq .Type "*int64"}}types.Int64{{else if eq .Type "map"}}types.Map{{else}}types.String{{end}} `tfsdk:"{{attrName .}}"`
+{{- end}}
+{{- range .Bundles}}
+	{{.GoName}} types.Object `tfsdk:"{{lower .Name}}"`
 {{- end}}
 }
 
@@ -28,11 +31,20 @@ func mergeResponse{{.ResourceName}}(plan, response *{{.ResourceName}}State) {
 	}
 	// Only copy computed and required fields from response, skip optional fields
 	// to avoid overwriting user inputs with API-generated default values
-{{- range .AllFields}}
+{{- range .TopFields}}
 {{- if or .Computed .Required}}
 	if !response.{{.GoName}}.IsNull() {
 		plan.{{.GoName}} = response.{{.GoName}}
 	}
 {{- end}}
+{{- end}}
+{{- range .Bundles}}
+	plan.{{.GoName}} = mergeTerraformObject(plan.{{.GoName}}, response.{{.GoName}}, []string{
+{{- range .Fields}}
+{{- if or .Computed .Required}}
+		"{{attrName .}}",
+{{- end}}
+{{- end}}
+	})
 {{- end}}
 }

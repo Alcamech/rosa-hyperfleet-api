@@ -8,7 +8,40 @@ package {{.Package}}
 // to convert between SDK types and Terraform framework types.
 // Fields are tagged with hfsdk (SDK path for pathbind operations).
 type {{.ResourceName}}StateNative struct {
-{{- range .AllFields}}
+{{- range .TopFields}}
+{{- if hasSuffix .Type "[]"}}
+	{{.GoName}} []string `hfsdk:"{{hfsdkTag .}}"`
+{{- else if eq .Type "string"}}
+	{{.GoName}} string `hfsdk:"{{hfsdkTag .}}"`
+{{- else if eq .Type "*string"}}
+	{{.GoName}} *string `hfsdk:"{{hfsdkTag .}}"`
+{{- else if eq .Type "bool"}}
+	{{.GoName}} bool `hfsdk:"{{hfsdkTag .}}"`
+{{- else if eq .Type "*bool"}}
+	{{.GoName}} *bool `hfsdk:"{{hfsdkTag .}}"`
+{{- else if eq .Type "int32"}}
+	{{.GoName}} int32 `hfsdk:"{{hfsdkTag .}}"`
+{{- else if eq .Type "*int32"}}
+	{{.GoName}} *int32 `hfsdk:"{{hfsdkTag .}}"`
+{{- else if eq .Type "int64"}}
+	{{.GoName}} int64 `hfsdk:"{{hfsdkTag .}}"`
+{{- else if eq .Type "*int64"}}
+	{{.GoName}} *int64 `hfsdk:"{{hfsdkTag .}}"`
+{{- else if eq .Type "map"}}
+	{{.GoName}} map[string]string `hfsdk:"{{hfsdkTag .}}"`
+{{- else}}
+	{{.GoName}} string `hfsdk:"{{hfsdkTag .}}"`
+{{- end}}
+{{- end}}
+{{- range .Bundles}}
+	{{.GoName}} {{$.ResourceName}}{{.GoName}}Native
+{{- end}}
+}
+{{- range .Bundles}}
+
+// {{$.ResourceName}}{{.GoName}}Native is the native representation of the {{.Name}} bundle.
+type {{$.ResourceName}}{{.GoName}}Native struct {
+{{- range .Fields}}
 {{- if hasSuffix .Type "[]"}}
 	{{.GoName}} []string `hfsdk:"{{hfsdkTag .}}"`
 {{- else if eq .Type "string"}}
@@ -34,3 +67,4 @@ type {{.ResourceName}}StateNative struct {
 {{- end}}
 {{- end}}
 }
+{{- end}}

@@ -58,6 +58,66 @@ type nodePoolAdditionalFieldsInput struct {
 	TuningConfig     []corev1.LocalObjectReference `hfsdk:"spec.nodePool.tuningConfig"`
 }
 
+type networkInput struct {
+	NetworkType      string `hfsdk:"spec.hostedCluster.networking.networkType"`
+	AdvertiseAddress string `hfsdk:"spec.hostedCluster.networking.apiServer.advertiseAddress"`
+}
+
+type bundledClusterInput struct {
+	Network networkInput
+}
+
+type namedString string
+
+type conversionSDK struct {
+	Signed    int8                        `json:"signed"`
+	Unsigned  uint8                       `json:"unsigned"`
+	Float     float32                     `json:"float"`
+	Values    map[namedString]namedString `json:"values"`
+	Names     []namedString               `json:"names"`
+	Name      namedString                 `json:"name"`
+	Timestamp metav1.Time                 `json:"timestamp"`
+	Duration  metav1.Duration             `json:"duration"`
+	Optional  *string                     `json:"optional"`
+}
+
+type conversionInput struct {
+	Signed    int64                       `hfsdk:"signed"`
+	Unsigned  uint64                      `hfsdk:"unsigned"`
+	Float     float64                     `hfsdk:"float"`
+	Values    map[namedString]namedString `hfsdk:"values"`
+	Names     []namedString               `hfsdk:"names"`
+	Name      string                      `hfsdk:"name"`
+	Timestamp string                      `hfsdk:"timestamp"`
+	Duration  string                      `hfsdk:"duration"`
+	Optional  *string                     `hfsdk:"optional"`
+}
+
+func TestExpandAndFlatten_NestedConsumerBundle(t *testing.T) {
+	ctx := context.Background()
+	input := bundledClusterInput{Network: networkInput{
+		NetworkType:      "OVNKubernetes",
+		AdvertiseAddress: "api.example.com",
+	}}
+	cluster := &v1alpha1.Cluster{}
+	if err := pathbind.Expand(ctx, input, cluster); err != nil {
+		t.Fatalf("Expand: %v", err)
+	}
+	if cluster.Spec.HostedCluster.Networking.NetworkType != "OVNKubernetes" ||
+		cluster.Spec.HostedCluster.Networking.APIServer.AdvertiseAddress == nil ||
+		*cluster.Spec.HostedCluster.Networking.APIServer.AdvertiseAddress != "api.example.com" {
+		t.Fatalf("machine network was not expanded: %#v", cluster.Spec.HostedCluster.Networking)
+	}
+
+	var output bundledClusterInput
+	if err := pathbind.Flatten(ctx, cluster, &output); err != nil {
+		t.Fatalf("Flatten: %v", err)
+	}
+	if output.Network != input.Network {
+		t.Fatalf("bundle round trip: got %#v, want %#v", output.Network, input.Network)
+	}
+}
+
 func TestExpand_ClusterDirectMappings(t *testing.T) {
 	ctx := context.Background()
 	input := clusterInput{
@@ -723,6 +783,316 @@ func TestFlatten_NonPointerDstRejected(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "must be a non-nil pointer to a struct") {
 		t.Errorf("got unexpected error: %v", err)
+	}
+}
+
+func TestExpandFlatten_NumericCollectionsNamedStringsAndDurations(t *testing.T) {
+	ctx := context.Background()
+	optional := "present"
+	input := conversionInput{
+		Signed:    12,
+		Unsigned:  250,
+		Float:     1.25,
+		Values:    map[namedString]namedString{"key": "value"},
+		Names:     []namedString{"alpha", "beta"},
+		Name:      "cluster",
+		Timestamp: "2026-09-30T12:00:00Z",
+		Duration:  "2m30s",
+		Optional:  &optional,
+	}
+	sdk := &conversionSDK{}
+	if err := pathbind.Expand(ctx, input, sdk); err != nil {
+		t.Fatalf("Expand: %v", err)
+	}
+	if sdk.Signed != 12 || sdk.Unsigned != 250 || sdk.Float != 1.25 || sdk.Name != "cluster" {
+		t.Fatalf("scalar conversion mismatch: %#v", sdk)
+	}
+	if sdk.Values["key"] != "value" || !reflect.DeepEqual(sdk.Names, []namedString{"alpha", "beta"}) {
+		t.Fatalf("collection conversion mismatch: %#v", sdk)
+	}
+	if sdk.Timestamp.Format(time.RFC3339) != input.Timestamp || sdk.Duration.Duration.String() != input.Duration {
+		t.Fatalf("time/duration conversion mismatch: timestamp=%v duration=%v", sdk.Timestamp, sdk.Duration)
+	}
+	if sdk.Optional == nil || *sdk.Optional != optional {
+		t.Fatalf("optional pointer conversion mismatch: %#v", sdk.Optional)
+	}
+
+	var flattened conversionInput
+	if err := pathbind.Flatten(ctx, sdk, &flattened); err != nil {
+		t.Fatalf("Flatten: %v", err)
+	}
+	if flattened.Signed != input.Signed || flattened.Unsigned != input.Unsigned || flattened.Float != input.Float ||
+		flattened.Name != input.Name || !reflect.DeepEqual(flattened.Values, input.Values) || !reflect.DeepEqual(flattened.Names, input.Names) ||
+		flattened.Timestamp != input.Timestamp || flattened.Duration != input.Duration || flattened.Optional == nil || *flattened.Optional != optional {
+		t.Fatalf("round-trip mismatch: got %#v, want %#v", flattened, input)
+	}
+}
+
+func TestExpand_UnsignedOverflowRejected(t *testing.T) {
+	type unsignedSDK struct {
+		Value uint8 `json:"value"`
+	}
+	input := struct {
+		Value uint64 `hfsdk:"value"`
+	}{Value: 256}
+	if err := pathbind.Expand(context.Background(), input, &unsignedSDK{}); err == nil || !strings.Contains(err.Error(), "out of range") {
+		t.Fatalf("expected unsigned overflow error, got %v", err)
+	}
+}
+
+func TestExpand_IntegerWidthBoundaries(t *testing.T) {
+	type narrowSDK struct {
+		Signed   int32 `json:"signed"`
+		Unsigned uint8 `json:"unsigned"`
+	}
+	t.Run("signed in range", func(t *testing.T) {
+		max := int64(1<<31 - 1)
+		sdk := &narrowSDK{}
+		input := struct {
+			Value int64 `hfsdk:"signed"`
+		}{Value: max}
+		if err := pathbind.Expand(context.Background(), input, sdk); err != nil {
+			t.Fatal(err)
+		}
+		if sdk.Signed != int32(max) {
+			t.Fatalf("signed value = %d, want %d", sdk.Signed, max)
+		}
+	})
+	for _, value := range []int64{1 << 31, -(1 << 31) - 1} {
+		t.Run("signed overflow", func(t *testing.T) {
+			sdk := &narrowSDK{}
+			input := struct {
+				Value int64 `hfsdk:"signed"`
+			}{Value: value}
+			if err := pathbind.Expand(context.Background(), input, sdk); err == nil || !strings.Contains(err.Error(), "out of range") {
+				t.Fatalf("expected signed overflow for %d, got %v", value, err)
+			}
+		})
+	}
+	t.Run("unsigned in range", func(t *testing.T) {
+		input := struct {
+			Value uint64 `hfsdk:"unsigned"`
+		}{Value: 255}
+		sdk := &narrowSDK{}
+		if err := pathbind.Expand(context.Background(), input, sdk); err != nil {
+			t.Fatal(err)
+		}
+		if sdk.Unsigned != 255 {
+			t.Fatalf("unsigned value = %d, want 255", sdk.Unsigned)
+		}
+	})
+}
+
+func TestFlatten_InlineEmbeddedField(t *testing.T) {
+	type metadata struct {
+		Name string `json:"name"`
+	}
+	type sdk struct {
+		Metadata metadata `json:",inline"`
+	}
+	input := &sdk{Metadata: metadata{Name: "embedded-cluster"}}
+	output := &struct {
+		Name string `hfsdk:"name"`
+	}{}
+	if err := pathbind.Flatten(context.Background(), input, output); err != nil {
+		t.Fatal(err)
+	}
+	if output.Name != "embedded-cluster" {
+		t.Fatalf("flattened name = %q", output.Name)
+	}
+}
+
+func TestExpand_InvalidJSONComplexValue(t *testing.T) {
+	input := struct {
+		Values string `hfsdk:"spec.hostedCluster.networking.apiServer.allowedCIDRBlocks"`
+	}{Values: "not-json"}
+	err := pathbind.Expand(context.Background(), input, &v1alpha1.Cluster{})
+	if err == nil || !strings.Contains(err.Error(), "JSON unmarshal") {
+		t.Fatalf("expected JSON unmarshal error, got %v", err)
+	}
+}
+
+func TestExpand_InvalidTimeAndDurationRejected(t *testing.T) {
+	cases := []struct {
+		name  string
+		input any
+	}{
+		{"time", struct {
+			Value string `hfsdk:"timestamp"`
+		}{Value: "not-a-time"}},
+		{"duration", struct {
+			Value string `hfsdk:"duration"`
+		}{Value: "not-a-duration"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := pathbind.Expand(context.Background(), tc.input, &conversionSDK{})
+			if err == nil {
+				t.Fatal("expected conversion error")
+			}
+		})
+	}
+}
+
+func TestExpandFlatten_NilCollectionsAndOptionalPointer(t *testing.T) {
+	type collectionSDK struct {
+		Names    []string          `json:"names"`
+		Values   map[string]string `json:"values"`
+		Optional *string           `json:"optional"`
+	}
+	type collectionInput struct {
+		Names    []string          `hfsdk:"names"`
+		Values   map[string]string `hfsdk:"values"`
+		Optional *string           `hfsdk:"optional"`
+	}
+	sdk := &collectionSDK{}
+	out := &collectionInput{}
+	if err := pathbind.Flatten(context.Background(), sdk, out); err != nil {
+		t.Fatalf("Flatten nil values: %v", err)
+	}
+	if out.Names != nil || out.Values != nil || out.Optional != nil {
+		t.Fatalf("nil SDK values should remain nil: %#v", out)
+	}
+	if err := pathbind.Expand(context.Background(), collectionInput{}, &collectionSDK{}); err != nil {
+		t.Fatalf("Expand nil values: %v", err)
+	}
+}
+
+func TestExpandFlattenPointerUnsignedFloatMapAndDuration(t *testing.T) {
+	type sdk struct {
+		Unsigned uint64            `json:"unsigned"`
+		Float    float64           `json:"float"`
+		Enabled  bool              `json:"enabled"`
+		Values   map[string]string `json:"values"`
+		Names    []string          `json:"names"`
+		Date     metav1.Time       `json:"date"`
+		Duration metav1.Duration   `json:"duration"`
+	}
+	unsigned := uint64(42)
+	float := 1.5
+	duration := metav1.Duration{Duration: 90 * time.Second}
+	in := struct {
+		Unsigned *uint64           `hfsdk:"unsigned"`
+		Float    *float64          `hfsdk:"float"`
+		Enabled  bool              `hfsdk:"enabled"`
+		Values   map[string]string `hfsdk:"values"`
+		Names    []string          `hfsdk:"names"`
+		Date     metav1.Time       `hfsdk:"date"`
+		Duration metav1.Duration   `hfsdk:"duration"`
+	}{
+		Unsigned: &unsigned,
+		Float:    &float,
+		Enabled:  false,
+		Values:   map[string]string{"key": "value"},
+		Names:    []string{"one"},
+		Date:     metav1.Time{}, // zero time is absent
+		Duration: duration,
+	}
+	obj := &sdk{}
+	if err := pathbind.Expand(context.Background(), in, obj); err != nil {
+		t.Fatalf("Expand: %v", err)
+	}
+	if obj.Unsigned != unsigned || obj.Float != float || obj.Enabled || obj.Values["key"] != "value" || len(obj.Names) != 1 {
+		t.Fatalf("expanded fields mismatch: %#v", obj)
+	}
+	if !obj.Date.IsZero() || obj.Duration.Duration != duration.Duration {
+		t.Fatalf("time/duration values mismatch: date=%v duration=%v", obj.Date, obj.Duration)
+	}
+
+	out := &struct {
+		Unsigned uint64            `hfsdk:"unsigned"`
+		Float    float64           `hfsdk:"float"`
+		Enabled  bool              `hfsdk:"enabled"`
+		Values   map[string]string `hfsdk:"values"`
+		Names    []string          `hfsdk:"names"`
+		Date     metav1.Time       `hfsdk:"date"`
+		Duration metav1.Duration   `hfsdk:"duration"`
+	}{}
+	if err := pathbind.Flatten(context.Background(), obj, out); err != nil {
+		t.Fatalf("Flatten: %v", err)
+	}
+	if out.Unsigned != unsigned || out.Float != float || out.Enabled || out.Values["key"] != "value" || !reflect.DeepEqual(out.Names, []string{"one"}) {
+		t.Fatalf("flattened fields mismatch: %#v", out)
+	}
+	if !out.Date.IsZero() || out.Duration.Duration != duration.Duration {
+		t.Fatalf("flattened time/duration mismatch: %#v", out)
+	}
+}
+
+func TestExpandIntegerRangesForAllWidths(t *testing.T) {
+	type sdk struct {
+		I8  int8   `json:"i8"`
+		I16 int16  `json:"i16"`
+		U16 uint16 `json:"u16"`
+		U32 uint32 `json:"u32"`
+		U64 uint64 `json:"u64"`
+	}
+	type input struct {
+		I8  int64  `hfsdk:"i8"`
+		I16 int64  `hfsdk:"i16"`
+		U16 uint64 `hfsdk:"u16"`
+		U32 uint64 `hfsdk:"u32"`
+		U64 uint64 `hfsdk:"u64"`
+	}
+	good := input{I8: 127, I16: -32768, U16: 65535, U32: 1<<32 - 1, U64: ^uint64(0)}
+	obj := &sdk{}
+	if err := pathbind.Expand(context.Background(), good, obj); err != nil {
+		t.Fatalf("Expand in-range values: %v", err)
+	}
+	if obj.I8 != 127 || obj.I16 != -32768 || obj.U16 != 65535 || obj.U32 != 1<<32-1 || obj.U64 != ^uint64(0) {
+		t.Fatalf("converted values mismatch: %#v", obj)
+	}
+	for _, tc := range []struct {
+		name  string
+		input input
+	}{
+		{"int8 overflow", input{I8: 128}},
+		{"int16 overflow", input{I16: 32768}},
+		{"uint16 overflow", input{U16: 65536}},
+		{"uint32 overflow", input{U32: 1 << 32}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := pathbind.Expand(context.Background(), tc.input, &sdk{}); err == nil || !strings.Contains(err.Error(), "out of range") {
+				t.Fatalf("expected out-of-range error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestPathTraversalErrors(t *testing.T) {
+	t.Run("expand through scalar", func(t *testing.T) {
+		input := struct {
+			Value string `hfsdk:"metadata.name.invalid"`
+		}{Value: "x"}
+		if err := pathbind.Expand(context.Background(), input, &v1alpha1.Cluster{}); err == nil {
+			t.Fatal("expected traversal error")
+		}
+	})
+	t.Run("flatten missing field", func(t *testing.T) {
+		output := struct {
+			Value string `hfsdk:"metadata.notAField"`
+		}{}
+		if err := pathbind.Flatten(context.Background(), &v1alpha1.Cluster{}, &output); err == nil {
+			t.Fatal("expected missing-path error")
+		}
+	})
+}
+
+func TestExpandFlatten_InvalidArguments(t *testing.T) {
+	if err := pathbind.Expand(context.Background(), nil, &v1alpha1.Cluster{}); err == nil {
+		t.Fatal("Expand should reject nil source")
+	}
+	if err := pathbind.Expand(context.Background(), clusterInput{}, nil); err == nil {
+		t.Fatal("Expand should reject nil destination")
+	}
+	if err := pathbind.Flatten(context.Background(), nil, &clusterOutput{}); err == nil {
+		t.Fatal("Flatten should reject nil source")
+	}
+	if err := pathbind.Flatten(context.Background(), &v1alpha1.Cluster{}, nil); err == nil {
+		t.Fatal("Flatten should reject nil destination")
+	}
+	if err := pathbind.Flatten(context.Background(), "not a struct", &clusterOutput{}); err == nil {
+		t.Fatal("Flatten should reject non-struct source")
 	}
 }
 
