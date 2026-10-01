@@ -172,6 +172,9 @@ func buildBundles(aliases []pkg.MergedAlias) ([]pkg.MergedAlias, []pkg.AliasBund
 			top = append(top, alias)
 			continue
 		}
+		if alias.Path == "metadata.uid" {
+			return nil, nil, fmt.Errorf("field metadata.uid cannot be placed in bundle %q: Terraform resource identity must remain top-level", alias.Bundle)
+		}
 		name := pkg.ToPascal(alias.Bundle)
 		if name == "" {
 			return nil, nil, fmt.Errorf("field %s has an empty bundle name", alias.Path)
@@ -278,6 +281,7 @@ func buildFuncMap() template.FuncMap {
 			}
 			return strings.Join(modifiers, ", ")
 		},
+		"planModifierField": planModifierField,
 		// isConsumerOnly checks if field is hidden from Terraform schema.
 		// Fields with hfsdk:"-" but Operations defined are Terraform inputs (not consumer-only).
 		// Only truly hidden fields have hfsdk:"-" AND no Operations.
@@ -315,4 +319,37 @@ func buildFuncMap() template.FuncMap {
 			return mapping.SchemaType, nil
 		},
 	}
+}
+
+func planModifierField(alias pkg.MergedAlias) string {
+	if !alias.Immutable && !alias.Computed {
+		return ""
+	}
+	modifierType := ""
+	modifierPackage := ""
+	switch mapping, err := terraformTypeFor(alias.Type); {
+	case err != nil:
+		return ""
+	case mapping.SchemaType == "String":
+		modifierType, modifierPackage = "String", "stringplanmodifier"
+	case mapping.SchemaType == "Bool":
+		modifierType, modifierPackage = "Bool", "boolplanmodifier"
+	case mapping.SchemaType == "Int64":
+		modifierType, modifierPackage = "Int64", "int64planmodifier"
+	case mapping.SchemaType == "List":
+		modifierType, modifierPackage = "List", "listplanmodifier"
+	case mapping.SchemaType == "Map":
+		modifierType, modifierPackage = "Map", "mapplanmodifier"
+	default:
+		return ""
+	}
+
+	var modifiers []string
+	if alias.Immutable {
+		modifiers = append(modifiers, modifierPackage+".RequiresReplace()")
+	}
+	if alias.Computed {
+		modifiers = append(modifiers, modifierPackage+".UseStateForUnknown()")
+	}
+	return fmt.Sprintf("PlanModifiers: []planmodifier.%s{%s},", modifierType, strings.Join(modifiers, ", "))
 }

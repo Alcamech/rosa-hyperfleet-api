@@ -15,7 +15,7 @@ package {{.Package}}
 {{- $hasInt64Modifiers := false}}
 {{- $hasInt32 := false}}
 {{- $hasAttributes := false}}
-{{- range .TopFields}}
+{{- range .AllFields}}
 {{- $inSchema := or (ne .Path "-") (and (eq .Path "-") (gt (len .Operations) 0))}}
 {{- if and .Immutable $inSchema}}
 {{- $hasImmutable = true}}
@@ -282,10 +282,16 @@ func (r *{{.ResourceName}}Resource) Schema(
 {{- else}}
 						Optional: true,
 {{- end}}
+{{- if .Sensitive}}
+						Sensitive: true,
+{{- end}}
 {{- if eq (schemaType .) "List"}}
 						ElementType: types.StringType,
 {{- else if eq (schemaType .) "Map"}}
 						ElementType: types.StringType,
+{{- end}}
+{{- if planModifierField .}}
+						{{planModifierField .}}
 {{- end}}
 					},
 {{- end}}

@@ -38,7 +38,10 @@ func mergeTerraformObject(plan, response types.Object, fields []string) types.Ob
 	for name, value := range attributes {
 		typesByName[name] = value.Type(context.Background())
 	}
-	merged, _ := types.ObjectValue(typesByName, attributes)
+	merged, diags := types.ObjectValue(typesByName, attributes)
+	if diags.HasError() {
+		return plan
+	}
 	return merged
 }
 
@@ -168,20 +171,49 @@ func setObjectValue(field reflect.Value, value attr.Value) error {
 
 func setNativeValue(field reflect.Value, value any) error {
 	source := reflect.ValueOf(value)
+	targetType := field.Type()
 	if field.Kind() == reflect.Pointer {
-		if !source.Type().ConvertibleTo(field.Type().Elem()) {
+		targetType = field.Type().Elem()
+		if !source.Type().ConvertibleTo(targetType) {
 			return fmt.Errorf("cannot assign %T to %s", value, field.Type())
 		}
-		converted := source.Convert(field.Type().Elem())
-		field.Set(reflect.New(field.Type().Elem()))
+		if integerConversionOverflows(source, targetType) {
+			return fmt.Errorf("integer value %v overflows %s", value, targetType)
+		}
+		converted := source.Convert(targetType)
+		field.Set(reflect.New(targetType))
 		field.Elem().Set(converted)
 		return nil
 	}
 	if !source.Type().ConvertibleTo(field.Type()) {
 		return fmt.Errorf("cannot assign %T to %s", value, field.Type())
 	}
+	if integerConversionOverflows(source, targetType) {
+		return fmt.Errorf("integer value %v overflows %s", value, targetType)
+	}
 	field.Set(source.Convert(field.Type()))
 	return nil
+}
+
+func integerConversionOverflows(source reflect.Value, target reflect.Type) bool {
+	switch source.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		switch target.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			return target.OverflowInt(source.Int())
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			return source.Int() < 0 || target.OverflowUint(uint64(source.Int()))
+		}
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		switch target.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			maxInt := (uint64(1) << uint(target.Bits()-1)) - 1
+			return source.Uint() > maxInt
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			return target.OverflowUint(source.Uint())
+		}
+	}
+	return false
 }
 
 func nativeBundleAttributes(bundle any, fields map[string]string) map[string]attr.Value {
@@ -205,6 +237,10 @@ func nativeValue(field reflect.Value) attr.Value {
 				return types.BoolNull()
 			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 				return types.Int64Null()
+			case reflect.Slice:
+				return types.ListNull(types.StringType)
+			case reflect.Map:
+				return types.MapNull(types.StringType)
 			default:
 				return types.StringNull()
 			}
@@ -219,9 +255,30 @@ func nativeValue(field reflect.Value) attr.Value {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return toTerraformInt64(field.Int())
 	case reflect.Slice:
-		return toTerraformList(field.Interface().([]string))
+		if field.Type().Elem().Kind() != reflect.String {
+			return types.ListNull(types.StringType)
+		}
+		if field.IsNil() {
+			return types.ListNull(types.StringType)
+		}
+		items := make([]string, field.Len())
+		for i := range items {
+			items[i] = field.Index(i).String()
+		}
+		return toTerraformList(items)
 	case reflect.Map:
-		return toTerraformMap(field.Interface().(map[string]string))
+		if field.Type().Key().Kind() != reflect.String || field.Type().Elem().Kind() != reflect.String {
+			return types.MapNull(types.StringType)
+		}
+		if field.IsNil() {
+			return types.MapNull(types.StringType)
+		}
+		values := make(map[string]string, field.Len())
+		iter := field.MapRange()
+		for iter.Next() {
+			values[iter.Key().String()] = iter.Value().String()
+		}
+		return toTerraformMap(values)
 	default:
 		return types.StringNull()
 	}
