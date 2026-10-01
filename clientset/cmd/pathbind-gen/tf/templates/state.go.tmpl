@@ -13,7 +13,7 @@ import (
 // DO NOT use hfsdk tags here; use {{.ResourceName}}StateNative for pathbind operations.
 type {{.ResourceName}}State struct {
 {{- range .TopFields}}
-	{{.GoName}} {{if hasSuffix .Type "[]"}}types.List{{else if eq .Type "string"}}types.String{{else if eq .Type "*string"}}types.String{{else if eq .Type "bool"}}types.Bool{{else if eq .Type "*bool"}}types.Bool{{else if eq .Type "int32"}}types.Int64{{else if eq .Type "*int32"}}types.Int64{{else if eq .Type "int64"}}types.Int64{{else if eq .Type "*int64"}}types.Int64{{else if eq .Type "map"}}types.Map{{else}}types.String{{end}} `tfsdk:"{{attrName .}}"`
+	{{.GoName}} {{if or (hasSuffix .Type "[]") (eq .Type "list(object)")}}types.List{{else if eq .Type "string"}}types.String{{else if eq .Type "*string"}}types.String{{else if eq .Type "bool"}}types.Bool{{else if eq .Type "*bool"}}types.Bool{{else if eq .Type "int32"}}types.Int64{{else if eq .Type "*int32"}}types.Int64{{else if eq .Type "int64"}}types.Int64{{else if eq .Type "*int64"}}types.Int64{{else if eq .Type "map"}}types.Map{{else}}types.String{{end}} `tfsdk:"{{attrName .}}"`
 {{- end}}
 {{- range .Bundles}}
 	{{.GoName}} types.Object `tfsdk:"{{lower .Name}}"`

@@ -164,6 +164,128 @@ resources:
 	}
 }
 
+func TestRunGeneratesListObjectAttributeAndConversions(t *testing.T) {
+	dir := t.TempDir()
+	draftPath := filepath.Join(dir, "draft.yaml")
+	overridesPath := filepath.Join(dir, "overrides.yaml")
+	outputDir := filepath.Join(dir, "generated")
+	draft := `resources:
+  nodePool:
+    sdkType: v1alpha1.NodePool
+    fields:
+      - path: metadata.uid
+        goType: string
+        operations: [read]
+      - path: spec.nodePool.config
+        goType: array(object)
+        operations: [create, update]
+      - path: spec.nodePool.taints
+        goType: array(object)
+        operations: [create, update]
+      - path: spec.nodePool.policy
+        goType: array(object)
+        operations: [create, update]
+`
+	overrides := `config:
+  package: generated
+  tfProviderPkg: example/provider
+resources:
+  nodePool:
+    aliases:
+      - path: metadata.uid
+        alias: id
+        type: string
+        computed: true
+      - path: spec.nodePool.config
+        type: list(object)
+        element:
+          attributes:
+            name:
+              type: string
+              required: true
+      - path: spec.nodePool.taints
+        type: list(object)
+        element:
+          attributes:
+            key:
+              type: string
+              required: true
+            value:
+              type: string
+              optional: true
+            effect:
+              type: string
+              required: true
+      - path: spec.nodePool.policy
+        type: list(object)
+        element:
+          attributes:
+            enabled:
+              type: bool
+              immutable: true
+            generation:
+              type: int32
+              computed: true
+`
+	if err := os.WriteFile(draftPath, []byte(draft), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(overridesPath, []byte(overrides), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(draftPath, overridesPath, outputDir); err != nil {
+		t.Fatal(err)
+	}
+
+	state, err := os.ReadFile(filepath.Join(outputDir, "nodepool_state_gen.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(state), `Config types.List`) || !strings.Contains(string(state), `tfsdk:"config"`) {
+		t.Errorf("generated state should use types.List for config:\n%s", state)
+	}
+	native, err := os.ReadFile(filepath.Join(outputDir, "nodepool_state_native_gen.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(native), `Config string `+"`hfsdk:\"spec.nodePool.config\"`") {
+		t.Errorf("native pathbind state should retain JSON string representation:\n%s", native)
+	}
+	resource, err := os.ReadFile(filepath.Join(outputDir, "nodepool_resource_gen.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resourceText := string(resource)
+	for _, want := range []string{
+		`"config": schema.ListNestedAttribute`,
+		`"taints": schema.ListNestedAttribute`,
+		`"policy": schema.ListNestedAttribute`,
+		`NestedAttributeObject{`,
+		`"effect": schema.StringAttribute`,
+		`"enabled": schema.BoolAttribute`,
+		`boolplanmodifier.RequiresReplace()`,
+		`"generation": schema.Int64Attribute`,
+		`int64planmodifier.UseStateForUnknown()`,
+		`"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"`,
+		`"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"`,
+		`terraformObjectListToJSON(tf.Config)`,
+		`terraformJSONToObjectList(native.Config`,
+	} {
+		if !strings.Contains(resourceText, want) {
+			t.Errorf("generated list(object) resource missing %q", want)
+		}
+	}
+	utils, err := os.ReadFile(filepath.Join(outputDir, "utils_gen.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"func terraformObjectListToJSON", "func terraformJSONToObjectList"} {
+		if !strings.Contains(string(utils), want) {
+			t.Errorf("generated list(object) conversion helper missing %q", want)
+		}
+	}
+}
+
 func TestBuildBundlesRejectsBundledMetadataUID(t *testing.T) {
 	_, _, err := buildBundles([]pkg.MergedAlias{{
 		Path:   "metadata.uid",

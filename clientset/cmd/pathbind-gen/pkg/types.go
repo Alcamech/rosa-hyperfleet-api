@@ -70,11 +70,41 @@ type OverrideAlias struct {
 	// Bundle groups this leaf with other fields in generated consumer structs.
 	// The value is the generated field name (for example, "network").
 	Bundle string `yaml:"bundle"`
+	// Element describes child attributes when Type is list(object).
+	Element *OverrideObjectElement `yaml:"element,omitempty"`
 	// TF-specific fields:
 	Immutable   *bool `yaml:"immutable"`
 	Computed    *bool `yaml:"computed"`
 	Sensitive   *bool `yaml:"sensitive"`
 	JSONEncoded *bool `yaml:"json_encoded"`
+}
+
+// OverrideObjectElement defines the attributes of an object-list element.
+type OverrideObjectElement struct {
+	Attributes map[string]OverrideObjectAttribute `yaml:"attributes"`
+}
+
+// OverrideObjectAttribute describes one scalar field within an object-list element.
+type OverrideObjectAttribute struct {
+	Type        string `yaml:"type"`
+	Description string `yaml:"description,omitempty"`
+	Required    *bool  `yaml:"required,omitempty"`
+	Optional    *bool  `yaml:"optional,omitempty"`
+	Computed    *bool  `yaml:"computed,omitempty"`
+	Sensitive   *bool  `yaml:"sensitive,omitempty"`
+	Immutable   *bool  `yaml:"immutable,omitempty"`
+}
+
+// MergedObjectAttribute is a validated object-list child schema field.
+type MergedObjectAttribute struct {
+	Name        string
+	Type        string
+	Description string
+	Required    bool
+	Optional    bool
+	Computed    bool
+	Sensitive   bool
+	Immutable   bool
 }
 
 // MergedAlias is the unified view of a draft field + its override.
@@ -88,11 +118,12 @@ type MergedAlias struct {
 	Operations  []string
 	HasFlag     bool
 	// TF-specific:
-	Immutable   bool
-	Computed    bool
-	Sensitive   bool
-	JSONEncoded bool
-	Bundle      string
+	Immutable         bool
+	Computed          bool
+	Sensitive         bool
+	JSONEncoded       bool
+	Bundle            string
+	ElementAttributes []MergedObjectAttribute
 }
 
 // UnsetPtrField tracks pointer flag fields needing normalization.
@@ -242,6 +273,10 @@ func mergeDraftField(df DraftField, ov OverrideAlias, hasOv bool, allDraftPaths 
 	if typ == "" {
 		return MergedAlias{}, fmt.Errorf("missing consumer type for field %s; add an explicit consumer type override", df.Path)
 	}
+	elementAttributes, err := mergeObjectElement(df.Path, typ, ov.Element)
+	if err != nil {
+		return MergedAlias{}, err
+	}
 
 	flag := ToKebab(alias)
 	if hasOv && ov.Flag != nil {
@@ -284,20 +319,71 @@ func mergeDraftField(df DraftField, ov OverrideAlias, hasOv bool, allDraftPaths 
 	}
 
 	return MergedAlias{
-		GoName:      goName,
-		Type:        typ,
-		Path:        df.Path,
-		Flag:        flag,
-		Description: description,
-		Required:    required,
-		Operations:  ops,
-		HasFlag:     flag != "",
-		Immutable:   immutable,
-		Computed:    computed,
-		Sensitive:   sensitive,
-		JSONEncoded: jsonEncoded,
-		Bundle:      ov.Bundle,
+		GoName:            goName,
+		Type:              typ,
+		Path:              df.Path,
+		Flag:              flag,
+		Description:       description,
+		Required:          required,
+		Operations:        ops,
+		HasFlag:           flag != "",
+		Immutable:         immutable,
+		Computed:          computed,
+		Sensitive:         sensitive,
+		JSONEncoded:       jsonEncoded,
+		Bundle:            ov.Bundle,
+		ElementAttributes: elementAttributes,
 	}, nil
+}
+
+func mergeObjectElement(path, typ string, element *OverrideObjectElement) ([]MergedObjectAttribute, error) {
+	if typ != "list(object)" {
+		if element != nil {
+			return nil, fmt.Errorf("field %s: element schema is only valid with type list(object)", path)
+		}
+		return nil, nil
+	}
+	if element == nil || len(element.Attributes) == 0 {
+		return nil, fmt.Errorf("field %s: type list(object) requires element.attributes", path)
+	}
+	var attributes []MergedObjectAttribute
+	for _, name := range SortedKeys(element.Attributes) {
+		field := element.Attributes[name]
+		if strings.TrimSpace(name) == "" {
+			return nil, fmt.Errorf("field %s: object element attribute name cannot be empty", path)
+		}
+		switch field.Type {
+		case "string", "bool", "int32", "int64":
+		default:
+			return nil, fmt.Errorf("field %s: unsupported object element type %q for attribute %s", path, field.Type, name)
+		}
+		if field.Required != nil && *field.Required && field.Optional != nil && *field.Optional {
+			return nil, fmt.Errorf("field %s: object element attribute %s cannot be both required and optional", path, name)
+		}
+		if field.Required != nil && *field.Required && field.Computed != nil && *field.Computed {
+			return nil, fmt.Errorf("field %s: object element attribute %s cannot be both required and computed", path, name)
+		}
+		attribute := MergedObjectAttribute{Name: name, Type: field.Type, Description: field.Description}
+		if field.Required != nil {
+			attribute.Required = *field.Required
+		}
+		if field.Computed != nil {
+			attribute.Computed = *field.Computed
+		}
+		if field.Optional != nil {
+			attribute.Optional = *field.Optional
+		} else {
+			attribute.Optional = !attribute.Required && !attribute.Computed
+		}
+		if field.Sensitive != nil {
+			attribute.Sensitive = *field.Sensitive
+		}
+		if field.Immutable != nil {
+			attribute.Immutable = *field.Immutable
+		}
+		attributes = append(attributes, attribute)
+	}
+	return attributes, nil
 }
 
 // mergeConsumerOnlyAliases constructs merged aliases from consumer-only override entries.
@@ -628,7 +714,7 @@ func narrowOperations(draftOps, overrideOps []string) []string {
 
 func IsSupportedConsumerType(typ string) bool {
 	switch typ {
-	case "string", "*string", "bool", "*bool", "int32", "*int32", "int64", "*int64", "map", "string[]":
+	case "string", "*string", "bool", "*bool", "int32", "*int32", "int64", "*int64", "map", "string[]", "list(object)":
 		return true
 	default:
 		return false

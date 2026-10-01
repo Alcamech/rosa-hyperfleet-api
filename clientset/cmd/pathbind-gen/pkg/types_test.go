@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -20,6 +21,40 @@ func TestBuildMergedAliasesPreservesBundle(t *testing.T) {
 	}
 	if len(aliases) != 1 || aliases[0].Bundle != "network" {
 		t.Fatalf("bundle was not preserved: %#v", aliases)
+	}
+}
+
+func TestBuildMergedAliasesListObjectElementSchema(t *testing.T) {
+	path := "spec.nodePool.config"
+	draft := map[string]DraftField{
+		path: {Path: path, GoType: "array(object)", Operations: []string{"create", "update"}},
+	}
+	_, err := BuildMergedAliases(draft, []OverrideAlias{{Path: path, Type: "list(object)"}})
+	if err == nil || !strings.Contains(err.Error(), "requires element.attributes") {
+		t.Fatalf("expected missing list object element schema error, got %v", err)
+	}
+	aliases, err := BuildMergedAliases(draft, []OverrideAlias{{
+		Path: path,
+		Type: "list(object)",
+		Element: &OverrideObjectElement{Attributes: map[string]OverrideObjectAttribute{
+			"name": {Type: "string", Required: boolPtr(true)},
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aliases) != 1 || len(aliases[0].ElementAttributes) != 1 || aliases[0].ElementAttributes[0].Name != "name" || !aliases[0].ElementAttributes[0].Required {
+		t.Fatalf("unexpected list object field merge: %#v", aliases)
+	}
+	_, err = BuildMergedAliases(draft, []OverrideAlias{{
+		Path: path,
+		Type: "list(object)",
+		Element: &OverrideObjectElement{Attributes: map[string]OverrideObjectAttribute{
+			"metadata": {Type: "map"},
+		}},
+	}})
+	if err == nil || !strings.Contains(err.Error(), "unsupported object element type") {
+		t.Fatalf("expected unsupported object element type error, got %v", err)
 	}
 }
 

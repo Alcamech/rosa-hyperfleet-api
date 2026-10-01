@@ -15,6 +15,7 @@ package {{.Package}}
 {{- $hasInt64Modifiers := false}}
 {{- $hasInt32 := false}}
 {{- $hasAttributes := false}}
+{{- $hasObjectList := false}}
 {{- range .AllFields}}
 {{- $inSchema := or (ne .Path "-") (and (eq .Path "-") (gt (len .Operations) 0))}}
 {{- if and .Immutable $inSchema}}
@@ -26,8 +27,11 @@ package {{.Package}}
 {{- if and .Computed $inSchema}}
 {{- $hasComputed = true}}
 {{- end}}
-{{- if and (hasSuffix .Type "[]") $inSchema}}
+{{- if and (or (hasSuffix .Type "[]") (eq .Type "list(object)")) $inSchema}}
 {{- $hasAnyList = true}}
+{{- if eq .Type "list(object)"}}
+{{- $hasObjectList = true}}
+{{- end}}
 {{- if or .Immutable .Computed}}
 {{- $hasList = true}}
 {{- end}}
@@ -45,6 +49,21 @@ package {{.Package}}
 {{- $hasBoolModifiers = true}}
 {{- else if or (eq .Type "int32") (eq .Type "*int32") (eq .Type "int64") (eq .Type "*int64")}}
 {{- $hasInt64Modifiers = true}}
+{{- end}}
+{{- end}}
+{{- if and $inSchema (eq .Type "list(object)")}}
+{{- range .ElementAttributes}}
+{{- if or .Immutable .Computed}}
+{{- $hasImmutable = or $hasImmutable .Immutable}}
+{{- $hasComputed = or $hasComputed .Computed}}
+{{- if eq .Type "string"}}
+{{- $hasStringModifiers = true}}
+{{- else if eq .Type "bool"}}
+{{- $hasBoolModifiers = true}}
+{{- else if or (eq .Type "int32") (eq .Type "int64")}}
+{{- $hasInt64Modifiers = true}}
+{{- end}}
+{{- end}}
 {{- end}}
 {{- end}}
 {{- if and $inSchema (or (eq .Type "int32") (eq .Type "*int32"))}}
@@ -89,7 +108,7 @@ import (
 {{- if and (or $hasAnyList $hasAnyMap) (eq (len .Bundles) 0)}}
 	"github.com/hashicorp/terraform-plugin-framework/types"
 {{- end}}
-{{- if gt (len .Bundles) 0}}
+{{- if or (gt (len .Bundles) 0) $hasObjectList}}
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 {{- end}}
@@ -195,7 +214,49 @@ func (r *{{.ResourceName}}Resource) Schema(
 		MarkdownDescription: "Manages {{.ResourceName}} resources.",
 		Attributes: map[string]schema.Attribute{
 {{- range .TopFields}}
-{{- if isConsumerOnly .}}
+{{- if eq .Type "list(object)"}}
+			"{{attrName .}}": schema.ListNestedAttribute{
+				MarkdownDescription: "{{.Description}}",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+{{- range .ElementAttributes}}
+						"{{.Name}}": schema.{{objectSchemaType .}}Attribute{
+							MarkdownDescription: "{{.Description}}",
+{{- if .Required}}
+							Required: true,
+{{- else if and .Optional .Computed}}
+							Optional: true,
+							Computed: true,
+{{- else if .Computed}}
+							Computed: true,
+{{- else}}
+							Optional: true,
+{{- end}}
+{{- if .Sensitive}}
+							Sensitive: true,
+{{- end}}
+{{- if objectPlanModifierField .}}
+							{{objectPlanModifierField .}}
+{{- end}}
+						},
+{{- end}}
+					},
+				},
+{{- if .Computed}}
+				Computed: true,
+{{- else if .Required}}
+				Required: true,
+{{- else}}
+				Optional: true,
+{{- end}}
+{{- if .Sensitive}}
+				Sensitive: true,
+{{- end}}
+{{- if planModifierField .}}
+				{{planModifierField .}}
+{{- end}}
+			},
+{{- else if isConsumerOnly .}}
 			"{{attrName .}}": schema.StringAttribute{
 				MarkdownDescription: "Resource identifier (computed).",
 				Computed:            true,
@@ -384,7 +445,11 @@ func (r *{{.ResourceName}}Resource) Create(
 	}
 
 	// Convert native state to Terraform state
-	responseState := native{{.ResourceName}}ToTerraform(&nativeState)
+	responseState, responseDiags := native{{.ResourceName}}ToTerraform(&nativeState)
+	resp.Diagnostics.Append(responseDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	
 	// Merge API response values into plan to preserve consumer-only fields
 	// This keeps user-provided values while adding computed fields from the API
@@ -445,7 +510,11 @@ func (r *{{.ResourceName}}Resource) Read(
 	}
 
 	// Convert native state to Terraform state
-	responseState := native{{.ResourceName}}ToTerraform(&nativeState)
+	responseState, responseDiags := native{{.ResourceName}}ToTerraform(&nativeState)
+	resp.Diagnostics.Append(responseDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Merge API response values into state to preserve consumer-only fields
 	// (fields with no SDK path, e.g. immutable creation-only inputs) that
@@ -537,7 +606,11 @@ func (r *{{.ResourceName}}Resource) Update(
 	}
 
 	// Convert native state to Terraform state
-	responseState := native{{.ResourceName}}ToTerraform(&nativeState)
+	responseState, responseDiags := native{{.ResourceName}}ToTerraform(&nativeState)
+	resp.Diagnostics.Append(responseDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	
 	// Merge API response values into plan to preserve consumer-only fields
 	// This keeps user-provided values while adding computed fields from the API
@@ -628,7 +701,11 @@ func (r *{{.ResourceName}}Resource) ImportState(
 	}
 
 	// Convert native state to Terraform state
-	state := native{{.ResourceName}}ToTerraform(&nativeState)
+	state, conversionDiags := native{{.ResourceName}}ToTerraform(&nativeState)
+	resp.Diagnostics.Append(conversionDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Call handler to populate computed fields and adjust state after flatten
 	r.Handler.PostFlatten(ctx, state, obj)
@@ -647,7 +724,13 @@ func terraform{{.ResourceName}}ToNative(tf *{{.ResourceName}}State) (*{{.Resourc
 	native := &{{.ResourceName}}StateNative{}
 	var diags diag.Diagnostics
 {{- range .TopFields}}
-{{- if hasSuffix .Type "[]"}}
+{{- if eq .Type "list(object)"}}
+	if !tf.{{.GoName}}.IsNull() && !tf.{{.GoName}}.IsUnknown() {
+		encoded, collectionDiags := terraformObjectListToJSON(tf.{{.GoName}})
+		diags = append(diags, collectionDiags...)
+		native.{{.GoName}} = encoded
+	}
+{{- else if hasSuffix .Type "[]"}}
 	if !tf.{{.GoName}}.IsNull() && !tf.{{.GoName}}.IsUnknown() {
 		items, collectionDiags := terraformListToStringSlice(tf.{{.GoName}})
 		diags = append(diags, collectionDiags...)
@@ -727,13 +810,24 @@ func terraform{{.ResourceName}}ToNative(tf *{{.ResourceName}}State) (*{{.Resourc
 
 // native{{.ResourceName}}ToTerraform converts native Go types to Terraform framework types.
 // This is used after pathbind.Flatten to prepare output for state persistence.
-func native{{.ResourceName}}ToTerraform(native *{{.ResourceName}}StateNative) *{{.ResourceName}}State {
+func native{{.ResourceName}}ToTerraform(native *{{.ResourceName}}StateNative) (*{{.ResourceName}}State, diag.Diagnostics) {
 	if native == nil {
-		return nil
+		return nil, nil
 	}
 	tf := &{{.ResourceName}}State{}
+var diags diag.Diagnostics
 {{- range .TopFields}}
-{{- if hasSuffix .Type "[]"}}
+{{- if eq .Type "list(object)"}}
+	{
+		var collectionDiags diag.Diagnostics
+		tf.{{.GoName}}, collectionDiags = terraformJSONToObjectList(native.{{.GoName}}, map[string]attr.Type{
+{{- range .ElementAttributes}}
+			"{{.Name}}": {{objectAttrType .}},
+{{- end}}
+		})
+		diags = append(diags, collectionDiags...)
+	}
+{{- else if hasSuffix .Type "[]"}}
 	tf.{{.GoName}} = toTerraformList(native.{{.GoName}})
 {{- else if eq .Type "string"}}
 	tf.{{.GoName}} = toTerraformString(native.{{.GoName}})
@@ -779,5 +873,5 @@ func native{{.ResourceName}}ToTerraform(native *{{.ResourceName}}StateNative) *{
 		}, bundleAttrs)
 	}
 {{- end}}
-	return tf
+	return tf, diags
 }

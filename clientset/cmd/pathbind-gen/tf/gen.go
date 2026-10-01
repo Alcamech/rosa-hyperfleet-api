@@ -20,16 +20,17 @@ type terraformTypeMapping struct {
 }
 
 var terraformTypeMappings = map[string]terraformTypeMapping{
-	"string":   {FrameworkType: "types.StringType", ValueFunction: "types.StringValue", SchemaType: "String"},
-	"*string":  {FrameworkType: "types.StringType", ValueFunction: "types.StringValue", SchemaType: "String"},
-	"bool":     {FrameworkType: "types.BoolType", ValueFunction: "types.BoolValue", SchemaType: "Bool"},
-	"*bool":    {FrameworkType: "types.BoolType", ValueFunction: "types.BoolValue", SchemaType: "Bool"},
-	"int32":    {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
-	"*int32":   {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
-	"int64":    {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
-	"*int64":   {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
-	"string[]": {FrameworkType: "types.ListType", ValueFunction: "types.ListValue", SchemaType: "List"},
-	"map":      {FrameworkType: "types.MapType", ValueFunction: "types.MapValue", SchemaType: "Map"},
+	"string":       {FrameworkType: "types.StringType", ValueFunction: "types.StringValue", SchemaType: "String"},
+	"*string":      {FrameworkType: "types.StringType", ValueFunction: "types.StringValue", SchemaType: "String"},
+	"bool":         {FrameworkType: "types.BoolType", ValueFunction: "types.BoolValue", SchemaType: "Bool"},
+	"*bool":        {FrameworkType: "types.BoolType", ValueFunction: "types.BoolValue", SchemaType: "Bool"},
+	"int32":        {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
+	"*int32":       {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
+	"int64":        {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
+	"*int64":       {FrameworkType: "types.Int64Type", ValueFunction: "types.Int64Value", SchemaType: "Int64"},
+	"string[]":     {FrameworkType: "types.ListType", ValueFunction: "types.ListValue", SchemaType: "List"},
+	"list(object)": {FrameworkType: "types.ListType", ValueFunction: "types.ListValue", SchemaType: "ListNested"},
+	"map":          {FrameworkType: "types.MapType", ValueFunction: "types.MapValue", SchemaType: "Map"},
 }
 
 func terraformTypeFor(typ string) (terraformTypeMapping, error) {
@@ -318,6 +319,21 @@ func buildFuncMap() template.FuncMap {
 			}
 			return mapping.SchemaType, nil
 		},
+		"objectSchemaType": func(a pkg.MergedObjectAttribute) string {
+			mapping, _ := terraformTypeFor(a.Type)
+			return mapping.SchemaType
+		},
+		"objectAttrType": func(a pkg.MergedObjectAttribute) string {
+			mapping, _ := terraformTypeFor(a.Type)
+			return mapping.FrameworkType
+		},
+		"objectPlanModifierField": func(a pkg.MergedObjectAttribute) string {
+			return planModifierField(pkg.MergedAlias{
+				Type:      a.Type,
+				Immutable: a.Immutable,
+				Computed:  a.Computed,
+			})
+		},
 	}
 }
 
@@ -337,6 +353,8 @@ func planModifierField(alias pkg.MergedAlias) string {
 	case mapping.SchemaType == "Int64":
 		modifierType, modifierPackage = "Int64", "int64planmodifier"
 	case mapping.SchemaType == "List":
+		modifierType, modifierPackage = "List", "listplanmodifier"
+	case mapping.SchemaType == "ListNested":
 		modifierType, modifierPackage = "List", "listplanmodifier"
 	case mapping.SchemaType == "Map":
 		modifierType, modifierPackage = "Map", "mapplanmodifier"
