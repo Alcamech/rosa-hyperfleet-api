@@ -20,7 +20,7 @@ func TestNew(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, nil, logger)
+	server, err := newConfiguredServer(t, cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestNew_WithCustomConfig(t *testing.T) {
 		},
 	}
 
-	server, err := New(cfg, nil, logger)
+	server, err := newConfiguredServer(t, cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestServer_HealthRoutes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, nil, logger)
+	server, err := newConfiguredServer(t, cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestServer_IdentityMiddleware(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, nil, logger)
+	server, err := newConfiguredServer(t, cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestServer_RequiresIdentity(t *testing.T) {
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	db := hyperfleetdb.NewClientFrom(fake.NewClientBuilder().WithScheme(scheme).Build(), logger)
-	srv, err := New(config.NewConfig(), db, logger)
+	srv, err := newConfiguredServer(t, config.NewConfig(), db, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestServer_MetricsRoute(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, nil, logger)
+	server, err := newConfiguredServer(t, cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestServer_HealthServerRoutes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, nil, logger)
+	server, err := newConfiguredServer(t, cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestServer_InvalidRoutes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, nil, logger)
+	server, err := newConfiguredServer(t, cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -312,7 +312,7 @@ func TestServer_ReadinessToggle(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()
 
-	server, err := New(cfg, nil, logger)
+	server, err := newConfiguredServer(t, cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestServer_ServerAddresses(t *testing.T) {
 		},
 	}
 
-	server, err := New(cfg, nil, logger)
+	server, err := newConfiguredServer(t, cfg, nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}

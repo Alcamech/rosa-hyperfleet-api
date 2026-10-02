@@ -50,7 +50,7 @@ func TestNodePoolHandler_List_PaginationIsolation(t *testing.T) {
 		testClusterCR(foreignCluster, "foreign", "999999999999"),
 		testNodePoolCR("workers-1", "cluster-"+ownCluster1, testAccountID),
 		testNodePoolCR("workers-2", "cluster-"+ownCluster2, testAccountID),
-		testNodePoolCR("foreign-workers", "cluster-"+foreignCluster, testAccountID),
+		testNodePoolCR("foreign-workers", "cluster-"+foreignCluster, "999999999999"),
 	)
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/nodepools?limit=1&offset=1", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -104,7 +104,7 @@ func TestNodePoolHandler_Create_SetsAccountOwnership(t *testing.T) {
 
 func TestNodePoolHandler_CrossAccountOperations(t *testing.T) {
 	const clusterID = "550e8400-e29b-41d4-a716-446655440000"
-	foreign := testNodePoolCR("workers", "cluster-"+clusterID, testAccountID)
+	foreign := testNodePoolCR("workers", "cluster-"+clusterID, "999999999999")
 	handler := newTestNodePoolHandler(t,
 		testClusterCR(clusterID, "foreign", "999999999999"),
 		foreign,

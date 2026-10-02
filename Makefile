@@ -1,7 +1,7 @@
 .PHONY: help build test test-unit test-integration lint clean \
 	build-hyperfleet-db build-operator build-api build-api-codegen \
 	test-hyperfleet-db test-operator test-operator-int test-api test-api-int test-api-codegen test-clientset \
-	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-sdk test-e2e-rosa-cli \
+	test-e2e test-e2e-api test-e2e-authz test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-sdk test-e2e-rosa-cli \
 	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-sdk \
 	fmt vet verify verify-mod deps mod-tidy \
 	manifests generate generate-deepcopy generate-clientset verify-clientset setup-envtest \
@@ -109,6 +109,7 @@ help:
 	@echo "  test-integration     Integration tests: FleetDB + operator (podman) + API handlers"
 	@echo "  test-api-int         API handler integration tests (build tag: integration)"
 	@echo "  test-e2e-api         E2E API"
+	@echo "  test-e2e-authz       Local HTTP authorization (Podman PostgreSQL 16, no AWS credentials)"
 	@echo "  test-e2e-cli         E2E CLI"
 	@echo "  test-e2e-sdk         E2E SDK (Go clientset lifecycle)"
 	@echo "  test-e2e-rosa-cli    E2E rosa CLI (clones rosa repo, builds CLI, runs hyperfleet tests)"
@@ -205,6 +206,9 @@ test-operator-int:
 	cd hyperfleet-operator && go test -v -race -count=1 ./test/...
 
 test-e2e: test-e2e-api
+
+test-e2e-authz: build-api
+	bash scripts/test-e2e-authz.sh "$(TEST_OUTPUT_DIR)"
 
 test-e2e-api: $(GINKGO)
 	E2E_BASE_URL="$${BASE_URL}" E2E_ACCOUNT_ID="$${E2E_ACCOUNT_ID}" \

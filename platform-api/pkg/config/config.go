@@ -8,6 +8,12 @@ type Config struct {
 	Regional  RegionalConfig
 	Logging   LoggingConfig
 	RateLimit RateLimitConfig
+	Authz     AuthzConfig
+}
+
+type AuthzConfig struct {
+	Resolver   string
+	ConfigFile string
 }
 
 type RateLimitConfig struct {
@@ -49,6 +55,7 @@ type LoggingConfig struct {
 
 func NewConfig() *Config {
 	return &Config{
+		Authz: AuthzConfig{Resolver: "config"},
 		Server: ServerConfig{
 			APIBindAddress:     "0.0.0.0",
 			APIPort:            8000,

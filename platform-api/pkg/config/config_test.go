@@ -12,6 +12,10 @@ func TestNewConfig(t *testing.T) {
 		t.Fatal("expected non-nil config")
 	}
 
+	if cfg.Authz.Resolver != "config" || cfg.Authz.ConfigFile != "" {
+		t.Fatalf("expected config resolver and no implicit bundle, got %+v", cfg.Authz)
+	}
+
 	// Test Server config defaults
 	if cfg.Server.APIBindAddress != "0.0.0.0" {
 		t.Errorf("expected APIBindAddress=0.0.0.0, got %s", cfg.Server.APIBindAddress)
