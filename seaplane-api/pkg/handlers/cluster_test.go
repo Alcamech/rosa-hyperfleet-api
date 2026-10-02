@@ -227,7 +227,7 @@ func TestClusterHandler_List_Success(t *testing.T) {
 		testClusterCR("uuid-2", "cluster-2", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -255,7 +255,7 @@ func TestClusterHandler_List_Empty(t *testing.T) {
 	scheme := newTestScheme()
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -284,7 +284,7 @@ func TestClusterHandler_List_Pagination(t *testing.T) {
 		testClusterCR("uuid-foreign", "foreign", "999999999999"),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters?limit=2&offset=1", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -312,7 +312,7 @@ func TestClusterHandler_Create_Success(t *testing.T) {
 	scheme := newTestScheme()
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	spec := map[string]any{"accountId": "999999999999"}
 	for key, value := range minSpec {
@@ -402,7 +402,7 @@ func TestClusterHandler_Create_WithoutDNSReservationDefersAllocationToOperator(t
 	scheme := newTestScheme()
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	spec := map[string]any{"hostedCluster": minSpec["hostedCluster"]}
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", spec)))
@@ -441,7 +441,7 @@ func TestClusterHandler_Create_LongNameWithDNSReservation(t *testing.T) {
 	reservation.Status.InternalHostedClusterName = "hc-authoritative"
 	fc := newClusterTestClientBuilderWithDNSReservation(scheme, reservation).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody(clusterName, nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -465,7 +465,7 @@ func TestClusterHandler_Create_LongNameWithoutDNSReservationInvalidName(t *testi
 	scheme := newTestScheme()
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 	spec := map[string]any{"hostedCluster": minSpec["hostedCluster"]}
 	name := strings.Repeat("a", seaplanev1alpha1.MaxClusterNameLengthWithoutDNSReservation()+1)
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody(name, spec)))
@@ -485,7 +485,7 @@ func TestClusterHandler_Create_SetsCreatorARN(t *testing.T) {
 	scheme := newTestScheme()
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -516,7 +516,7 @@ func TestClusterHandler_Create_InvalidJSON(t *testing.T) {
 	scheme := newTestScheme()
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader([]byte("not json")))
 	req = req.WithContext(testContext(testAccountID))
@@ -549,7 +549,7 @@ func TestClusterHandler_Create_MissingFields(t *testing.T) {
 			scheme := newTestScheme()
 			fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-			handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+			handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(tt.body))
 			req = req.WithContext(testContext(testAccountID))
@@ -579,7 +579,7 @@ func TestClusterHandler_Create_InvalidName(t *testing.T) {
 			scheme := newTestScheme()
 			fc := newClusterTestClientBuilder(scheme).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-			handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+			handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody(tt.clusterName, nil)))
 			req = req.WithContext(testContext(testAccountID))
@@ -604,7 +604,7 @@ func TestClusterHandler_Create_LegacyPath_NoOidcConfig(t *testing.T) {
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	const baseURL = "https://oidc.example.com"
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), baseURL, 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), baseURL, 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -653,7 +653,7 @@ func TestClusterHandler_Create_OidcConfigNotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -686,7 +686,7 @@ func TestClusterHandler_Create_OidcConfigLookupFailure(t *testing.T) {
 	scheme := newTestScheme()
 	fc := &oidcConfigListFailingClient{Client: newClusterTestClientBuilder(scheme).Build()}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -709,7 +709,7 @@ func TestClusterHandler_Create_OidcConfigWrongAccount(t *testing.T) {
 		testReadyOidcConfig(testOidcConfigID, otherAccount, testOidcConfigIssuerURL),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	// The OidcConfig exists but belongs to a different account; it must not
 	// be resolvable by a caller in testAccountID.
@@ -730,7 +730,7 @@ func TestClusterHandler_Create_UnmanagedOidcConfigNotReady(t *testing.T) {
 	pending.Status.Phase = seaplanev1alpha1.OidcConfigPhasePending
 	fc := newClusterTestClientBuilder(scheme).WithObjects(pending).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -754,7 +754,7 @@ func TestClusterHandler_Create_ManagedOidcConfigPending_Succeeds(t *testing.T) {
 	fc := newClusterTestClientBuilder(scheme).WithObjects(pending).
 		WithStatusSubresource(pending).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -791,7 +791,7 @@ func TestClusterHandler_Create_OidcConfigError_Rejected(t *testing.T) {
 		errored.Status.Phase = seaplanev1alpha1.OidcConfigPhaseError
 		fc := newClusterTestClientBuilder(scheme).WithObjects(errored).Build()
 		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-		handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+		handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 		req = req.WithContext(testContext(testAccountID))
@@ -817,7 +817,7 @@ func TestClusterHandler_Create_OidcConfigAlreadyInUse(t *testing.T) {
 	fc := newClusterTestClientBuilder(scheme).WithObjects(oidcConfig, existingCluster).
 		WithStatusSubresource(oidcConfig).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("new-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -851,7 +851,7 @@ func TestClusterHandler_Create_OidcConfigInUseDifferentAccountAllowed(t *testing
 	fc := newClusterTestClientBuilder(scheme).WithObjects(oidcConfigOther, existingCluster, oidcConfigMine).
 		WithStatusSubresource(oidcConfigOther, oidcConfigMine).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("new-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -873,7 +873,7 @@ func TestClusterHandler_Create_ConcurrentOidcConfigCollision(t *testing.T) {
 		WithStatusSubresource(oidcConfig).Build()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	var wg sync.WaitGroup
 	names := []string{"concurrent-a", "concurrent-b"}
@@ -913,7 +913,7 @@ func TestClusterHandler_Create_OidcClaimFailureDeletesForOperatorCleanup(t *test
 	oidcConfig.Labels = map[string]string{claimedByClusterUIDLabel: "another-cluster-uid"}
 	fc := newClusterTestClientBuilder(scheme).WithObjects(oidcConfig).WithStatusSubresource(oidcConfig).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 	cluster := testClusterCR("rollback-cluster-uid", "rollback-cluster", testAccountID)
 	cluster.Spec.OidcConfigID = string(oidcConfig.UID)
 	cluster.Finalizers = []string{clusterCleanupFinalizer}
@@ -974,7 +974,7 @@ func TestClusterHandler_ClaimDNSReservationRetriesUpdateConflict(t *testing.T) {
 		},
 	}).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 	clusterUID := "new-cluster-uid"
 
 	if apiErr := handler.claimDNSReservation(context.Background(), testAccountID, testDNSReservationUID, clusterUID); apiErr != nil {
@@ -1021,7 +1021,7 @@ func TestClusterHandler_ClaimDNSReservationReturnsInUseAfterConflictRecheck(t *t
 		},
 	}).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	apiErr := handler.claimDNSReservation(context.Background(), testAccountID, testDNSReservationUID, "new-cluster-uid")
 	if apiErr == nil || apiErr.Code != ErrClusterCreateDNSReservationInUse.Code {
@@ -1058,7 +1058,7 @@ func TestClusterHandler_ClaimOidcConfigRetriesUpdateConflict(t *testing.T) {
 		},
 	}).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 	clusterUID := "new-cluster-uid"
 
 	if apiErr := handler.claimOidcConfig(testContext(testAccountID), testAccountID, testOidcConfigID, clusterUID); apiErr != nil {
@@ -1086,7 +1086,7 @@ func TestClusterHandler_Create_DerivesIssuerURLAndUpdatesLastUsed(t *testing.T) 
 	fc := newClusterTestClientBuilder(scheme).WithObjects(oidcConfig).
 		WithStatusSubresource(oidcConfig).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -1149,7 +1149,7 @@ func TestClusterHandler_Get_Success(t *testing.T) {
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).
 		WithStatusSubresource(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/test-cluster", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -1182,7 +1182,7 @@ func TestClusterHandler_Get_NotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/no-such-cluster", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -1203,7 +1203,7 @@ func TestClusterHandler_CrossAccountOperations(t *testing.T) {
 	foreign := testClusterCR("foreign-id", "foreign", "999999999999")
 	fc := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(foreign).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	tests := []struct {
 		name, method, body string
@@ -1235,7 +1235,7 @@ func TestClusterHandler_Delete_Success(t *testing.T) {
 		testClusterCR("cluster-123", "test-cluster", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v0/clusters/test-cluster", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -1260,7 +1260,7 @@ func TestClusterHandler_Delete_NotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v0/clusters/no-such-cluster", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -1279,7 +1279,7 @@ func TestClusterHandler_Update_Success(t *testing.T) {
 	cr := testClusterCR("cluster-123", "test-cluster", testAccountID)
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"metadata": map[string]any{
@@ -1434,7 +1434,7 @@ func TestClusterHandler_Update_NamespaceMismatch(t *testing.T) {
 		testClusterCR("cluster-123", "test-cluster", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	body := mustMarshal(t, map[string]any{
 		"metadata": map[string]any{"namespace": "account-999999999999"},
@@ -1461,7 +1461,7 @@ func TestClusterHandler_Update_AllowsUnchangedServiceManagedIssuerURL(t *testing
 	cluster.Spec.HostedCluster.IssuerURL = "https://oidc.example.com/issuer"
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"spec": map[string]any{
@@ -1497,7 +1497,7 @@ func TestClusterUpdateOwnership(t *testing.T) {
 			cr := testClusterCR("uuid-1", "owned", testAccountID)
 			fc := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(cr).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-			handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+			handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 			assertHandlerStatus(t, http.StatusOK, http.MethodPut, "/api/v0/clusters/"+cr.Name,
 				body, map[string]string{"id": cr.Name}, testAccountID, handler.Update)
 
@@ -1519,7 +1519,7 @@ func TestClusterHandler_Update_NotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"spec": map[string]any{"properties": map[string]string{"environment": "x"}},
@@ -1555,7 +1555,7 @@ func TestClusterHandler_Update_MissingSpec(t *testing.T) {
 				testClusterCR("cluster-123", "test-cluster", testAccountID),
 			).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-			handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
+			handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 			req := httptest.NewRequest(http.MethodPut, "/api/v0/clusters/cluster-123", bytes.NewReader(tt.body))
 			req = req.WithContext(testContext(testAccountID))
@@ -1579,7 +1579,7 @@ func TestClusterHandler_Update_RejectsOidcConfigIdChange(t *testing.T) {
 	cr.Spec.OidcConfigID = testOidcConfigID
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"spec": map[string]any{
@@ -1609,7 +1609,7 @@ func TestClusterHandler_Update_RejectsOidcConfigIdAddition(t *testing.T) {
 	cr := testClusterCR("cluster-123", "test-cluster", testAccountID)
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"spec": map[string]any{
@@ -1638,7 +1638,7 @@ func TestClusterHandler_Create_DuplicateName(t *testing.T) {
 		testClusterCR("existing-id", "test-cluster", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("test-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -1662,7 +1662,7 @@ func TestClusterHandler_Create_DBError(t *testing.T) {
 		},
 	}).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("test-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -1687,7 +1687,7 @@ func TestClusterHandler_Create_SameNameDifferentAccount(t *testing.T) {
 		oidcConfig,
 	).WithStatusSubresource(oidcConfig).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("test-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))

@@ -20,6 +20,7 @@ import (
 	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/internal/codegen/featuregate"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/api"
+	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/authz"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/clients/seaplanedb"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/middleware"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/validation"
@@ -40,16 +41,25 @@ type ClusterHandler struct {
 	defaultClusterExpiration time.Duration
 	validator                *validation.FieldValidator
 	logger                   *slog.Logger
+	authorizer               *authz.Authorizer
+	region                   string
+	metrics                  *authz.Metrics
 }
 
 // NewClusterHandler creates a new cluster handler
-func NewClusterHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, defaultClusterExpiration time.Duration, logger *slog.Logger) *ClusterHandler {
+func NewClusterHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, defaultClusterExpiration time.Duration, authorizer *authz.Authorizer, region string, logger *slog.Logger) *ClusterHandler {
+	if authorizer == nil {
+		panic("cluster authorizer is required")
+	}
 	return &ClusterHandler{
 		db:                       db,
 		oidcIssuerBaseURL:        oidcIssuerBaseURL,
 		defaultClusterExpiration: defaultClusterExpiration,
 		validator:                validation.NewFieldValidator("Cluster"),
 		logger:                   logger,
+		authorizer:               authorizer,
+		region:                   region,
+		metrics:                  authz.DefaultMetrics,
 	}
 }
 
@@ -57,6 +67,24 @@ func NewClusterHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, defaultC
 func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
+	attempt, _ := h.metrics.Start(authz.ListClusters)
+	prepared, err := h.prepareClusterAuthz(r)
+	if err != nil {
+		h.writeClusterAuthzError(w, r, attempt, authz.ListClusters, err)
+		return
+	}
+	decision, err := prepared.Check(ctx, authz.ListClusters, authz.Resource{
+		Kind: authz.Collection, AccountID: accountID, Region: h.region,
+	})
+	if err != nil {
+		h.writeClusterAuthzError(w, r, attempt, authz.ListClusters, err)
+		return
+	}
+	if !decision.Allowed {
+		_ = attempt.Finish(authz.OutcomeDeny, authz.StageNone)
+		writeAPIError(w, errClusterAuthzDenied, h.logger)
+		return
+	}
 
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
@@ -81,23 +109,36 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 	list, err := h.db.ListClusters(ctx)
 	if err != nil {
 		h.logger.Error("failed to list clusters", "error", err, "account_id", accountID)
+		_ = attempt.Finish(authz.OutcomeError, authz.StageResourceLoading)
 		writeAPIError(w, ErrClusterList, h.logger)
 		return
 	}
 
-	clusters := make([]*public.Cluster, 0, len(list.Items))
+	// Check every candidate before paging so a late failure cannot leak partial success.
+	visible := make([]*seaplanev1alpha1.Cluster, 0, len(list.Items))
 	for i := range list.Items {
-		clusters = append(clusters, seaplanedb.InternalToPublicCluster(&list.Items[i]))
+		cr := &list.Items[i]
+		decision, err := prepared.Check(ctx, authz.DescribeCluster, h.clusterResource(cr))
+		if err != nil {
+			h.writeClusterAuthzError(w, r, attempt, authz.ListClusters, err)
+			return
+		}
+		if decision.Allowed {
+			visible = append(visible, cr)
+		}
 	}
+	_ = attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 
-	total := len(clusters)
-
-	// Apply offset/limit pagination in-memory.
-	if offset >= len(clusters) {
-		clusters = []*public.Cluster{}
+	total := len(visible)
+	if offset >= total {
+		visible = nil
 	} else {
-		end := min(offset+limit, len(clusters))
-		clusters = clusters[offset:end]
+		end := offset + min(limit, total-offset)
+		visible = visible[offset:end]
+	}
+	clusters := make([]*public.Cluster, 0, len(visible))
+	for _, cr := range visible {
+		clusters = append(clusters, seaplanedb.InternalToPublicCluster(cr))
 	}
 
 	response := map[string]any{
@@ -357,16 +398,36 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("getting cluster", "account_id", accountID, "cluster_name", clusterName)
 
+	attempt, _ := h.metrics.Start(authz.DescribeCluster)
+	prepared, err := h.prepareClusterAuthz(r)
+	if err != nil {
+		h.writeClusterAuthzError(w, r, attempt, authz.DescribeCluster, err)
+		return
+	}
 	cr, err := h.db.GetCluster(ctx, clusterName)
 	if err != nil {
 		if seaplanedb.IsNotFound(err) {
+			_ = attempt.Finish(authz.OutcomeDeny, authz.StageNone)
 			writeAPIError(w, ErrClusterGetNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to get cluster", "error", err, "account_id", accountID, "cluster_name", clusterName)
+		_ = attempt.Finish(authz.OutcomeError, authz.StageResourceLoading)
 		writeAPIError(w, ErrClusterGetFailed, h.logger)
 		return
 	}
+
+	decision, err := prepared.Check(ctx, authz.DescribeCluster, h.clusterResource(cr))
+	if err != nil {
+		h.writeClusterAuthzError(w, r, attempt, authz.DescribeCluster, err)
+		return
+	}
+	if !decision.Allowed {
+		_ = attempt.Finish(authz.OutcomeDeny, authz.StageNone)
+		writeAPIError(w, errClusterAuthzDenied, h.logger)
+		return
+	}
+	_ = attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 
 	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicCluster(cr)); err != nil {
 		h.logger.Error("failed to write response", "error", err)

@@ -466,5 +466,5 @@ func newDNSReservationResolverHandler(t *testing.T, reservation *seaplanev1alpha
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db := seaplanedb.NewClientFrom(builder.Build(), logger)
-	return NewClusterHandler(db, "", 0, logger)
+	return NewClusterHandler(db, "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
 }
