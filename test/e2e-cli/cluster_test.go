@@ -381,12 +381,12 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	It("should be able to create the hcp cluster", Label("hcp-create", "create"), func() {
 		defer recordTiming("hcp-cluster-create")()
 		GinkgoWriter.Printf("Creating new HCP cluster: %s\n", clusterName)
-		ocpVersion := os.Getenv("OCP_VERSION")
-		if ocpVersion == "" {
-			ocpVersion = defaultE2EReleaseImage
+		ocpImage := os.Getenv("OCP_IMAGE")
+		if ocpImage == "" {
+			ocpImage = defaultE2EReleaseImage
 		}
 		cmd := exec.Command(ROSACTL_BIN, "cluster", "create", clusterName,
-			"--region", region, "--output", "json", "--version", ocpVersion)
+			"--region", region, "--output", "json", "--version", ocpImage)
 		cmd.Env = append(os.Environ(), customerEnv()...)
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
