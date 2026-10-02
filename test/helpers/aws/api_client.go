@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"regexp"
+	"strings"
 	"time"
 
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
@@ -18,12 +21,33 @@ import (
 // SHA256 of empty string (for GET/empty body). Used for SigV4 payload hash.
 const emptyPayloadHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
-// apiGatewayRegionFromURL extracts the AWS region from an API Gateway URL or ROSA int URL.
-// e.g. https://id.execute-api.us-east-2.amazonaws.com/prod -> "us-east-2"
-// e.g. https://api.us-east-1.int0.rosa.devshift.net -> "us-east-1"
-// Returns empty string if the URL does not match a known pattern.
+const (
+	awsRegionPattern = `[a-z]{2}(?:-[a-z]+)+-[0-9]+`
+	dnsLabelPattern  = `[a-z0-9](?:[a-z0-9-]*[a-z0-9])?`
+)
+
+var (
+	executeAPIHost = regexp.MustCompile(`^` + dnsLabelPattern + `\.execute-api\.(` + awsRegionPattern + `)\.amazonaws\.com(?:\.cn)?$`)
+	rosaAPIHost    = regexp.MustCompile(`^api\.(` + awsRegionPattern + `)(?:-` + dnsLabelPattern + `)?\.` + dnsLabelPattern + `\.rosa\.devshift\.(?:net|org)$`)
+)
+
 func apiGatewayRegionFromURL(baseURL string) string {
-	return "us-east-1"
+	endpoint, err := url.Parse(baseURL)
+	if err != nil || (endpoint.Scheme != "http" && endpoint.Scheme != "https") {
+		return ""
+	}
+	host := strings.TrimSuffix(strings.ToLower(endpoint.Hostname()), ".")
+	if match := executeAPIHost.FindStringSubmatch(host); match != nil {
+		region := match[1]
+		if strings.HasPrefix(region, "cn-") != strings.HasSuffix(host, ".com.cn") {
+			return ""
+		}
+		return region
+	}
+	if match := rosaAPIHost.FindStringSubmatch(host); match != nil {
+		return match[1]
+	}
+	return ""
 }
 
 // APIClient provides methods for making requests to the ROSA API

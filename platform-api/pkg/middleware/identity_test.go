@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -261,37 +262,63 @@ func TestGetRequestID_WithValue(t *testing.T) {
 
 func TestRequireIdentity(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})
-	handler := RequireIdentity(logger)(next)
-
-	t.Run("allows health without identity", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v0/live", nil)
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, req)
-		if w.Code != http.StatusNoContent {
-			t.Errorf("want %d, got %d", http.StatusNoContent, w.Code)
-		}
-	})
-
-	t.Run("rejects protected without identity", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil)
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, req)
-		if w.Code != http.StatusForbidden {
-			t.Errorf("want %d, got %d", http.StatusForbidden, w.Code)
-		}
-	})
-
-	t.Run("allows protected with identity", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil)
-		ctx := context.WithValue(req.Context(), ContextKeyAccountID, "123456789012")
-		ctx = context.WithValue(ctx, ContextKeyCallerARN, "arn:aws:iam::123456789012:user/test")
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, req.WithContext(ctx))
-		if w.Code != http.StatusNoContent {
-			t.Errorf("want %d, got %d", http.StatusNoContent, w.Code)
-		}
-	})
+	for _, tc := range []struct {
+		name, path, account, caller, code, message string
+		wantStatus                                 int
+	}{
+		{"live", "/api/v0/live", "", "", "", "", http.StatusNoContent},
+		{"ready", "/api/v0/ready", "", "", "", "", http.StatusNoContent},
+		{"info", "/api/v0/info", "", "", "", "", http.StatusNoContent},
+		{"missing identity", "/api/v0/clusters", "", "", "AUTH-001", "Caller account ID and ARN are required", http.StatusForbidden},
+		{"missing account", "/api/v0/clusters", "", "arn:aws:iam::123456789012:user/test", "AUTH-001", "Caller account ID and ARN are required", http.StatusForbidden},
+		{"missing ARN", "/api/v0/clusters", "123456789012", "", "AUTH-001", "Caller account ID and ARN are required", http.StatusForbidden},
+		{"enrolled user", "/api/v0/clusters", "123456789012", "arn:aws:iam::123456789012:user/test", "", "", http.StatusNoContent},
+		{"enrolled session", "/api/v0/clusters", "123456789012", "arn:aws:sts::123456789012:assumed-role/reader/session", "", "", http.StatusNoContent},
+		{"unregistered", "/api/v0/clusters", "999999999999", "arn:aws:iam::999999999999:user/test", "AUTH-002", "Account is not registered", http.StatusForbidden},
+		{"mismatch", "/api/v0/clusters", "123456789012", "arn:aws:iam::999999999999:user/test", "AUTH-001", "Caller identity is invalid", http.StatusForbidden},
+		{"malformed ARN", "/api/v0/clusters", "123456789012", "not-an-arn", "AUTH-001", "Caller identity is invalid", http.StatusForbidden},
+		{"malformed account", "/api/v0/clusters", "123", "arn:aws:iam::123:user/test", "AUTH-001", "Caller identity is invalid", http.StatusForbidden},
+		{"role is not caller", "/api/v0/clusters", "123456789012", "arn:aws:iam::123456789012:role/reader", "AUTH-001", "Caller identity is invalid", http.StatusForbidden},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			called := false
+			lookupCalled := false
+			lookup := func(ctx context.Context, account string) bool {
+				lookupCalled = true
+				if GetAccountID(ctx) != account {
+					t.Fatal("enrollment lookup lost gateway identity context")
+				}
+				return account == "123456789012"
+			}
+			handler := Identity(RequireIdentity(logger, lookup, "us-east-1")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				called = true
+				w.WriteHeader(http.StatusNoContent)
+			})))
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			req.Header.Set(HeaderAccountID, tc.account)
+			req.Header.Set(HeaderCallerARN, tc.caller)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+			if w.Code != tc.wantStatus || called != (tc.wantStatus == http.StatusNoContent) {
+				t.Fatalf("status=%d, continuation=%t, body=%s", w.Code, called, w.Body.String())
+			}
+			wantLookup := tc.name == "enrolled user" || tc.name == "enrolled session" || tc.name == "unregistered"
+			if lookupCalled != wantLookup {
+				t.Fatalf("enrollment lookup called=%t, want %t", lookupCalled, wantLookup)
+			}
+			if tc.code == "" {
+				return
+			}
+			var status struct {
+				Kind, Status, Reason, Message string
+				Code                          int
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
+				t.Fatal(err)
+			}
+			if status.Kind != "Status" || status.Status != "Failure" || status.Code != http.StatusForbidden || status.Reason != "Forbidden" || status.Message != tc.code+": "+tc.message {
+				t.Fatalf("unexpected structured denial: %+v", status)
+			}
+		})
+	}
 }

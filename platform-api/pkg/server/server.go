@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/authz"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/config"
 	apphandlers "github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/handlers"
@@ -33,12 +34,19 @@ type Server struct {
 
 // New creates a new Server instance. The dbClient is used by cluster,
 // nodepool, and management cluster handlers.
-func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger) (*Server, error) {
+func New(cfg *config.Config, dbClient *hyperfleetdb.Client, authorizer *authz.Authorizer, isAccountRegistered func(context.Context, string) bool, logger *slog.Logger) (*Server, error) {
+	if authorizer == nil {
+		return nil, fmt.Errorf("authorizer is required")
+	}
+	if isAccountRegistered == nil {
+		return nil, fmt.Errorf("account registration lookup is required")
+	}
+
 	// Create handlers
 	healthHandler := apphandlers.NewHealthHandler(logger)
 	infoHandler := apphandlers.NewInfoHandler(logger)
 	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(dbClient, logger)
-	clusterHandler := apphandlers.NewClusterHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, cfg.Regional.DefaultClusterExpiration, logger)
+	clusterHandler := apphandlers.NewClusterHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, cfg.Regional.DefaultClusterExpiration, authorizer, cfg.Regional.AWSRegion, logger)
 	nodePoolHandler := apphandlers.NewNodePoolHandler(dbClient, logger)
 	oidcConfigHandler := apphandlers.NewOidcConfigHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, cfg.Regional.AWSRegion, logger)
 
@@ -99,7 +107,7 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 		apiRouter.Use(rl.Middleware)
 	}
 
-	apiRouter.Use(middleware.RequireIdentity(logger))
+	apiRouter.Use(middleware.RequireIdentity(logger, isAccountRegistered, cfg.Regional.AWSRegion))
 
 	// Management cluster routes
 	mgmtRouter := apiRouter.PathPrefix("/api/v0/management_clusters").Subrouter()

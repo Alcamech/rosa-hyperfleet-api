@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,8 +14,8 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/spf13/cobra"
 
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/authz"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/config"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/server"
 )
 
@@ -54,6 +55,8 @@ func init() {
 	serveCmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	serveCmd.Flags().StringVar(&logFormat, "log-format", "json", "Log format (json, text)")
 	serveCmd.Flags().String("allowed-accounts", "", "Deprecated compatibility flag; ignored")
+	serveCmd.Flags().String("authz-resolver", "config", "Authorization resolver (config only)")
+	serveCmd.Flags().String("authz-config-file", "", "Authorization configuration bundle (required)")
 	serveCmd.Flags().StringVar(&legacyDynamoDBRegion, "dynamodb-region", "", "Deprecated compatibility flag; used only as a region fallback")
 	serveCmd.Flags().String("dynamodb-prefix", "", "Deprecated compatibility flag; ignored")
 	serveCmd.Flags().StringVar(&postgresDSN, "postgres-dsn", "", "PostgreSQL connection string (required)")
@@ -70,10 +73,22 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Create logger
 	logger := createLogger(logLevel, logFormat)
 
-	logger.Info("starting rosa-hyperfleet-api",
+	logger.Info(
+		"starting rosa-hyperfleet-api",
 		"log_level", logLevel,
 		"log_format", logFormat,
 	)
+
+	// Validate authorization before database connections or serving listeners.
+	cfg, authorizer, resolver, err := loadStartupConfig(cmd)
+	if err != nil {
+		if failure, ok := errors.AsType[*authz.Failure](err); ok {
+			logger.Error("authorization startup failed", "stage", failure.Stage, "cause", failure.Err, "provenance", failure.Provenance, "diagnostics", failure.Diagnostics)
+		} else {
+			logger.Error("authorization startup failed", "error", err)
+		}
+		return err
+	}
 
 	// Detect AWS region from SDK default chain (IMDS, AWS_REGION env var, etc.)
 	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background())
@@ -88,8 +103,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	logger.Info("detected AWS region", "region", awsCfg.Region)
 
-	// Create config
-	cfg := config.NewConfig()
 	cfg.Logging.Level = logLevel
 	cfg.Logging.Format = logFormat
 	if postgresDSN == "" {
@@ -144,7 +157,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 			cfg.RateLimit.InMemory = true
 			logger.Info("rate limiting in TEST MODE (rate=3, burst=6, window=1s, in-memory)")
 		} else {
-			logger.Info("rate limiting enabled",
+			logger.Info(
+				"rate limiting enabled",
 				"in_memory", cfg.RateLimit.InMemory,
 				"config_file", cfg.RateLimit.ConfigFile,
 			)
@@ -159,7 +173,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	defer dbClient.Close()
 
 	// Create server
-	srv, err := server.New(cfg, dbClient, logger)
+	srv, err := server.New(cfg, dbClient, authorizer, resolver.IsAccountRegistered, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}
@@ -169,7 +183,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	// Run server
-	logger.Info("server configuration",
+	logger.Info(
+		"server configuration",
 		"api_port", cfg.Server.APIPort,
 		"health_port", cfg.Server.HealthPort,
 		"metrics_port", cfg.Server.MetricsPort,
