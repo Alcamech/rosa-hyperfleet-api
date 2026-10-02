@@ -10,9 +10,12 @@ demonstrate the target behavior.
 
 ## 1. Target contract
 
-1. **Namespace identifies the account.** Account resources use `account-<accountID>`.
-   The account ID comes from the authenticated caller, never from an untrusted body
-   value. Internal namespaces used for `Index` claims are operator-only.
+1. **Customer account namespace rule.** Customer-created resources and resources
+   tied to them in the customer-facing API/FleetDB use `account-<accountID>`. The
+   account ID comes from the authenticated caller, never from an untrusted body
+   value. Independent operator-internal resources, such as `ManagementCluster`, may
+   use operator-controlled namespaces; internal namespaces used for `Index` claims
+   are operator-only.
 2. **Name identifies the human-facing resource.** The client chooses it and it is
    immutable. A Cluster name is one DNS label of at most 18 characters. A child name
    is `<cluster>.<child>`; the child part is a DNS label of at most 63 characters.
@@ -77,13 +80,13 @@ Its Cluster binding label does not change its sharding key; without
 `cluster-uid`, it remains keyed by its own database UID. The generic garbage
 collector initially applies to Cluster-owned NodePool and Placement objects.
 
-## 2. Current implementation baseline
+## 2. Current implementation status after PR 1
 
-| Area | What is already implemented | Gap to the target |
+| Area | Current implementation | Remaining gap to the target |
 | --- | --- | --- |
-| FleetDB UID | `kubernetes_resources.uid` is database-generated; Create returns it; tombstone revival generates a fresh UID. | Platform conversions replace the returned UID. Write requests do not guard against a stale UID after same-name recreation. |
-| FleetDB selectors | `metadata.name` and `metadata.namespace` field selectors map to columns. | `metadata.uid` falls through to JSON. Label selectors are matched in Go after SQL limit/offset, which can make filtered pagination incorrect. No labels GIN index exists. |
-| Create semantics | The primary key enforces uniqueness for different content. | An identical duplicate Create is currently suppressed as a no-op. The target create contract is `AlreadyExists`/409 for a duplicate name. |
+| FleetDB UID | UID is database-generated and returned by Create; client-sent UIDs are ignored; tombstone revival assigns a fresh UID. Controller-runtime updates, status writes, and deletes use UID plus resourceVersion preconditions. | Platform conversions still replace the FleetDB UID in public Cluster, NodePool, and OidcConfig responses. |
+| FleetDB selectors | `metadata.name`, `metadata.namespace`, and `metadata.uid` field selectors map to columns. Label selectors are translated to SQL before pagination, with a GIN index on labels. Equality, set, existence, negative, and numeric range selectors are supported; invalid/missing/out-of-int64 label values do not match numeric selectors. | Public API and clientset do not yet expose label selectors. |
+| Create semantics | Duplicate Create returns `AlreadyExists`, even for identical content. Content-equal updates are suppressed only when UID and resourceVersion are current; stale versions or UIDs conflict. | API-level idempotency keys for safely replaying POSTs after a lost response are deferred future work; see §4. |
 | Platform identity | Cluster names are client-facing; OidcConfig storage already uses an account namespace. | Cluster and NodePool storage uses `cluster-<generated UUID>`. Cluster, NodePool, and OidcConfig responses override database UIDs. Namespace and DNS-label validation is incomplete. |
 | Protected metadata | FleetDB stores and returns labels and ownerReferences. Platform update handlers fetch the stored object and merge spec, preserving its metadata. | Create conversions copy request ObjectMeta; reserved labels and ownerReferences are not consistently stripped or set by the server. |
 | Operator ownership | Cluster, NodePool, and OidcConfig finalizers exist. | No generic garbage collector or Cluster ownerReferences/UID labels are set. NodePool parent lookup lists by namespace and selects the first Cluster. Cluster deletion manually deletes children by namespace. |
@@ -149,13 +152,17 @@ These are implementation prerequisites, not reasons to add database constraints:
 - **Create/no-op contract:** preserve no-op suppression for content-equal updates,
   status writes, and desired-state reapplication. Do not let it turn a duplicate
   Create into success; update `DESIGN.md` and its tests to match the target contract.
+- **Future API idempotency keys:** an optional key may make client POST retries safe
+  after a lost response. Design this separately, including account/operation scope,
+  request-digest checks, replayed responses, and retention. It does not change
+  FleetDB Create semantics: a duplicate name still returns `AlreadyExists`.
 - **Labels index:** add a non-unique GIN index for the JSON labels selector path.
   This is an additive index, not a business uniqueness constraint. Define its schema
   installation alongside the FleetDB migration work.
 
 ## 5. Implementation phases
 
-### Phase 1 — FleetDB query and identity correctness (PR 1)
+### Phase 1 — FleetDB query and identity correctness (PR 1 — implemented)
 
 **Primary files:** `hyperfleet-db/pgclient.go`, `pgcache.go`, `fieldselector.go`,
 `internal/reader/list.go`, `internal/schema/`, and `internal/writer/`.
@@ -180,8 +187,9 @@ Tests:
 - Client-sent UID is ignored; Create returns database UID; delete/recreate returns a
   different UID; duplicate Create returns `AlreadyExists`.
 - `metadata.uid` field selectors work against the UID column.
-- Label selectors, including supported set/existence/negative forms, match the
-  expected rows in SQL and paginate without skipped matches.
+- Label selectors, including set/existence/negative and numeric comparisons, match
+  the expected rows in SQL and paginate without skipped matches. Numeric selectors
+  do not match missing, non-integer, or out-of-int64-range label values.
 - A stale UID cannot update, status-update, or delete a same-name replacement.
 
 ### Phase 2 — Identity and customer DNS reservation switch (PR 2)
@@ -199,9 +207,10 @@ This phase is coordinated across `api`, `platform-api`, `hyperfleet-operator`, a
 
 **Platform API and FleetDB wrapper**
 
-- Store Cluster, NodePool, OidcConfig, and DNSReservation resources in the
-  authenticated account namespace. Require request namespaces to match
-  `account-<caller account>`.
+- Store customer-facing Cluster, NodePool, OidcConfig, and DNSReservation resources,
+  and resources tied to them, in the authenticated account namespace. Require
+  customer-scoped request namespaces to match `account-<caller account>`; this rule
+  does not constrain independent operator-internal resources.
 - Add customer-facing DNSReservation create/get/list/delete operations. A customer
   creates a reservation before its Cluster and waits for the assigned base domain;
   the API never exposes the internal Index namespace or object.
