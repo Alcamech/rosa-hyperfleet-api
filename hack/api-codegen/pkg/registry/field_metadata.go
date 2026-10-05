@@ -377,8 +377,13 @@ var FieldRegistry = TypedFieldRegistry{
 		},
 		"spec.hostedCluster.configuration.scheduler": {
 			FieldPath: "spec.hostedCluster.configuration.scheduler",
-			WriteMode: ServiceSet,
-			Hidden:    true,
+			WriteMode: Mutable,
+			OwnerType: "Cluster",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
+		},
+		"spec.hostedCluster.configuration.scheduler.profile": {
+			FieldPath: "spec.hostedCluster.configuration.scheduler.profile",
+			WriteMode: Mutable,
 			OwnerType: "Cluster",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
 		},
@@ -905,8 +910,13 @@ var FieldRegistry = TypedFieldRegistry{
 		},
 		"scheduler": {
 			FieldPath: "scheduler",
-			WriteMode: ServiceSet,
-			Hidden:    true,
+			WriteMode: Mutable,
+			OwnerType: "ClusterConfiguration",
+			OwnerGVK:  "",
+		},
+		"scheduler.profile": {
+			FieldPath: "scheduler.profile",
+			WriteMode: Mutable,
 			OwnerType: "ClusterConfiguration",
 			OwnerGVK:  "",
 		},
@@ -1405,6 +1415,14 @@ var FieldRegistry = TypedFieldRegistry{
 			WriteMode: ServiceSet,
 			Hidden:    true,
 			OwnerType: "ProxyConfiguration",
+			OwnerGVK:  "",
+		},
+	},
+	"SchedulerConfiguration": {
+		"profile": {
+			FieldPath: "profile",
+			WriteMode: Mutable,
+			OwnerType: "SchedulerConfiguration",
 			OwnerGVK:  "",
 		},
 	},

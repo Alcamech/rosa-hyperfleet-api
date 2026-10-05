@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	configv1 "github.com/openshift/api/config/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -40,8 +41,8 @@ type ClusterConfiguration struct {
 	OAuth *OAuthConfiguration `json:"oauth,omitempty"`
 
 	// scheduler contains the configuration for scheduler.
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
 	Scheduler *SchedulerConfiguration `json:"scheduler,omitempty"`
 
 	// proxy contains the configuration for the cluster-wide proxy.
@@ -165,7 +166,15 @@ type NetworkConfiguration struct{}
 
 type OAuthConfiguration struct{}
 
-type SchedulerConfiguration struct{}
+// SchedulerConfiguration specifies the cluster-wide scheduler settings.
+// +hyperfleet:upstream-reduced-object=configv1.SchedulerSpec
+type SchedulerConfiguration struct {
+	// profile configures how the scheduler makes pod placement decisions.
+	// +hyperfleet:write-mode=mutable
+	// +kubebuilder:validation:Enum=LowNodeUtilization;HighNodeUtilization;NoScoring
+	// +optional
+	Profile configv1.SchedulerProfile `json:"profile,omitempty"`
+}
 
 // ProxyConfiguration specifies the cluster-wide proxy settings.
 // +hyperfleet:upstream-reduced-object=configv1.ProxySpec

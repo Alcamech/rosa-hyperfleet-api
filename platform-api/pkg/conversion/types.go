@@ -104,8 +104,6 @@ type ServiceSetFieldsHostedCluster struct {
 	PullSecret corev1.LocalObjectReference `json:"pullSecret,omitempty"`
 	// ReadinessEndpoints is service-set (platform-managed, hidden from API)
 	ReadinessEndpoints string `json:"readinessEndpoints,omitempty"`
-	// Scheduler is service-set (platform-managed, hidden from API)
-	Scheduler string `json:"scheduler,omitempty"`
 	// SecretEncryption is service-set (platform-managed, hidden from API)
 	SecretEncryption *hypershiftv1beta1.SecretEncryptionSpec `json:"secretEncryption,omitempty"`
 	// ServiceAccountSigningKey is service-set (platform-managed, hidden from API)
@@ -202,8 +200,6 @@ type ServiceSetFields struct {
 	PublicZoneID string `json:"publicZoneID,omitempty"`
 	// ReadinessEndpoints is service-set (platform-managed, hidden from API)
 	ReadinessEndpoints []string `json:"readinessEndpoints,omitempty"`
-	// Scheduler is service-set (platform-managed, hidden from API)
-	Scheduler *v1alpha1.SchedulerConfiguration `json:"scheduler,omitempty"`
 	// SystemdUnits is service-set (platform-managed, hidden from API)
 	SystemdUnits []v1alpha1.SystemdUnit `json:"systemdUnits,omitempty"`
 	// TopologyManagerPolicy is service-set (platform-managed, hidden from API)
