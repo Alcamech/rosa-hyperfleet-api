@@ -30,6 +30,12 @@ var FieldRegistry = TypedFieldRegistry{
 			OwnerType: "Cluster",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
 		},
+		"spec.additionalTrustBundle": {
+			FieldPath: "spec.additionalTrustBundle",
+			WriteMode: Mutable,
+			OwnerType: "Cluster",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
+		},
 		"spec.creatorARN": {
 			FieldPath: "spec.creatorARN",
 			WriteMode: ServiceSet,

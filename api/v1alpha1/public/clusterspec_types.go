@@ -28,6 +28,13 @@ type ClusterSpec struct {
 	// +kubebuilder:validation:MaxProperties=100
 	// +optional
 	Properties map[string]string `json:"properties,omitempty"`
+	// AdditionalTrustBundle is a PEM-encoded CA bundle used by the cluster.
+	// The value is accepted on writes and redacted in API responses.
+	// +hyperfleet:write-mode=mutable
+	// +hyperfleet:response-redact
+	// +kubebuilder:validation:MaxLength=900000
+	// +optional
+	AdditionalTrustBundle *string `json:"additionalTrustBundle,omitempty"`
 	// Tags are customer-defined labels for organizational purposes.
 	// +hyperfleet:write-mode=mutable
 	// +openshift:enable:FeatureGate=HyperFleetAutoScaling

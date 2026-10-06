@@ -21,6 +21,7 @@ import (
 var (
 	clientgenMarkerRE          = regexp.MustCompile(`\+genclient\b|\+bridge:|\+resourceName=`)
 	responseProjectionMarkerRE = regexp.MustCompile(`\+hyperfleet:rest-response-projection=(\w+)`)
+	responseRedactMarkerRE     = regexp.MustCompile(`\+hyperfleet:response-redact(?:=true)?`)
 )
 
 // Generator generates REST types and conversion functions from CRD types.
@@ -67,14 +68,15 @@ type constEntry struct {
 }
 
 type fieldInfo struct {
-	GoName    string
-	JSONName  string
-	GoType    string
-	FieldPath string
-	Field     *ast.Field
-	Doc       *ast.CommentGroup
-	Hidden    bool
-	WriteMode registry.WriteMode
+	GoName           string
+	JSONName         string
+	GoType           string
+	FieldPath        string
+	Field            *ast.Field
+	Doc              *ast.CommentGroup
+	Hidden           bool
+	RedactInResponse bool
+	WriteMode        registry.WriteMode
 }
 
 // NewGenerator creates a new conversion generator.
@@ -328,6 +330,13 @@ func (g *Generator) parseField(typeName string, field *ast.Field, name *ast.Iden
 		fi.FieldPath = meta.FieldPath
 		fi.Hidden = meta.Hidden
 		fi.WriteMode = meta.WriteMode
+	}
+	if field.Doc != nil {
+		for _, comment := range field.Doc.List {
+			if responseRedactMarkerRE.MatchString(comment.Text) {
+				fi.RedactInResponse = true
+			}
+		}
 	}
 
 	return fi
@@ -1371,6 +1380,7 @@ type conversionData struct {
 	SpecFields         []convFieldData
 	StatusFields       []convFieldData
 	MirrorTypes        []mirrorConvData
+	RedactedFields     []string
 }
 
 type convFieldData struct {
@@ -1405,13 +1415,14 @@ func Project{{ .Resource }}(crd *v1alpha1.{{ .Resource }}) *rest.{{ .Resource }}
 
 	spec := project{{ .SpecType }}(crd.Spec)
 	status := project{{ .StatusType }}(crd.Status)
-{{- if eq .ResponseProjection "proxy" }}
+	{{- if or (eq .ResponseProjection "proxy") (gt (len .RedactedFields) 0) }}
 	out := &rest.{{ .Resource }}{
 		TypeMeta:   crd.TypeMeta,
 		ObjectMeta: crd.ObjectMeta,
 		Spec:       spec,
 		Status:     status,
 	}
+{{- if eq .ResponseProjection "proxy" }}
 	if config := crd.Spec.HostedCluster.Configuration; config != nil && config.Proxy != nil {
 		out.Proxy = &rest.ClusterProxy{
 			HTTPProxy:  config.Proxy.HTTPProxy,
@@ -1419,6 +1430,13 @@ func Project{{ .Resource }}(crd *v1alpha1.{{ .Resource }}) *rest.{{ .Resource }}
 			NoProxy:    config.Proxy.NoProxy,
 		}
 	}
+{{- end }}
+{{- range .RedactedFields }}
+	if out.Spec.{{ . }} != nil && *out.Spec.{{ . }} != "" {
+		redacted := "REDACTED"
+		out.Spec.{{ . }} = &redacted
+	}
+{{- end }}
 	return out
 {{- else }}
 	return &rest.{{ .Resource }}{
@@ -1537,6 +1555,7 @@ func (g *Generator) renderConversionFunctions(resource string) (string, error) {
 
 	specTI := g.typeInfos[specType]
 	var specFields []convFieldData
+	var redactedFields []string
 	var mirrorTypes []mirrorConvData
 	mirrorSeen := make(map[string]bool)
 
@@ -1544,6 +1563,12 @@ func (g *Generator) renderConversionFunctions(resource string) (string, error) {
 		for _, fi := range specTI.Fields {
 			if fi.Hidden {
 				continue
+			}
+			if fi.RedactInResponse {
+				if fi.GoType != "*string" {
+					return "", fmt.Errorf("response-redacted field %s.%s must be *string, got %s", specType, fi.GoName, fi.GoType)
+				}
+				redactedFields = append(redactedFields, fi.GoName)
 			}
 			cf := convFieldData{GoName: fi.GoName}
 			if IsMirrorType(fi.GoName) {
@@ -1590,6 +1615,7 @@ func (g *Generator) renderConversionFunctions(resource string) (string, error) {
 		SpecFields:         specFields,
 		StatusFields:       statusFields,
 		MirrorTypes:        mirrorTypes,
+		RedactedFields:     redactedFields,
 	}
 
 	var buf bytes.Buffer
