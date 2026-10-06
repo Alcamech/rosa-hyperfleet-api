@@ -73,7 +73,7 @@ const (
 
 	defaultRegion       = "us-east-1"
 	defaultInstanceType = "m5.xlarge"
-	defaultReleaseImage = "quay.io/openshift-release-dev/ocp-release:5.1.0-ec.1-multi"
+	defaultReleaseImage = "quay.io/openshift-release-dev/ocp-release:5.0.0-rc.5-multi"
 )
 
 // iamStackOutputs holds the IAM role ARNs and instance profile read from the
