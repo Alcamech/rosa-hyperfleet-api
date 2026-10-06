@@ -155,6 +155,7 @@ type PlacementReference struct {
 // +genclient:nonNamespaced
 // +bridge:watch=disabled
 // +bridge:wait
+// +hyperfleet:rest-response-projection=proxy
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,shortName=hfc
