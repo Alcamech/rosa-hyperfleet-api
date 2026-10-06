@@ -94,7 +94,7 @@ func fireAndForgetInfraDelete(rosactlBin, clusterName, region string, resources 
 	}
 }
 
-const defaultE2EReleaseImage = "quay.io/openshift-release-dev/ocp-release:5.1.0-ec.1-multi"
+const defaultE2EReleaseImage = "quay.io/openshift-release-dev/ocp-release:5.0.0-rc.5-multi"
 
 var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	var (
