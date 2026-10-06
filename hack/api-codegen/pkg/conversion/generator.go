@@ -18,7 +18,10 @@ import (
 	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/registry"
 )
 
-var clientgenMarkerRE = regexp.MustCompile(`\+genclient\b|\+bridge:|\+resourceName=`)
+var (
+	clientgenMarkerRE          = regexp.MustCompile(`\+genclient\b|\+bridge:|\+resourceName=`)
+	responseProjectionMarkerRE = regexp.MustCompile(`\+hyperfleet:rest-response-projection=(\w+)`)
+)
 
 // Generator generates REST types and conversion functions from CRD types.
 type Generator struct {
@@ -43,12 +46,13 @@ type Generator struct {
 }
 
 type typeInfo struct {
-	Name       string
-	StructType *ast.StructType
-	Doc        *ast.CommentGroup
-	Fields     []*fieldInfo
-	Markers    []string
-	Embeds     []string
+	Name               string
+	StructType         *ast.StructType
+	Doc                *ast.CommentGroup
+	Fields             []*fieldInfo
+	Markers            []string
+	Embeds             []string
+	ResponseProjection string
 }
 
 type namedTypeInfo struct {
@@ -217,11 +221,9 @@ func (g *Generator) parseTypes() error {
 	return nil
 }
 
-// extractClientMarkers scans all comment groups in a file for +genclient and
-// +bridge:* markers that appear in floating comment blocks (separated by a blank
-// line from the type's doc comment). It associates each marker set with the
-// nearest following type declaration, mirroring the convention used by
-// client-gen and bridge-gen.
+// extractClientMarkers scans floating comment blocks for client-generation,
+// bridge, and REST response-projection markers, then associates them with the
+// nearest following type declaration.
 func (g *Generator) extractClientMarkers(file *ast.File) {
 	type typePos struct {
 		name string
@@ -245,12 +247,16 @@ func (g *Generator) extractClientMarkers(file *ast.File) {
 
 	for _, cg := range file.Comments {
 		var markers []string
+		var responseProjections []string
 		for _, c := range cg.List {
 			if clientgenMarkerRE.MatchString(c.Text) {
 				markers = append(markers, strings.TrimSpace(strings.TrimPrefix(c.Text, "//")))
 			}
+			if matches := responseProjectionMarkerRE.FindStringSubmatch(c.Text); len(matches) > 1 {
+				responseProjections = append(responseProjections, matches[1])
+			}
 		}
-		if len(markers) == 0 {
+		if len(markers) == 0 && len(responseProjections) == 0 {
 			continue
 		}
 		cgEnd := cg.End()
@@ -260,6 +266,9 @@ func (g *Generator) extractClientMarkers(file *ast.File) {
 			}
 			if ti, ok := g.typeInfos[td.name]; ok {
 				ti.Markers = append(ti.Markers, markers...)
+				if len(responseProjections) > 0 {
+					ti.ResponseProjection = responseProjections[0]
+				}
 			}
 			break
 		}
@@ -1030,6 +1039,21 @@ func (g *Generator) renderRESTType(ti *typeInfo, restTypeSet map[string]bool, is
 		}
 	}
 
+	if isRoot {
+		switch ti.ResponseProjection {
+		case "":
+		case "proxy":
+			visibleFields = append(visibleFields, restFieldData{
+				GoName:  "Proxy",
+				GoType:  "*ClusterProxy",
+				JSONTag: "proxy,omitempty",
+				Comment: "// Proxy is a read-only projection of spec.hostedCluster.configuration.proxy.\n\t// +optional",
+			})
+		default:
+			return "", fmt.Errorf("unsupported REST response projection %q on %s", ti.ResponseProjection, ti.Name)
+		}
+	}
+
 	var embeds []restEmbedData
 	if isRoot {
 		embeds = []restEmbedData{
@@ -1336,16 +1360,17 @@ func (g *Generator) inferTypeFromPath(path string) string {
 // --- Phase 3: JSON-roundtrip conversion functions ---
 
 type conversionData struct {
-	PackageName  string
-	CRDPackage   string
-	ParentPkg    string
-	RESTPkg      string
-	Resource     string
-	SpecType     string
-	StatusType   string
-	SpecFields   []convFieldData
-	StatusFields []convFieldData
-	MirrorTypes  []mirrorConvData
+	PackageName        string
+	CRDPackage         string
+	ParentPkg          string
+	RESTPkg            string
+	Resource           string
+	SpecType           string
+	StatusType         string
+	ResponseProjection string
+	SpecFields         []convFieldData
+	StatusFields       []convFieldData
+	MirrorTypes        []mirrorConvData
 }
 
 type convFieldData struct {
@@ -1380,12 +1405,29 @@ func Project{{ .Resource }}(crd *v1alpha1.{{ .Resource }}) *rest.{{ .Resource }}
 
 	spec := project{{ .SpecType }}(crd.Spec)
 	status := project{{ .StatusType }}(crd.Status)
+{{- if eq .ResponseProjection "proxy" }}
+	out := &rest.{{ .Resource }}{
+		TypeMeta:   crd.TypeMeta,
+		ObjectMeta: crd.ObjectMeta,
+		Spec:       spec,
+		Status:     status,
+	}
+	if config := crd.Spec.HostedCluster.Configuration; config != nil && config.Proxy != nil {
+		out.Proxy = &rest.ClusterProxy{
+			HTTPProxy:  config.Proxy.HTTPProxy,
+			HTTPSProxy: config.Proxy.HTTPSProxy,
+			NoProxy:    config.Proxy.NoProxy,
+		}
+	}
+	return out
+{{- else }}
 	return &rest.{{ .Resource }}{
 		TypeMeta:   crd.TypeMeta,
 		ObjectMeta: crd.ObjectMeta,
 		Spec:       spec,
 		Status:     status,
 	}
+{{- end }}
 }
 
 func project{{ .SpecType }}(crd v1alpha1.{{ .SpecType }}) rest.{{ .SpecType }} {
@@ -1534,18 +1576,20 @@ func (g *Generator) renderConversionFunctions(resource string) (string, error) {
 			statusFields = append(statusFields, convFieldData{GoName: fi.GoName})
 		}
 	}
+	resourceTI := g.typeInfos[resource]
 
 	data := conversionData{
-		PackageName:  filepath.Base(g.OutputDir),
-		CRDPackage:   g.CRDPackage,
-		ParentPkg:    parentPkg,
-		RESTPkg:      restPkg,
-		Resource:     resource,
-		SpecType:     specType,
-		StatusType:   statusType,
-		SpecFields:   specFields,
-		StatusFields: statusFields,
-		MirrorTypes:  mirrorTypes,
+		PackageName:        filepath.Base(g.OutputDir),
+		CRDPackage:         g.CRDPackage,
+		ParentPkg:          parentPkg,
+		RESTPkg:            restPkg,
+		Resource:           resource,
+		SpecType:           specType,
+		StatusType:         statusType,
+		ResponseProjection: resourceTI.ResponseProjection,
+		SpecFields:         specFields,
+		StatusFields:       statusFields,
+		MirrorTypes:        mirrorTypes,
 	}
 
 	var buf bytes.Buffer
