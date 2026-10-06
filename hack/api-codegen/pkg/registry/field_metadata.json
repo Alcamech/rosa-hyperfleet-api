@@ -353,8 +353,13 @@
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.scheduler",
-    "writeMode": "service-set",
-    "hidden": true,
+    "writeMode": "mutable",
+    "ownerType": "Cluster",
+    "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
+  },
+  {
+    "fieldPath": "spec.hostedCluster.configuration.scheduler.profile",
+    "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
@@ -879,8 +884,13 @@
   },
   {
     "fieldPath": "scheduler",
-    "writeMode": "service-set",
-    "hidden": true,
+    "writeMode": "mutable",
+    "ownerType": "ClusterConfiguration",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "scheduler.profile",
+    "writeMode": "mutable",
     "ownerType": "ClusterConfiguration",
     "ownerGVK": ""
   },
@@ -1361,6 +1371,12 @@
     "writeMode": "service-set",
     "hidden": true,
     "ownerType": "ProxyConfiguration",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "profile",
+    "writeMode": "mutable",
+    "ownerType": "SchedulerConfiguration",
     "ownerGVK": ""
   }
 ]

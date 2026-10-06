@@ -585,7 +585,10 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 
 			phase := cluster.Status.Phase
 			GinkgoWriter.Printf("[%s] polled cluster — phase=%s\n", time.Now().Format(time.RFC3339), phase)
-			g.Expect(phase).To(Equal(v1alpha1.ClusterPhaseReady), "cluster phase should be Ready, got %s", phase)
+			conditionsJSON, err := json.MarshalIndent(cluster.Status.Conditions, "", "  ")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(phase).To(Equal(v1alpha1.ClusterPhaseReady),
+				"cluster phase should be Ready, got %s; latest conditions:\n%s", phase, conditionsJSON)
 		}).WithTimeout(35*time.Minute).WithPolling(20*time.Second).Should(Succeed(),
 			"cluster status.phase should become Ready")
 

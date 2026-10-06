@@ -40,18 +40,39 @@ func TestConfigurationUsesLocalType(t *testing.T) {
 		t.Fatal("ClusterConfiguration definition not found")
 	}
 
-	// The local type's markers expose proxy, kubelet, and machineConfig.
+	// The local type's markers expose proxy, scheduler, kubelet, and machineConfig.
 	// If the upstream hypershiftv1beta1.ClusterConfiguration were used instead,
 	// all 10 sub-config fields would be present (no hidden markers).
-	for _, visible := range []string{"proxy", "kubelet", "machineConfig"} {
+	for _, visible := range []string{"proxy", "scheduler", "kubelet", "machineConfig"} {
 		if _, found := cc.Properties[visible]; !found {
 			t.Errorf("expected visible property %q in ClusterConfiguration", visible)
 		}
 	}
-	for _, hidden := range []string{"apiServer", "authentication", "featureGate", "image", "ingress", "network", "oauth", "scheduler"} {
+	for _, hidden := range []string{"apiServer", "authentication", "featureGate", "image", "ingress", "network", "oauth"} {
 		if _, found := cc.Properties[hidden]; found {
 			t.Errorf("property %q should be hidden in ClusterConfiguration (local markers not applied?)", hidden)
 		}
+	}
+
+	// SchedulerConfiguration exposes only the supported scheduler profile choice.
+	sc, ok := output.Definitions["SchedulerConfiguration"]
+	if !ok {
+		t.Fatal("SchedulerConfiguration definition not found")
+	}
+	profile, ok := sc.Properties["profile"]
+	if !ok {
+		t.Fatal("profile property not found in SchedulerConfiguration")
+	}
+	wantProfiles := map[string]bool{
+		`"LowNodeUtilization"`:  true,
+		`"HighNodeUtilization"`: true,
+		`"NoScoring"`:           true,
+	}
+	for _, value := range profile.Enum {
+		delete(wantProfiles, string(value.Raw))
+	}
+	if len(wantProfiles) != 0 {
+		t.Errorf("profile enum is missing values: %v", wantProfiles)
 	}
 
 	// ProxyConfiguration exposes user-settable proxy fields but keeps the
