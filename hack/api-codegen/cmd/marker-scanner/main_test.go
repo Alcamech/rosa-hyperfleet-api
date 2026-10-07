@@ -41,12 +41,19 @@ func captureStdout(t *testing.T, write func() error) string {
 	if err != nil {
 		t.Fatalf("create stdout pipe: %v", err)
 	}
+	defer func() {
+		if err := reader.Close(); err != nil {
+			t.Errorf("close stdout pipe reader: %v", err)
+		}
+	}()
 	previous := os.Stdout
 	os.Stdout = writer
 	writeErr := write()
-	_ = writer.Close()
+	closeErr := writer.Close()
 	os.Stdout = previous
-	defer reader.Close()
+	if closeErr != nil {
+		t.Errorf("close stdout pipe writer: %v", closeErr)
+	}
 	if writeErr != nil {
 		t.Fatalf("write stdout: %v", writeErr)
 	}
