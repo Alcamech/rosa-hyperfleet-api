@@ -185,7 +185,7 @@ func (g *CRDVariantGenerator) shouldIncludeField(fieldPath string, featureSet Fe
 		return true
 	}
 
-	if meta.Hidden {
+	if meta.HiddenFromPublicAPI() {
 		return false
 	}
 

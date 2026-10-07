@@ -62,7 +62,7 @@ func (g *Generator) Generate() error {
 			Version: g.Version,
 			Description: fmt.Sprintf(
 				"OpenAPI schema for %s generated from Go types with controller-tools\n\n"+
-					"Fields marked with +k8s:openapi-gen=false are excluded from this schema.",
+					"Non-mutable fields marked with +k8s:openapi-gen=false are excluded from this schema.",
 				g.Title,
 			),
 		},
@@ -170,9 +170,9 @@ var typeToRegistryPrefix = map[string]string{
 	"MachineConfigSpec":            "machineConfig",
 }
 
-// filterHiddenFields removes fields marked as hidden in the registry from
-// all schema definitions. A field is hidden when its FieldRegistry entry has
-// Hidden == true (i.e., +k8s:openapi-gen=false).
+// filterHiddenFields removes fields hidden from the public API in the registry
+// from all schema definitions. Mutable fields marked +k8s:openapi-gen=false
+// remain in HyperFleet's custom public schema.
 //
 // Every definition that carries hidden fields must have an entry in
 // typeToRegistryPrefix; an unmapped definition whose properties match
@@ -182,7 +182,7 @@ func filterHiddenFields(definitions map[string]apiextensionsv1.JSONSchemaProps) 
 	// Collect hidden field paths from all types in the typed registry
 	for _, fields := range registry.FieldRegistry {
 		for path, meta := range fields {
-			if meta.Hidden {
+			if meta.HiddenFromPublicAPI() {
 				hiddenPaths[path] = true
 			}
 		}

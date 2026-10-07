@@ -36,7 +36,9 @@ type FieldMeta struct {
 	// FeatureGate is the gate required to use this field (empty if no gate required)
 	FeatureGate string
 
-	// Hidden indicates if the field is excluded from OpenAPI (+k8s:openapi-gen=false)
+	// Hidden indicates if the field is excluded from generated Kubernetes OpenAPI
+	// (+k8s:openapi-gen=false). Mutable hidden fields can still be exposed by
+	// HyperFleet's custom public API schema.
 	Hidden bool
 
 	// FeatureGateAwareWriteModes allows write-mode to vary based on enabled feature gates
@@ -50,6 +52,13 @@ type FieldMeta struct {
 	// OwnerGVK is the GroupVersionKind of the CRD that owns this field
 	// (e.g., "hyperfleet.io/v1alpha1.Cluster")
 	OwnerGVK string `json:"ownerGVK"`
+}
+
+// HiddenFromPublicAPI reports whether the field should be omitted from
+// HyperFleet-managed public API types and schemas. A mutable field explicitly
+// opts into that API even when standard Kubernetes OpenAPI generation is off.
+func (m FieldMeta) HiddenFromPublicAPI() bool {
+	return m.Hidden && m.WriteMode != Mutable
 }
 
 // TypedFieldRegistry maps CRD type kinds to their field metadata

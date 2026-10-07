@@ -86,7 +86,7 @@ The registry captures the following marker categories from the passthrough file:
 
 | Marker                                                   | Registry field               | Purpose                                           |
 | -------------------------------------------------------- | ---------------------------- | ------------------------------------------------- |
-| `+k8s:openapi-gen=false`                                 | `hidden: true`               | Field excluded from public OpenAPI and REST types |
+| `+k8s:openapi-gen=false`                                 | `hidden: true`               | Suppresses automatic Kubernetes OpenAPI generation; mutable fields remain in HyperFleet's custom public schema |
 | `+hyperfleet:write-mode=mutable\|immutable\|service-set` | `writeMode`                  | Controls customer mutability                      |
 | `+openshift:enable:FeatureGate=X`                        | `featureGate`                | Field gated behind a feature flag                 |
 | `+hyperfleet:validation:FeatureGateAwareWriteMode:...`   | `featureGateAwareWriteModes` | Write-mode varies by active feature gates         |

@@ -39,10 +39,10 @@ func runInit(registryPath, openapiPath, outputPath string) error {
 		}
 	}
 
-	// Group entries by ownerType; skip service-set and hidden fields.
+	// Group entries by ownerType; skip service-set and public-API-hidden fields.
 	byOwner := map[string][]pkg.RegistryEntry{}
 	for _, e := range entries {
-		if e.WriteMode == "service-set" || e.Hidden {
+		if e.WriteMode == "service-set" || (e.Hidden && e.WriteMode != "mutable") {
 			continue
 		}
 		if e.WriteMode != "mutable" && e.WriteMode != "immutable" {

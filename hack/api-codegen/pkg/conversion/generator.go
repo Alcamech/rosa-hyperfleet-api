@@ -326,7 +326,7 @@ func (g *Generator) parseField(typeName string, field *ast.Field, name *ast.Iden
 
 	if exists {
 		fi.FieldPath = meta.FieldPath
-		fi.Hidden = meta.Hidden
+		fi.Hidden = meta.HiddenFromPublicAPI()
 		fi.WriteMode = meta.WriteMode
 	}
 
