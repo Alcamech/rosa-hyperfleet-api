@@ -32,6 +32,18 @@ func NewNodePoolHandler(db *hyperfleetdb.Client, logger *slog.Logger) *NodePoolH
 	}
 }
 
+func validateNodePoolReplicas(spec *public.NodePoolSpec) validation.ValidationErrors {
+	if spec == nil || spec.NodePool.Replicas == nil || *spec.NodePool.Replicas >= 0 {
+		return nil
+	}
+	return validation.ValidationErrors{
+		&validation.ValidationError{
+			Field:  "spec.nodePool.replicas",
+			Reason: "must be greater than or equal to 0",
+		},
+	}
+}
+
 func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
@@ -120,7 +132,7 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	clusterID := parsedUUID.String()
 
-	if errs := h.validator.ValidateCreate(&req.Spec, featuregate.Default); errs != nil {
+	if errs := append(h.validator.ValidateCreate(&req.Spec, featuregate.Default), validateNodePoolReplicas(&req.Spec)...); len(errs) > 0 {
 		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
 		return
 	}
@@ -217,7 +229,7 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if errs := h.validator.ValidateUpdate(&req.Spec, &cr.Spec, featuregate.Default); errs != nil {
+	if errs := append(h.validator.ValidateUpdate(&req.Spec, &cr.Spec, featuregate.Default), validateNodePoolReplicas(&req.Spec)...); len(errs) > 0 {
 		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
 		return
 	}
