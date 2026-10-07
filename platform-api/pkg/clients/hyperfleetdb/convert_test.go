@@ -502,6 +502,13 @@ func TestMergeSpecJSON_PreservesOmittedNodePoolLabelMaps(t *testing.T) {
 	assert.Equal(t, map[string]string{"existing": "node"}, spec.NodePool.NodeLabels)
 }
 
+func TestMergeSpecJSON_TypedNilNodePoolSpecReturnsError(t *testing.T) {
+	var spec *hyperfleetv1alpha1.NodePoolSpec
+
+	err := MergeSpecJSON(spec, []byte(`{"labels":{"team":"api"}}`))
+	require.Error(t, err)
+}
+
 func TestSyncNodePoolPassthrough_DefaultsAutoRepairWhenNil(t *testing.T) {
 	spec := &hyperfleetv1alpha1.NodePoolSpec{}
 

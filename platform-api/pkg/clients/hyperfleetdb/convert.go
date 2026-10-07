@@ -33,7 +33,7 @@ func MergeSpecJSON(dst any, specJSON []byte) error {
 // into a non-nil map, which makes it impossible for callers to remove labels.
 func resetSuppliedNodePoolLabelMaps(dst any, specJSON []byte) error {
 	nodePoolSpec, ok := dst.(*hyperfleetv1alpha1.NodePoolSpec)
-	if !ok {
+	if !ok || nodePoolSpec == nil {
 		return nil
 	}
 	var supplied struct {
