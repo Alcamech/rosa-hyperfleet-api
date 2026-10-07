@@ -33,6 +33,10 @@ func ProjectCluster(crd *v1alpha1.Cluster) *rest.Cluster {
 			NoProxy:    config.Proxy.NoProxy,
 		}
 	}
+	if out.Spec.AdditionalTrustBundle != nil && *out.Spec.AdditionalTrustBundle != "" {
+		redacted := "REDACTED"
+		out.Spec.AdditionalTrustBundle = &redacted
+	}
 	return out
 }
 

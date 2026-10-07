@@ -112,6 +112,11 @@ func (v *FieldValidator) validate(fields, existingFields map[string]any, op Oper
 			errs = append(errs, err)
 		}
 	}
+	if v.resourceType == "Cluster" {
+		if err := validateAdditionalTrustBundle(fields); err != nil {
+			errs = append(errs, err)
+		}
+	}
 
 	if len(errs) > 0 {
 		return errs

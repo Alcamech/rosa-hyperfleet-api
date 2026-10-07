@@ -149,6 +149,27 @@ func TestValidateCreate_AllowsProxyConfiguration(t *testing.T) {
 	}
 }
 
+func TestValidateCreate_ValidatesAdditionalTrustBundle(t *testing.T) {
+	v := NewFieldValidator("Cluster")
+	errs := v.ValidateCreate(map[string]any{
+		"additionalTrustBundle": "not a certificate",
+	}, featuregate.Default)
+	if len(errs) != 1 || errs[0].Field != "spec.additionalTrustBundle" {
+		t.Fatalf("expected additionalTrustBundle validation error, got %v", errs)
+	}
+}
+
+func TestValidateUpdate_ValidatesAdditionalTrustBundleAndAllowsClear(t *testing.T) {
+	v := NewFieldValidator("Cluster")
+	existing := map[string]any{"additionalTrustBundle": "previous bundle"}
+	if errs := v.ValidateUpdate(map[string]any{"additionalTrustBundle": "not a certificate"}, existing, featuregate.Default); len(errs) != 1 || errs[0].Field != "spec.additionalTrustBundle" {
+		t.Fatalf("expected additionalTrustBundle validation error, got %v", errs)
+	}
+	if errs := v.ValidateUpdate(map[string]any{"additionalTrustBundle": ""}, existing, featuregate.Default); errs != nil {
+		t.Fatalf("expected empty string to clear the bundle, got %v", errs)
+	}
+}
+
 func TestValidateCreate_AllowsImmutableFields(t *testing.T) {
 	v := newTestValidator(map[string]registry.FieldMeta{
 		"spec.fips": {FieldPath: "spec.fips", WriteMode: registry.Immutable},
