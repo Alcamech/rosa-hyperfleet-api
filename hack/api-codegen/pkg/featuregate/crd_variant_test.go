@@ -38,6 +38,12 @@ func TestCRDVariantGenerator_shouldIncludeField(t *testing.T) {
 					FeatureGate: "HyperFleetAutoScaling",
 					OwnerType:   "Cluster",
 				},
+				"spec.mutableButKubernetesHidden": {
+					FieldPath: "spec.mutableButKubernetesHidden",
+					WriteMode: registry.Mutable,
+					Hidden:    true,
+					OwnerType: "Cluster",
+				},
 			},
 		},
 		resourceType: "Cluster",
@@ -96,6 +102,12 @@ func TestCRDVariantGenerator_shouldIncludeField(t *testing.T) {
 			fieldPath:  "spec.hiddenGated",
 			featureSet: TechPreviewNoUpgrade,
 			want:       false,
+		},
+		{
+			name:       "mutable field hidden from Kubernetes OpenAPI remains included",
+			fieldPath:  "spec.mutableButKubernetesHidden",
+			featureSet: Default,
+			want:       true,
 		},
 	}
 

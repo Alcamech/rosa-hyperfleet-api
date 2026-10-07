@@ -107,6 +107,17 @@ func TestFilterCRDFields(t *testing.T) {
 			len(techPreviewFields), len(devPreviewFields))
 	}
 
+	labelsFieldPresent := false
+	for _, path := range defaultFields {
+		if path == "spec.nodePool.nodeLabels" {
+			labelsFieldPresent = true
+			break
+		}
+	}
+	if !labelsFieldPresent {
+		t.Error("mutable nodeLabels field hidden from Kubernetes OpenAPI must remain in public CRD fields")
+	}
+
 	t.Logf("Default: %d fields", len(defaultFields))
 	t.Logf("TechPreview: %d fields", len(techPreviewFields))
 	t.Logf("DevPreview: %d fields", len(devPreviewFields))
@@ -140,6 +151,10 @@ func TestFieldsForFeatureSet(t *testing.T) {
 				}
 			}
 		})
+	}
+
+	if _, ok := FieldsForFeatureSet(Default)["spec.nodePool.nodeLabels"]; !ok {
+		t.Error("mutable nodeLabels field hidden from Kubernetes OpenAPI must remain in public fields")
 	}
 }
 

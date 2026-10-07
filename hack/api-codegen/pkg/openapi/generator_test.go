@@ -4,7 +4,35 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
+
+func TestFilterHiddenFieldsRetainsMutableNodePoolLabelsAndTaints(t *testing.T) {
+	definitions := map[string]apiextensionsv1.JSONSchemaProps{
+		"NodePoolSpecPassthrough": {
+			Type: "object",
+			Properties: map[string]apiextensionsv1.JSONSchemaProps{
+				"nodeLabels":              {Type: "object"},
+				"taints":                  {Type: "array"},
+				"nodeVolumeDetachTimeout": {Type: "string"},
+			},
+		},
+	}
+
+	if err := filterHiddenFields(definitions); err != nil {
+		t.Fatalf("filterHiddenFields(): %v", err)
+	}
+	properties := definitions["NodePoolSpecPassthrough"].Properties
+	for _, visible := range []string{"nodeLabels", "taints"} {
+		if _, ok := properties[visible]; !ok {
+			t.Errorf("mutable field %q was filtered from the public schema", visible)
+		}
+	}
+	if _, ok := properties["nodeVolumeDetachTimeout"]; ok {
+		t.Error("service-set field nodeVolumeDetachTimeout was not filtered from the public schema")
+	}
+}
 
 func TestConfigurationUsesLocalType(t *testing.T) {
 	tmpFile := t.TempDir() + "/openapi.json"
