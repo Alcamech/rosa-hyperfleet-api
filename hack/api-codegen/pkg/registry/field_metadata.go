@@ -633,11 +633,10 @@ var FieldRegistry = TypedFieldRegistry{
 			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
 		},
 		"spec.tags": {
-			FieldPath:   "spec.tags",
-			WriteMode:   Mutable,
-			FeatureGate: "HyperFleetAutoScaling",
-			OwnerType:   "Cluster",
-			OwnerGVK:    "hyperfleet.io/v1alpha1.Cluster",
+			FieldPath: "spec.tags",
+			WriteMode: Immutable,
+			OwnerType: "Cluster",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
 		},
 	},
 	"ClusterConfiguration": {

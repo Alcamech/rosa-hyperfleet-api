@@ -610,8 +610,7 @@
   },
   {
     "fieldPath": "spec.tags",
-    "writeMode": "mutable",
-    "featureGate": "HyperFleetAutoScaling",
+    "writeMode": "immutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
