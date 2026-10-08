@@ -32,8 +32,6 @@ type ServiceSetFieldsHostedCluster struct {
 	AuditWebhook *corev1.LocalObjectReference `json:"auditWebhook,omitempty"`
 	// Authentication is service-set (platform-managed, hidden from API)
 	Authentication string `json:"authentication,omitempty"`
-	// Autoscaling is service-set (platform-managed, hidden from API)
-	Autoscaling hypershiftv1beta1.ClusterAutoscaling `json:"autoscaling,omitempty"`
 	// Capabilities is service-set (platform-managed, hidden from API)
 	Capabilities *hypershiftv1beta1.Capabilities `json:"capabilities,omitempty"`
 	// ClusterID is service-set (platform-managed, hidden from API)
@@ -72,8 +70,6 @@ type ServiceSetFieldsHostedCluster struct {
 	InfraID string `json:"infraID,omitempty"`
 	// InfrastructureAvailabilityPolicy is service-set (platform-managed, hidden from API)
 	InfrastructureAvailabilityPolicy hypershiftv1beta1.AvailabilityPolicy `json:"infrastructureAvailabilityPolicy,omitempty"`
-	// Ingress is service-set (platform-managed, hidden from API)
-	Ingress string `json:"ingress,omitempty"`
 	// IssuerURL is service-set (platform-managed, hidden from API)
 	IssuerURL string `json:"issuerURL,omitempty"`
 	// KernelArguments is service-set (platform-managed, hidden from API)
@@ -164,8 +160,6 @@ type ServiceSetFields struct {
 	Image *v1alpha1.ImageConfiguration `json:"image,omitempty"`
 	// IndexRef is service-set (platform-managed, hidden from API)
 	IndexRef v1alpha1.IndexRef `json:"indexRef,omitempty"`
-	// Ingress is service-set (platform-managed, hidden from API)
-	Ingress *v1alpha1.IngressConfiguration `json:"ingress,omitempty"`
 	// InternalID is service-set (platform-managed, hidden from API)
 	InternalID string `json:"internalId,omitempty"`
 	// InternalPoolID is service-set (platform-managed, hidden from API)
