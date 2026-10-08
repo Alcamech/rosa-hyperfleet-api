@@ -460,6 +460,55 @@ func TestSyncNodePoolPassthrough_SyncsAutoRepairAndLabels(t *testing.T) {
 	assert.Equal(t, spec.Labels, spec.NodePool.NodeLabels)
 }
 
+func TestMergeSpecJSON_ReplacesSuppliedNodePoolLabelMaps(t *testing.T) {
+	spec := &hyperfleetv1alpha1.NodePoolSpec{
+		Labels: map[string]string{"old-top-level": "value"},
+		NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
+			NodeLabels: map[string]string{"old-node-label": "value"},
+		},
+	}
+
+	err := MergeSpecJSON(spec, []byte(`{"labels":{"new-top-level":"value"},"nodePool":{"nodeLabels":{"new-node-label":"value"}}}`))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"new-top-level": "value"}, spec.Labels)
+	assert.Equal(t, map[string]string{"new-node-label": "value"}, spec.NodePool.NodeLabels)
+}
+
+func TestMergeSpecJSON_EmptySuppliedNodePoolLabelMapsClearExisting(t *testing.T) {
+	spec := &hyperfleetv1alpha1.NodePoolSpec{
+		Labels: map[string]string{"old-top-level": "value"},
+		NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
+			NodeLabels: map[string]string{"old-node-label": "value"},
+		},
+	}
+
+	err := MergeSpecJSON(spec, []byte(`{"labels":{},"nodePool":{"nodeLabels":{}}}`))
+	require.NoError(t, err)
+	assert.Empty(t, spec.Labels)
+	assert.Empty(t, spec.NodePool.NodeLabels)
+}
+
+func TestMergeSpecJSON_PreservesOmittedNodePoolLabelMaps(t *testing.T) {
+	spec := &hyperfleetv1alpha1.NodePoolSpec{
+		Labels: map[string]string{"existing": "top-level"},
+		NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
+			NodeLabels: map[string]string{"existing": "node"},
+		},
+	}
+
+	err := MergeSpecJSON(spec, []byte(`{"displayName":"updated"}`))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"existing": "top-level"}, spec.Labels)
+	assert.Equal(t, map[string]string{"existing": "node"}, spec.NodePool.NodeLabels)
+}
+
+func TestMergeSpecJSON_TypedNilNodePoolSpecReturnsError(t *testing.T) {
+	var spec *hyperfleetv1alpha1.NodePoolSpec
+
+	err := MergeSpecJSON(spec, []byte(`{"labels":{"team":"api"}}`))
+	require.Error(t, err)
+}
+
 func TestSyncNodePoolPassthrough_DefaultsAutoRepairWhenNil(t *testing.T) {
 	spec := &hyperfleetv1alpha1.NodePoolSpec{}
 

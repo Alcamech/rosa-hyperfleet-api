@@ -174,8 +174,6 @@ type ServiceSetFields struct {
 	MemoryThrottlingFactor *float64 `json:"memoryThrottlingFactor,omitempty"`
 	// Network is service-set (platform-managed, hidden from API)
 	Network *v1alpha1.NetworkConfiguration `json:"network,omitempty"`
-	// NodeLabels is service-set (platform-managed, hidden from API)
-	NodeLabels map[string]string `json:"nodeLabels,omitempty"`
 	// NodeVolumeDetachTimeout is service-set (platform-managed, hidden from API)
 	NodeVolumeDetachTimeout *metav1.Duration `json:"nodeVolumeDetachTimeout,omitempty"`
 	// Oauth is service-set (platform-managed, hidden from API)

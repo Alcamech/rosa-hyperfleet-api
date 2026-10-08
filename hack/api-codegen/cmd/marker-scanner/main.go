@@ -186,7 +186,7 @@ func printTypedRegistryTable(registry markers.TypedFieldRegistry) error {
 			}
 
 			hidden := "no"
-			if meta.Hidden {
+			if meta.HiddenFromPublicAPI() {
 				hidden = "yes"
 			}
 
@@ -224,7 +224,7 @@ func printTypedRegistryStats(registry markers.TypedFieldRegistry) error {
 			case markers.ServiceSet:
 				serviceSet++
 			}
-			if meta.Hidden {
+			if meta.HiddenFromPublicAPI() {
 				hidden++
 			}
 			if meta.FeatureGate != "" || len(meta.FeatureGateAwareWriteModes) > 0 {

@@ -14,8 +14,9 @@ func FilterCRDFields(featureSet FeatureSet) []string {
 	// Iterate through all types in the typed registry
 	for _, fields := range registry.FieldRegistry {
 		for fieldPath, meta := range fields {
-			// Skip hidden fields - they never appear in CRDs
-			if meta.Hidden {
+			// Skip fields hidden from the public API. Mutable fields remain
+			// available even when standard Kubernetes OpenAPI generation is off.
+			if meta.HiddenFromPublicAPI() {
 				continue
 			}
 
@@ -42,8 +43,8 @@ func FieldsForFeatureSet(featureSet FeatureSet) map[string]registry.FieldMeta {
 	// Iterate through all types in the typed registry
 	for _, fields := range registry.FieldRegistry {
 		for fieldPath, meta := range fields {
-			// Skip hidden fields
-			if meta.Hidden {
+			// Skip fields hidden from the public API.
+			if meta.HiddenFromPublicAPI() {
 				continue
 			}
 

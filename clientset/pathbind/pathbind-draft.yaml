@@ -432,6 +432,11 @@ resources:
               operations:
                 - create
                 - update
+            - path: spec.nodePool.nodeLabels
+              goType: map
+              operations:
+                - create
+                - update
             - path: spec.nodePool.platform.aws.ami
               goType: string
               operations:
