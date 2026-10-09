@@ -109,8 +109,19 @@ var FieldRegistry = TypedFieldRegistry{
 		},
 		"spec.hostedCluster.configuration.authentication": {
 			FieldPath: "spec.hostedCluster.configuration.authentication",
-			WriteMode: ServiceSet,
-			Hidden:    true,
+			WriteMode: Mutable,
+			OwnerType: "Cluster",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
+		},
+		"spec.hostedCluster.configuration.authentication.oidcProviders": {
+			FieldPath: "spec.hostedCluster.configuration.authentication.oidcProviders",
+			WriteMode: Mutable,
+			OwnerType: "Cluster",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
+		},
+		"spec.hostedCluster.configuration.authentication.type": {
+			FieldPath: "spec.hostedCluster.configuration.authentication.type",
+			WriteMode: Mutable,
 			OwnerType: "Cluster",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
 		},
@@ -667,11 +678,36 @@ var FieldRegistry = TypedFieldRegistry{
 			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
 		},
 	},
+	"ClusterAuthentication": {
+		"oidcProviders": {
+			FieldPath: "oidcProviders",
+			WriteMode: Mutable,
+			OwnerType: "ClusterAuthentication",
+			OwnerGVK:  "",
+		},
+		"type": {
+			FieldPath: "type",
+			WriteMode: Mutable,
+			OwnerType: "ClusterAuthentication",
+			OwnerGVK:  "",
+		},
+	},
 	"ClusterConfiguration": {
 		"authentication": {
 			FieldPath: "authentication",
-			WriteMode: ServiceSet,
-			Hidden:    true,
+			WriteMode: Mutable,
+			OwnerType: "ClusterConfiguration",
+			OwnerGVK:  "",
+		},
+		"authentication.oidcProviders": {
+			FieldPath: "authentication.oidcProviders",
+			WriteMode: Mutable,
+			OwnerType: "ClusterConfiguration",
+			OwnerGVK:  "",
+		},
+		"authentication.type": {
+			FieldPath: "authentication.type",
+			WriteMode: Mutable,
 			OwnerType: "ClusterConfiguration",
 			OwnerGVK:  "",
 		},

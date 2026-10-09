@@ -30,8 +30,6 @@ type ServiceSetFieldsHostedCluster struct {
 	AllowedUnsafeSysctls string `json:"allowedUnsafeSysctls,omitempty"`
 	// AuditWebhook is service-set (platform-managed, hidden from API)
 	AuditWebhook *corev1.LocalObjectReference `json:"auditWebhook,omitempty"`
-	// Authentication is service-set (platform-managed, hidden from API)
-	Authentication string `json:"authentication,omitempty"`
 	// Capabilities is service-set (platform-managed, hidden from API)
 	Capabilities *hypershiftv1beta1.Capabilities `json:"capabilities,omitempty"`
 	// ClusterID is service-set (platform-managed, hidden from API)
@@ -128,8 +126,6 @@ type ServiceSetFields struct {
 	AllowedUnsafeSysctls []string `json:"allowedUnsafeSysctls,omitempty"`
 	// Arch is service-set (platform-managed, hidden from API)
 	Arch string `json:"arch,omitempty"`
-	// Authentication is service-set (platform-managed, hidden from API)
-	Authentication *v1alpha1.ClusterAuthentication `json:"authentication,omitempty"`
 	// BaseDomain is service-set (platform-managed, hidden from API)
 	BaseDomain string `json:"baseDomain,omitempty"`
 	// BaseDomainPrefix is service-set (platform-managed, hidden from API)

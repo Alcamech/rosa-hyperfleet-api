@@ -11,8 +11,8 @@ import (
 // +hyperfleet:upstream-reduced-object=hypershiftv1beta1.ClusterConfiguration
 type ClusterConfiguration struct {
 	// authentication contains configuration for the cluster authentication.
-	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
 	Authentication *ClusterAuthentication `json:"authentication,omitempty"`
 
 	// featureGate contains the desired configuration for feature gates.
@@ -152,9 +152,27 @@ type KubeletConfig struct {
 	MemoryThrottlingFactor *float64 `json:"memoryThrottlingFactor,omitempty"`
 }
 
-// Placeholder types for configuration areas not yet exposed.
+// ClusterAuthentication contains the customer-configurable authentication settings.
+// +kubebuilder:validation:XValidation:rule="!has(self.oidcProviders) || size(self.oidcProviders) == 0 || self.type == 'OIDC'",message="type must be OIDC when oidcProviders are configured"
+type ClusterAuthentication struct {
+	// type identifies the authentication mode. Set it to OIDC when configuring oidcProviders.
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
+	// +optional
+	Type string `json:"type,omitempty"`
 
-type ClusterAuthentication struct{}
+	// oidcProviders are OIDC identity providers that can issue tokens for this cluster.
+	// At most one provider can be configured. Set type to OIDC to enable these providers.
+	// +k8s:openapi-gen=true
+	// +hyperfleet:write-mode=mutable
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:MaxItems=1
+	// +optional
+	OIDCProviders []configv1.OIDCProvider `json:"oidcProviders,omitempty"`
+}
+
+// Placeholder types for configuration areas not yet exposed.
 
 type FeatureGateConfiguration struct{}
 
