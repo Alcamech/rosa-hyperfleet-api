@@ -8,24 +8,25 @@ import (
 	"sort"
 )
 
+type jsonField struct {
+	FieldPath                  string                 `json:"fieldPath"`
+	UpdateAction               string                 `json:"updateAction,omitempty"`
+	WriteMode                  string                 `json:"writeMode,omitempty"`
+	FeatureGate                string                 `json:"featureGate,omitempty"`
+	Hidden                     bool                   `json:"hidden,omitempty"`
+	Resettable                 bool                   `json:"resettable,omitempty"`
+	IsReducedContainer         bool                   `json:"reducedContainer,omitempty"`
+	FeatureGateAwareWriteModes []FeatureGateWriteMode `json:"featureGateAwareWriteModes,omitempty"`
+	OwnerType                  string                 `json:"ownerType"`
+	OwnerGVK                   string                 `json:"ownerGVK"`
+}
+
 // GenerateJSON creates a JSON file from the field registry for use by other tools
 func (s *MarkerScanner) GenerateJSON(outputFile string) error {
 	// Ensure output directory exists
 	dir := filepath.Dir(outputFile)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("creating output directory: %w", err)
-	}
-
-	// Convert typed registry to sorted structure for deterministic output
-	type jsonField struct {
-		FieldPath                  string                 `json:"fieldPath"`
-		WriteMode                  string                 `json:"writeMode,omitempty"`
-		FeatureGate                string                 `json:"featureGate,omitempty"`
-		Hidden                     bool                   `json:"hidden,omitempty"`
-		Resettable                 bool                   `json:"resettable,omitempty"`
-		FeatureGateAwareWriteModes []FeatureGateWriteMode `json:"featureGateAwareWriteModes,omitempty"`
-		OwnerType                  string                 `json:"ownerType"`
-		OwnerGVK                   string                 `json:"ownerGVK"`
 	}
 
 	// Collect all fields with their owners
@@ -53,11 +54,13 @@ func (s *MarkerScanner) GenerateJSON(outputFile string) error {
 		for _, path := range paths {
 			meta := ownerFields[path]
 			field := jsonField{
+				UpdateAction:               meta.UpdateAction,
 				FieldPath:                  meta.FieldPath,
 				WriteMode:                  string(meta.WriteMode),
 				FeatureGate:                meta.FeatureGate,
 				Hidden:                     meta.Hidden,
 				Resettable:                 meta.Resettable,
+				IsReducedContainer:         meta.IsReducedContainer,
 				FeatureGateAwareWriteModes: meta.FeatureGateAwareWriteModes,
 				OwnerType:                  meta.OwnerType,
 				OwnerGVK:                   meta.OwnerGVK,
@@ -91,17 +94,6 @@ func LoadTypedRegistryFromJSON(jsonFile string) (TypedFieldRegistry, error) {
 
 // LoadTypedRegistryFromJSONBytes loads a typed field registry from raw JSON bytes
 func LoadTypedRegistryFromJSONBytes(data []byte) (TypedFieldRegistry, error) {
-	type jsonField struct {
-		FieldPath                  string                 `json:"fieldPath"`
-		WriteMode                  string                 `json:"writeMode,omitempty"`
-		FeatureGate                string                 `json:"featureGate,omitempty"`
-		Hidden                     bool                   `json:"hidden,omitempty"`
-		Resettable                 bool                   `json:"resettable,omitempty"`
-		FeatureGateAwareWriteModes []FeatureGateWriteMode `json:"featureGateAwareWriteModes,omitempty"`
-		OwnerType                  string                 `json:"ownerType"`
-		OwnerGVK                   string                 `json:"ownerGVK"`
-	}
-
 	var fields []jsonField
 	if err := json.Unmarshal(data, &fields); err != nil {
 		return nil, fmt.Errorf("unmarshaling JSON: %w", err)
@@ -115,11 +107,13 @@ func LoadTypedRegistryFromJSONBytes(data []byte) (TypedFieldRegistry, error) {
 		}
 
 		registry[field.OwnerType][field.FieldPath] = FieldMeta{
+			UpdateAction:               field.UpdateAction,
 			FieldPath:                  field.FieldPath,
 			WriteMode:                  WriteMode(field.WriteMode),
 			FeatureGate:                field.FeatureGate,
 			Hidden:                     field.Hidden,
 			Resettable:                 field.Resettable,
+			IsReducedContainer:         field.IsReducedContainer,
 			FeatureGateAwareWriteModes: field.FeatureGateAwareWriteModes,
 			OwnerType:                  field.OwnerType,
 			OwnerGVK:                   field.OwnerGVK,

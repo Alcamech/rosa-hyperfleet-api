@@ -176,7 +176,10 @@ test: test-unit test-integration
 
 test-unit: test-api test-operator test-api-codegen test-clientset
 
-test-integration: test-seaplane-db test-operator-int
+test-integration: test-seaplane-db test-operator-int test-api-int
+
+test-api-int:
+	cd seaplane-api && go test -v -race -count=1 -tags integration ./pkg/handlers/... ./pkg/authz/...
 
 test-api:
 	cd seaplane-api && go test -v -race -count=1 $(if $(COVERAGE),-covermode=atomic -coverprofile=../coverage-seaplane-api.out,) $$(go list ./... | grep -v '/test/e2e')

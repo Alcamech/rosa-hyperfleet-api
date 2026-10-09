@@ -855,7 +855,7 @@ func TestClient_ReleaseSpotTerminationQueue(t *testing.T) {
 		reservation := spotQueueTestReservation(spotQueueOwnerKey("cluster-1"), time.Now())
 		cluster := spotQueueTestCluster("cluster-1", spotQueueTestURL)
 		c, fc := newSpotQueueTestClient(reservation, cluster)
-		if err := c.ReleaseSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); err != nil {
+		if err := c.ReleaseSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); err != nil {
 			t.Fatalf("ReleaseSpotTerminationQueue() error = %v, want nil", err)
 		}
 		var found seaplanev1alpha1.Index
@@ -867,7 +867,7 @@ func TestClient_ReleaseSpotTerminationQueue(t *testing.T) {
 		reservation := spotQueueTestReservation(spotQueueOwnerKey("cluster-1"), time.Now())
 		cluster := spotQueueTestCluster("cluster-1", "")
 		c, fc := newSpotQueueTestClient(reservation, cluster)
-		if err := c.ReleaseSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); err != nil {
+		if err := c.ReleaseSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); err != nil {
 			t.Fatalf("ReleaseSpotTerminationQueue() error = %v, want nil", err)
 		}
 		var found seaplanev1alpha1.Index

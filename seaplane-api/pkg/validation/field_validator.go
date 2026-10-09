@@ -259,7 +259,7 @@ func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.Field
 		// Preserve round-trip updates without treating omitted zero values as changes.
 		if op == OperationUpdate && existingFields != nil {
 			oldValue, oldExists := existingFields[fieldPath]
-			if oldExists && reflect.DeepEqual(oldValue, value) {
+			if oldExists && (reflect.DeepEqual(oldValue, value) || (isZeroValue(oldValue) && isZeroValue(value))) {
 				return nil
 			}
 			if !oldExists && isZeroValue(value) && !pointers[fieldPath] {
@@ -357,7 +357,46 @@ func isZeroValue(v any) bool {
 	case []any:
 		return len(val) == 0
 	}
-	return false
+	// Raw JSON validation uses exact typed values rather than float64-flattened
+	// values. Preserve the same both-unset behavior for typed zero echoes.
+	return isTypedZeroValue(reflect.ValueOf(v))
+}
+
+func isTypedZeroValue(value reflect.Value) bool {
+	if !value.IsValid() {
+		return true
+	}
+	switch value.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		return value.IsNil() || isTypedZeroValue(value.Elem())
+	case reflect.Slice:
+		return value.Len() == 0
+	case reflect.Map:
+		iter := value.MapRange()
+		for iter.Next() {
+			if !isTypedZeroValue(iter.Value()) {
+				return false
+			}
+		}
+		return true
+	case reflect.Struct, reflect.Array:
+		if value.Kind() == reflect.Struct {
+			for i := 0; i < value.NumField(); i++ {
+				if !isTypedZeroValue(value.Field(i)) {
+					return false
+				}
+			}
+		} else {
+			for i := 0; i < value.Len(); i++ {
+				if !isTypedZeroValue(value.Index(i)) {
+					return false
+				}
+			}
+		}
+		return true
+	default:
+		return value.IsZero()
+	}
 }
 
 // collectPointerSet records, for every pointer-typed struct field reachable from v,

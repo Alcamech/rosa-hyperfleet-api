@@ -42,12 +42,11 @@ type ClusterHandler struct {
 	validator                *validation.FieldValidator
 	logger                   *slog.Logger
 	authorizer               *authz.Authorizer
-	region                   string
 	metrics                  *authz.Metrics
 }
 
 // NewClusterHandler creates a new cluster handler
-func NewClusterHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, defaultClusterExpiration time.Duration, authorizer *authz.Authorizer, region string, logger *slog.Logger) *ClusterHandler {
+func NewClusterHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, defaultClusterExpiration time.Duration, authorizer *authz.Authorizer, logger *slog.Logger) *ClusterHandler {
 	if authorizer == nil {
 		panic("cluster authorizer is required")
 	}
@@ -58,7 +57,6 @@ func NewClusterHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, defaultC
 		validator:                validation.NewFieldValidator("Cluster"),
 		logger:                   logger,
 		authorizer:               authorizer,
-		region:                   region,
 		metrics:                  authz.DefaultMetrics,
 	}
 }
@@ -67,22 +65,10 @@ func NewClusterHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, defaultC
 func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
-	attempt, _ := h.metrics.Start(authz.ListClusters)
-	prepared, err := h.prepareClusterAuthz(r)
-	if err != nil {
-		h.writeClusterAuthzError(w, r, attempt, authz.ListClusters, err)
-		return
-	}
-	decision, err := prepared.Check(ctx, authz.ListClusters, authz.Resource{
-		Kind: authz.Collection, AccountID: accountID, Region: h.region,
+	prepared, attempt := authorizeCollection(w, r, h.authorizer, h.metrics, h.logger, authz.ListClusters, authz.Resource{
+		Kind: authz.Collection, CollectionKind: authz.Cluster, AccountID: accountID,
 	})
-	if err != nil {
-		h.writeClusterAuthzError(w, r, attempt, authz.ListClusters, err)
-		return
-	}
-	if !decision.Allowed {
-		_ = attempt.Finish(authz.OutcomeDeny, authz.StageNone)
-		writeAPIError(w, errClusterAuthzDenied, h.logger)
+	if prepared == nil {
 		return
 	}
 
@@ -120,7 +106,7 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 		cr := &list.Items[i]
 		decision, err := prepared.Check(ctx, authz.DescribeCluster, h.clusterResource(cr))
 		if err != nil {
-			h.writeClusterAuthzError(w, r, attempt, authz.ListClusters, err)
+			writeResourceAuthzError(w, r, attempt, authz.ListClusters, err, h.logger)
 			return
 		}
 		if decision.Allowed {
@@ -251,6 +237,9 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		cr.Spec.HostedCluster.IssuerURL = oidcConfig.Spec.IssuerUrl
 	}
 
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.CreateCluster, candidateResource(h.clusterResource(cr), cr.Name)) {
+		return
+	}
 	if err := h.db.CreateCluster(ctx, cr); err != nil {
 		if queueClaimCreated {
 			if releaseErr := h.db.ReleaseSpotTerminationQueue(context.WithoutCancel(ctx), accountID, queueURL, req.Name); releaseErr != nil {
@@ -399,9 +388,9 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("getting cluster", "account_id", accountID, "cluster_name", clusterName)
 
 	attempt, _ := h.metrics.Start(authz.DescribeCluster)
-	prepared, err := h.prepareClusterAuthz(r)
+	prepared, err := prepareResourceAuthz(r, h.authorizer)
 	if err != nil {
-		h.writeClusterAuthzError(w, r, attempt, authz.DescribeCluster, err)
+		writeResourceAuthzError(w, r, attempt, authz.DescribeCluster, err, h.logger)
 		return
 	}
 	cr, err := h.db.GetCluster(ctx, clusterName)
@@ -419,7 +408,7 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	decision, err := prepared.Check(ctx, authz.DescribeCluster, h.clusterResource(cr))
 	if err != nil {
-		h.writeClusterAuthzError(w, r, attempt, authz.DescribeCluster, err)
+		writeResourceAuthzError(w, r, attempt, authz.DescribeCluster, err, h.logger)
 		return
 	}
 	if !decision.Allowed {
@@ -476,9 +465,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("updating cluster", "account_id", accountID, "cluster_name", clusterName)
 
-	// Validate using the raw spec map so only fields the client actually sent
-	// are checked — avoids false positives from zero-valued absent fields when
-	// the body is decoded into a full struct.
+	// Decode only to reject semantically empty specs before typed update analysis.
 	var rawSpec map[string]any
 	if err := json.Unmarshal(envelope.Spec, &rawSpec); err != nil {
 		writeAPIError(w, ErrClusterUpdateInvalidBody, h.logger)
@@ -489,66 +476,67 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, ErrClusterUpdateMissingFields, h.logger)
 		return
 	}
-	var updated *seaplanev1alpha1.Cluster
-	var validationErr validation.ValidationErrors
-	var mergeErr error
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		current, err := h.db.GetCluster(ctx, clusterName)
-		if err != nil {
-			return err
-		}
-		if errs := h.validator.ValidateUpdate(rawSpec, &current.Spec, featuregate.Default); errs != nil {
-			validationErr = errs
-			return fmt.Errorf("invalid cluster update")
-		}
-		oldQueueURL, oldRegion := clusterTerminationHandlerQueue(current)
-		if err := seaplanedb.MergeSpecJSON(&current.Spec, envelope.Spec); err != nil {
-			mergeErr = err
-			return err
-		}
-		queueURL, region := clusterTerminationHandlerQueue(current)
-		queueChanged := queueURL != oldQueueURL || region != oldRegion
-		if queueChanged && queueURL != "" {
-			existing, err := h.db.ListClusters(ctx)
-			if err != nil {
-				return err
-			}
-			if errs := validation.ValidateSpotTerminationHandlerQueueURL(queueURL, region, terminationHandlerQueueURLs(existing.Items, current.Name)); errs != nil {
-				validationErr = errs
-				return fmt.Errorf("invalid cluster update")
-			}
-		}
-		if queueChanged && queueURL != "" {
-			if _, err := h.db.ClaimSpotTerminationQueue(ctx, accountID, queueURL, clusterName); err != nil {
-				if seaplanedb.IsAlreadyExists(err) {
-					validationErr = validation.SpotTerminationHandlerQueueAlreadyInUse()
-					return fmt.Errorf("invalid cluster update")
-				}
-				return err
-			}
-		}
-		if err := h.db.UpdateCluster(ctx, current); err != nil {
-			return err
-		}
-		updated = current
-		return nil
-	})
-	if len(validationErr) != 0 {
-		writeAPIError(w, ErrClusterValidation.WithErrors(validationErr), h.logger)
-		return
-	}
-	if mergeErr != nil {
-		h.logger.Error("failed to merge cluster spec", "error", mergeErr)
-		writeAPIError(w, ErrClusterUpdateInvalidSpec, h.logger)
-		return
-	}
+	cr, err := h.db.GetCluster(ctx, clusterName)
 	if err != nil {
 		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrClusterUpdateNotFound, h.logger)
 			return
 		}
+		h.logger.Error("failed to get cluster for update", "error", err, "account_id", accountID, "cluster_name", clusterName)
+		writeAPIError(w, ErrClusterUpdateFailed, h.logger)
+		return
+	}
+
+	// Authorize the stored snapshot and every changed-field action before its CAS write.
+	candidate := cr.DeepCopy()
+	if err := seaplanedb.MergeSpecJSON(&candidate.Spec, envelope.Spec); err != nil {
+		h.logger.Error("failed to merge cluster spec", "error", err)
+		writeAPIError(w, ErrClusterUpdateInvalidSpec, h.logger)
+		return
+	}
+	// Account ownership comes from the caller, not request JSON.
+	candidate.Spec.AccountID = accountID
+	actions, errs := h.validator.AnalyzeUpdate(envelope.Spec, &cr.Spec, &candidate.Spec, featuregate.Default)
+	if errs != nil {
+		writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
+		return
+	}
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.UpdateCluster, h.clusterResource(cr), actions...) {
+		return
+	}
+
+	// Preserve queue uniqueness checks without writing before authorization.
+	oldQueueURL, oldRegion := clusterTerminationHandlerQueue(cr)
+	queueURL, region := clusterTerminationHandlerQueue(candidate)
+	if (queueURL != oldQueueURL || region != oldRegion) && queueURL != "" {
+		existing, err := h.db.ListClusters(ctx)
+		if err != nil {
+			h.logger.Error("failed to check Spot termination handler queue URL uniqueness", "error", err)
+			writeAPIError(w, ErrClusterUpdateFailed, h.logger)
+			return
+		}
+		if errs := validation.ValidateSpotTerminationHandlerQueueURL(queueURL, region, terminationHandlerQueueURLs(existing.Items, cr.Name)); errs != nil {
+			writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
+			return
+		}
+		if _, err := h.db.ClaimSpotTerminationQueue(ctx, accountID, queueURL, clusterName); err != nil {
+			if seaplanedb.IsAlreadyExists(err) {
+				writeAPIError(w, ErrClusterValidation.WithErrors(validation.SpotTerminationHandlerQueueAlreadyInUse()), h.logger)
+				return
+			}
+			h.logger.Error("failed to claim Spot termination handler queue", "error", err)
+			writeAPIError(w, ErrClusterUpdateFailed, h.logger)
+			return
+		}
+	}
+
+	if err := h.db.UpdateCluster(ctx, candidate); err != nil {
+		if seaplanedb.IsNotFound(err) {
+			writeAPIError(w, ErrClusterUpdateNotFound, h.logger)
+			return
+		}
 		if seaplanedb.IsConflict(err) {
-			writeAPIError(w, ErrClusterUpdateConflict, h.logger)
+			writeAPIError(w, ErrResourceConflict, h.logger)
 			return
 		}
 		h.logger.Error("failed to update cluster", "error", err, "account_id", accountID, "cluster_name", clusterName)
@@ -556,7 +544,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicCluster(updated)); err != nil {
+	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicCluster(candidate)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }
@@ -598,8 +586,25 @@ func (h *ClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("deleting cluster", "account_id", accountID, "cluster_name", clusterName)
 
-	err := h.db.DeleteCluster(ctx, clusterName)
+	cr, err := h.db.GetCluster(ctx, clusterName)
 	if err != nil {
+		if seaplanedb.IsNotFound(err) {
+			writeAPIError(w, ErrClusterDeleteNotFound, h.logger)
+			return
+		}
+		h.logger.Error("failed to get cluster for delete", "error", err, "account_id", accountID, "cluster_name", clusterName)
+		writeAPIError(w, ErrClusterDeleteFailed, h.logger)
+		return
+	}
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.DeleteCluster, h.clusterResource(cr)) {
+		return
+	}
+	err = h.db.DeleteClusterObject(ctx, cr)
+	if err != nil {
+		if seaplanedb.IsConflict(err) {
+			writeAPIError(w, ErrResourceConflict, h.logger)
+			return
+		}
 		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrClusterDeleteNotFound, h.logger)
 			return

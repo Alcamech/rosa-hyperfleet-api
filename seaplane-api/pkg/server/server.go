@@ -34,21 +34,19 @@ type Server struct {
 
 // New creates a new Server instance. The dbClient is used by cluster,
 // nodepool, and management cluster handlers.
-func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Authorizer, isAccountRegistered func(context.Context, string) bool, logger *slog.Logger) (*Server, error) {
+func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Authorizer, logger *slog.Logger) (*Server, error) {
 	if authorizer == nil {
 		return nil, fmt.Errorf("authorizer is required")
 	}
-	if isAccountRegistered == nil {
-		return nil, fmt.Errorf("account registration lookup is required")
-	}
+	logger = logger.With("region", cfg.Regional.AWSRegion)
 
 	// Create handlers
 	healthHandler := apphandlers.NewHealthHandler(logger)
 	infoHandler := apphandlers.NewInfoHandler(logger)
-	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(dbClient, logger)
-	clusterHandler := apphandlers.NewClusterHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, cfg.Regional.DefaultClusterExpiration, authorizer, cfg.Regional.AWSRegion, logger)
-	nodePoolHandler := apphandlers.NewNodePoolHandler(dbClient, logger)
-	oidcConfigHandler := apphandlers.NewOidcConfigHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, logger)
+	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(dbClient, authorizer, logger)
+	clusterHandler := apphandlers.NewClusterHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, cfg.Regional.DefaultClusterExpiration, authorizer, logger)
+	nodePoolHandler := apphandlers.NewNodePoolHandler(dbClient, authorizer, logger)
+	oidcConfigHandler := apphandlers.NewOidcConfigHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, authorizer, logger)
 	dnsReservationHandler := apphandlers.NewDNSReservationHandler(dbClient, logger)
 
 	// Create API router
@@ -108,7 +106,7 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 		apiRouter.Use(rl.Middleware)
 	}
 
-	apiRouter.Use(middleware.RequireIdentity(logger, isAccountRegistered, cfg.Regional.AWSRegion))
+	apiRouter.Use(middleware.RequireIdentity(logger, authorizer.IsAccountRegistered))
 
 	// Management cluster routes
 	mgmtRouter := apiRouter.PathPrefix("/api/v0/management_clusters").Subrouter()

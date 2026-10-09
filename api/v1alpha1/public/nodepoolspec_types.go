@@ -14,6 +14,7 @@ import (
 type NodePoolSpec struct {
 	// AutoRepair controls whether unhealthy nodes are automatically replaced.
 	// +seaplane:write-mode=mutable
+	// +seaplane:update-action=UpdateNodePool
 	// +optional
 	AutoRepair *bool `json:"autoRepair,omitempty"`
 	// EC2InstanceMetadataHttpTokens configures the HTTP token requirement for
@@ -27,6 +28,7 @@ type NodePoolSpec struct {
 	// Labels are customer-defined labels applied to nodes in this pool.
 	// +seaplane:write-mode=mutable
 	// +seaplane:resettable=true
+	// +seaplane:update-action=UpdateNodePool
 	// +kubebuilder:validation:MaxProperties=100
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`

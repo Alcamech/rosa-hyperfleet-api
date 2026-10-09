@@ -93,6 +93,13 @@ func TestRootCmd(t *testing.T) {
 	}
 }
 
+func TestServeRejectsResolverFlag(t *testing.T) {
+	err := serveCmd.ParseFlags([]string{"--authz-resolver=config"})
+	if err == nil || !strings.Contains(err.Error(), "unknown flag: --authz-resolver") {
+		t.Fatalf("removed resolver flag was accepted: %v", err)
+	}
+}
+
 func TestServeCmd(t *testing.T) {
 	if serveCmd == nil {
 		t.Fatal("expected non-nil serveCmd")
@@ -116,12 +123,9 @@ func TestServeCmd(t *testing.T) {
 		"log-level",
 		"log-format",
 		"allowed-accounts",
-		"dynamodb-region",
-		"dynamodb-prefix",
 		"api-port",
 		"health-port",
 		"metrics-port",
-		"authz-resolver",
 		"authz-config-file",
 	}
 

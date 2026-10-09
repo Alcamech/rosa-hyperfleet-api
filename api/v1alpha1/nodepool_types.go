@@ -60,6 +60,7 @@ const (
 type NodePoolSpec struct {
 	// AutoRepair controls whether unhealthy nodes are automatically replaced.
 	// +seaplane:write-mode=mutable
+	// +seaplane:update-action=UpdateNodePool
 	// +optional
 	AutoRepair *bool `json:"autoRepair,omitempty"`
 
@@ -75,6 +76,7 @@ type NodePoolSpec struct {
 	// Labels are customer-defined labels applied to nodes in this pool.
 	// +seaplane:write-mode=mutable
 	// +seaplane:resettable=true
+	// +seaplane:update-action=UpdateNodePool
 	// +kubebuilder:validation:MaxProperties=100
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
@@ -212,6 +214,7 @@ type NodePoolPlatform struct {
 	// aws specifies the platform-specific AWS configuration for this NodePool.
 	// +k8s:openapi-gen=true
 	// +seaplane:write-mode=mutable
+	// +seaplane:update-action=UpdateNodePool
 	// +optional
 	AWS *AWSNodePoolPlatform `json:"aws,omitempty"`
 }

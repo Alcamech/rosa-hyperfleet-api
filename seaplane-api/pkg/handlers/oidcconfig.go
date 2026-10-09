@@ -16,6 +16,7 @@ import (
 	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
 	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/api"
+	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/authz"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/clients/seaplanedb"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/middleware"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/validation"
@@ -63,11 +64,16 @@ type OidcConfigHandler struct {
 	oidcIssuerBaseURL string
 	logger            *slog.Logger
 	generateID        func() string
+	authorizer        *authz.Authorizer
 }
 
 // NewOidcConfigHandler creates a new OIDC config handler.
-func NewOidcConfigHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, logger *slog.Logger) *OidcConfigHandler {
+func NewOidcConfigHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, authorizer *authz.Authorizer, logger *slog.Logger) *OidcConfigHandler {
+	if authorizer == nil {
+		panic("OIDC config authorizer is required")
+	}
 	return &OidcConfigHandler{
+		authorizer:        authorizer,
 		db:                db,
 		oidcIssuerBaseURL: oidcIssuerBaseURL,
 		logger:            logger,
@@ -79,6 +85,10 @@ func NewOidcConfigHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, logge
 func (h *OidcConfigHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
+	prepared, attempt := authorizeCollection(w, r, h.authorizer, authz.DefaultMetrics, h.logger, authz.ListOIDCConfigs, authz.Resource{Kind: authz.Collection, CollectionKind: authz.OIDCConfig, AccountID: accountID})
+	if prepared == nil {
+		return
+	}
 
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
@@ -103,21 +113,30 @@ func (h *OidcConfigHandler) List(w http.ResponseWriter, r *http.Request) {
 	list, err := h.db.ListOidcConfigs(ctx)
 	if err != nil {
 		h.logger.Error("failed to list oidc configs", "error", err, "account_id", accountID)
+		_ = attempt.Finish(authz.OutcomeError, authz.StageResourceLoading)
 		writeAPIError(w, ErrOidcConfigList, h.logger)
 		return
 	}
 
 	configs := make([]*public.OidcConfig, 0, len(list.Items))
 	for i := range list.Items {
-		configs = append(configs, seaplanedb.InternalToPublicOidcConfig(&list.Items[i]))
+		decision, err := prepared.Check(ctx, authz.DescribeOIDCConfig, h.oidcConfigResource(&list.Items[i]))
+		if err != nil {
+			writeResourceAuthzError(w, r, attempt, authz.ListOIDCConfigs, err, h.logger)
+			return
+		}
+		if decision.Allowed {
+			configs = append(configs, seaplanedb.InternalToPublicOidcConfig(&list.Items[i]))
+		}
 	}
+	_ = attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 
 	total := len(configs)
 
 	if offset >= len(configs) {
 		configs = []*public.OidcConfig{}
 	} else {
-		end := min(offset+limit, len(configs))
+		end := offset + min(limit, len(configs)-offset)
 		configs = configs[offset:end]
 	}
 
@@ -239,6 +258,9 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	cr := seaplanedb.PublicToInternalOidcConfig(&req, accountID)
 
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.CreateOIDCConfig, candidateResource(h.oidcConfigResource(cr), cr.Name)) {
+		return
+	}
 	if err := h.db.CreateOidcConfig(ctx, accountID, cr); err != nil {
 		if seaplanedb.IsAlreadyExists(err) {
 			writeAPIError(w, ErrOidcConfigCreateNameConflict, h.logger)
@@ -273,6 +295,9 @@ func (h *OidcConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.DescribeOIDCConfig, h.oidcConfigResource(cr)) {
+		return
+	}
 	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicOidcConfig(cr)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
@@ -298,6 +323,9 @@ func (h *OidcConfigHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.DeleteOIDCConfig, h.oidcConfigResource(oc)) {
+		return
+	}
 	if oc.Labels[claimedByClusterUIDLabel] != "" {
 		writeAPIError(w, ErrOidcConfigDeleteInUse, h.logger)
 		return

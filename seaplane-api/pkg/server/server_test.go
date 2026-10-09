@@ -163,7 +163,7 @@ func TestServer_IdentityMiddleware(t *testing.T) {
 
 func TestServer_NodePoolUpdateRouteAcceptsPatch(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	server, err := New(config.NewConfig(), nil, logger)
+	server, err := newConfiguredServer(t, config.NewConfig(), nil, logger)
 	if err != nil {
 		t.Fatalf("unexpected error creating server: %v", err)
 	}

@@ -27,6 +27,7 @@ func testNodePoolCR(npName string, parent *seaplanev1alpha1.Cluster) *seaplanev1
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      npName,
 			Namespace: parent.Namespace,
+			UID:       types.UID(npName + "-uid"),
 			Labels: map[string]string{
 				"seaplane.io/account-id": parent.Labels["seaplane.io/account-id"],
 				clusterUIDLabel:            string(parent.UID),
@@ -45,7 +46,7 @@ func newTestNodePoolHandler(t *testing.T, objects ...client.Object) *NodePoolHan
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	return NewNodePoolHandler(seaplanedb.NewClientFrom(fc, logger), logger)
+	return NewNodePoolHandler(seaplanedb.NewClientFrom(fc, logger), clusterAuthorizer(t, `permit(principal, action in Seaplane::Action::"AllActions", resource);`), logger)
 }
 
 func TestNodePoolHandler_List_PaginationIsolation(t *testing.T) {
@@ -236,7 +237,7 @@ func TestNodePoolHandler_Update_AllowsUnchangedServiceManagedManagement(t *testi
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(parent, nodePool).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewNodePoolHandler(seaplanedb.NewClientFrom(fc, logger), logger)
+	handler := NewNodePoolHandler(seaplanedb.NewClientFrom(fc, logger), clusterAuthorizer(t, lifecyclePermit), logger)
 	request := seaplanedb.InternalToPublicNodePool(nodePool)
 	updatedReplicas := int32(3)
 	request.Spec.NodePool.Replicas = &updatedReplicas
@@ -355,7 +356,7 @@ func TestNodePoolUpdateOwnership(t *testing.T) {
 			np := testNodePoolCR("owned.workers", parent)
 			fc := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(parent, np).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-			handler := NewNodePoolHandler(seaplanedb.NewClientFrom(fc, logger), logger)
+			handler := NewNodePoolHandler(seaplanedb.NewClientFrom(fc, logger), clusterAuthorizer(t, lifecyclePermit), logger)
 			assertHandlerStatus(t, http.StatusOK, http.MethodPut,
 				"/api/v0/nodepools/"+np.Name, body,
 				map[string]string{"id": np.Name}, testAccountID, handler.Update)
@@ -544,14 +545,10 @@ func TestNodePoolHandler_Create_MissingMetadata(t *testing.T) {
 
 func TestNodePoolHandler_Create_ResolvesParentFromDottedName(t *testing.T) {
 	scheme := newTestScheme()
-	cluster := &seaplanev1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
-		Name:      "my-cluster",
-		Namespace: "account-" + testAccountID,
-		UID:       types.UID("550e8400-e29b-41d4-a716-446655440000"),
-	}}
+	cluster := testClusterCR("550e8400-e29b-41d4-a716-446655440000", "my-cluster", testAccountID)
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewNodePoolHandler(seaplanedb.NewClientFrom(fc, logger), logger)
+	handler := NewNodePoolHandler(seaplanedb.NewClientFrom(fc, logger), clusterAuthorizer(t, lifecyclePermit), logger)
 	body := mustMarshal(t, map[string]any{
 		"metadata": map[string]any{"name": "my-cluster.workers"},
 		"spec": map[string]any{"nodePool": map[string]any{
@@ -606,10 +603,11 @@ func TestNodePoolHandler_Create_AcceptsOptionalEC2InstanceMetadataHttpTokens(t *
 		Name:      "my-cluster",
 		Namespace: "account-" + testAccountID,
 		UID:       types.UID("550e8400-e29b-41d4-a716-446655440000"),
+		Labels:    map[string]string{"seaplane.io/account-id": testAccountID},
 	}}
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewNodePoolHandler(seaplanedb.NewClientFrom(fc, logger), logger)
+	handler := NewNodePoolHandler(seaplanedb.NewClientFrom(fc, logger), clusterAuthorizer(t, lifecyclePermit), logger)
 	body := mustMarshal(t, map[string]any{
 		"metadata": map[string]any{"name": "my-cluster.optional-workers"},
 		"spec": map[string]any{

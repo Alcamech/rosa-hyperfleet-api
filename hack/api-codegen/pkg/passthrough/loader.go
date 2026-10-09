@@ -265,6 +265,12 @@ func (g *Generator) getMarkersForField(jsonTagName string) []string {
 			if meta.FeatureGate != "" {
 				markers = append(markers, fmt.Sprintf("+openshift:enable:FeatureGate=%s", meta.FeatureGate))
 			}
+			if meta.UpdateAction != "" {
+				markers = append(markers, fmt.Sprintf("+seaplane:update-action=%s", meta.UpdateAction))
+			}
+			for _, mode := range meta.FeatureGateAwareWriteModes {
+				markers = append(markers, fmt.Sprintf("+seaplane:validation:FeatureGateAwareWriteMode:featureGate=%q,writeMode=%q", mode.FeatureGate, mode.WriteMode))
+			}
 
 			return markers
 		}
