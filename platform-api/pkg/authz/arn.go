@@ -69,12 +69,8 @@ func parsePrincipal(value string) (principalARN, error) {
 	return principal, nil
 }
 
-// checkedIdentity requires a valid service region and a caller ARN belonging to the claimed account.
-// Callers must be IAM users or assumed-role sessions, not IAM roles themselves.
+// checkedIdentity validates that the caller is an IAM user or assumed-role session in the claimed account.
 func checkedIdentity(id Identity) (principalARN, error) {
-	if !regionPattern.MatchString(id.Region) {
-		return principalARN{}, fmt.Errorf("invalid identity region")
-	}
 	principal, err := parsePrincipal(id.CallerARN)
 	if err != nil {
 		return principalARN{}, err
@@ -106,16 +102,6 @@ func matchesPrincipal(target, caller principalARN) bool {
 		return true
 	}
 	return target.kind == "role" && caller.kind == "assumed-role" && target.roleAlias() == caller.roleAlias()
-}
-
-// checkedMode allows exact-principal bindings for users or sessions and role-membership bindings for roles.
-// It rejects modes that do not match the attachment's principal kind.
-func checkedMode(principal principalARN, value string) (bindingMode, error) {
-	mode := bindingMode(value)
-	if (mode == exactPrincipal && (principal.kind == "user" || principal.kind == "assumed-role")) || (mode == roleMembership && principal.kind == "role") {
-		return mode, nil
-	}
-	return "", fmt.Errorf("unsupported binding mode %q for %s", value, principal.kind)
 }
 
 // checkedScope requires global attachments to omit a region and regional attachments to specify a valid one.

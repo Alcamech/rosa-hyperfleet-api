@@ -37,7 +37,7 @@ func newTestNodePoolHandler(t *testing.T, objects ...client.Object) *NodePoolHan
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	return NewNodePoolHandler(hyperfleetdb.NewClientFrom(fc, logger), logger)
+	return NewNodePoolHandler(hyperfleetdb.NewClientFrom(fc, logger), clusterAuthorizer(t, `permit(principal, action in HyperFleet::Action::"AllActions", resource);`), logger)
 }
 
 func TestNodePoolHandler_List_PaginationIsolation(t *testing.T) {
@@ -222,7 +222,7 @@ func TestNodePoolHandler_Update_RejectsAccountID(t *testing.T) {
 				testClusterCR(clusterID, "owned", testAccountID), np,
 			).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-			handler := NewNodePoolHandler(hyperfleetdb.NewClientFrom(fc, logger), logger)
+			handler := NewNodePoolHandler(hyperfleetdb.NewClientFrom(fc, logger), clusterAuthorizer(t, `permit(principal, action in HyperFleet::Action::"AllActions", resource);`), logger)
 			assertHandlerStatus(t, http.StatusUnprocessableEntity, http.MethodPut,
 				"/api/v0/nodepools/workers?clusterId="+clusterID, body,
 				map[string]string{"id": "workers"}, testAccountID, handler.Update)

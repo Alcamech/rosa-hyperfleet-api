@@ -24,7 +24,7 @@ import (
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/validation"
 )
 
-// clusterNamespaceLabel is set on an OidcConfig when a cluster claims it via resolveAndClaimOidcConfig, enforcing the 1:1 cluster-to-OidcConfig binding (mirrors hyperfleet-operator's cluster_controller.go constant).
+// clusterNamespaceLabel is set on an OidcConfig when a cluster claims it via claimOidcConfig, enforcing the 1:1 cluster-to-OidcConfig binding (mirrors hyperfleet-operator's cluster_controller.go constant).
 const clusterNamespaceLabel = "hyperfleet.io/cluster-namespace"
 
 // releaseClaimTimeout bounds releaseOidcConfigClaim's detached rollback so a canceled request can't skip it.
@@ -39,12 +39,11 @@ type ClusterHandler struct {
 	logger                   *slog.Logger
 	generateID               func() string
 	authorizer               *authz.Authorizer
-	region                   string
 	metrics                  *authz.Metrics
 }
 
 // NewClusterHandler creates a new cluster handler
-func NewClusterHandler(db *hyperfleetdb.Client, oidcIssuerBaseURL string, defaultClusterExpiration time.Duration, authorizer *authz.Authorizer, region string, logger *slog.Logger) *ClusterHandler {
+func NewClusterHandler(db *hyperfleetdb.Client, oidcIssuerBaseURL string, defaultClusterExpiration time.Duration, authorizer *authz.Authorizer, logger *slog.Logger) *ClusterHandler {
 	if authorizer == nil {
 		panic("cluster authorizer is required")
 	}
@@ -56,7 +55,6 @@ func NewClusterHandler(db *hyperfleetdb.Client, oidcIssuerBaseURL string, defaul
 		logger:                   logger,
 		generateID:               func() string { return uuid.New().String() },
 		authorizer:               authorizer,
-		region:                   region,
 		metrics:                  authz.DefaultMetrics,
 	}
 }
@@ -65,22 +63,10 @@ func NewClusterHandler(db *hyperfleetdb.Client, oidcIssuerBaseURL string, defaul
 func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
-	attempt, _ := h.metrics.Start(authz.ListClusters)
-	prepared, err := h.prepareClusterAuthz(r)
-	if err != nil {
-		h.writeClusterAuthzError(w, r, attempt, authz.ListClusters, err)
-		return
-	}
-	decision, err := prepared.Check(ctx, authz.ListClusters, authz.Resource{
-		Kind: authz.Collection, AccountID: accountID, Region: h.region,
+	prepared, attempt := authorizeCollection(w, r, h.authorizer, h.metrics, h.logger, authz.ListClusters, authz.Resource{
+		Kind: authz.Collection, CollectionKind: authz.Cluster, AccountID: accountID,
 	})
-	if err != nil {
-		h.writeClusterAuthzError(w, r, attempt, authz.ListClusters, err)
-		return
-	}
-	if !decision.Allowed {
-		_ = attempt.Finish(authz.OutcomeDeny, authz.StageNone)
-		writeAPIError(w, errClusterAuthzDenied, h.logger)
+	if prepared == nil {
 		return
 	}
 
@@ -118,7 +104,7 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 		cr := &list.Items[i]
 		decision, err := prepared.Check(ctx, authz.DescribeCluster, h.clusterResource(cr))
 		if err != nil {
-			h.writeClusterAuthzError(w, r, attempt, authz.ListClusters, err)
+			writeResourceAuthzError(w, r, attempt, authz.ListClusters, err, h.logger)
 			return
 		}
 		if decision.Allowed {
@@ -218,8 +204,8 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("creating cluster", "account_id", accountID, "cluster_name", req.Name, "cluster_id", clusterID)
 
-	// If oidcConfigId is set, resolve and atomically claim it for clusterID (see resolveAndClaimOidcConfig); otherwise fall back to the legacy auto-generated issuerURL.
-	oidcConfig, apiErr := h.resolveAndClaimOidcConfig(ctx, accountID, req.Spec.OidcConfigID, clusterID)
+	// Read readiness before candidate authorization; no claim writes are allowed yet.
+	oidcConfig, apiErr := h.resolveOidcConfig(ctx, accountID, req.Spec.OidcConfigID)
 	if apiErr != nil {
 		writeAPIError(w, *apiErr, h.logger)
 		return
@@ -243,6 +229,16 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		cr.Spec.HostedCluster.IssuerURL = h.oidcIssuerBaseURL + "/" + clusterID
 	}
 
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.CreateCluster, h.clusterResource(cr)) {
+		return
+	}
+	if oidcConfig != nil {
+		if apiErr := h.claimOidcConfig(ctx, accountID, req.Spec.OidcConfigID, clusterID, oidcConfig); apiErr != nil {
+			writeAPIError(w, *apiErr, h.logger)
+			return
+		}
+	}
+
 	if err := h.db.CreateCluster(ctx, cr); err != nil {
 		// Release the claim taken above if it isn't left permanently bound to a cluster that was never actually created.
 		if oidcConfig != nil {
@@ -264,8 +260,8 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// resolveAndClaimOidcConfig validates the OidcConfig referenced by oidcConfigID and, if unclaimed, atomically claims it for clusterID via a resourceVersion-gated Update; callers must call releaseOidcConfigClaim to roll back the claim if a later step fails.
-func (h *ClusterHandler) resolveAndClaimOidcConfig(ctx context.Context, accountID, oidcConfigID, clusterID string) (*hyperfleetv1alpha1.OidcConfig, *APIError) {
+// resolveOidcConfig validates the account-scoped lifecycle reference without writing.
+func (h *ClusterHandler) resolveOidcConfig(ctx context.Context, accountID, oidcConfigID string) (*hyperfleetv1alpha1.OidcConfig, *APIError) {
 	if oidcConfigID == "" {
 		return nil, nil
 	}
@@ -290,6 +286,11 @@ func (h *ClusterHandler) resolveAndClaimOidcConfig(ctx context.Context, accountI
 		return nil, &err
 	}
 
+	return oidcConfig, nil
+}
+
+// claimOidcConfig CAS-writes the readiness snapshot only after CreateCluster allows.
+func (h *ClusterHandler) claimOidcConfig(ctx context.Context, accountID, oidcConfigID, clusterID string, oidcConfig *hyperfleetv1alpha1.OidcConfig) *APIError {
 	if oidcConfig.Labels == nil {
 		oidcConfig.Labels = map[string]string{}
 	}
@@ -298,13 +299,13 @@ func (h *ClusterHandler) resolveAndClaimOidcConfig(ctx context.Context, accountI
 		if hyperfleetdb.IsConflict(err) {
 			// A concurrent request won the claim between our Get and Update.
 			err := ErrClusterCreateOidcConfigInUse.WithReason(oidcConfigID)
-			return nil, &err
+			return &err
 		}
 		h.logger.Error("failed to claim oidc config", "error", err, "account_id", accountID, "oidc_config_id", oidcConfigID)
-		return nil, &ErrClusterCreateOidcConfigLookupFailed
+		return &ErrClusterCreateOidcConfigLookupFailed
 	}
 
-	return oidcConfig, nil
+	return nil
 }
 
 // releaseOidcConfigClaim removes the clusterNamespaceLabel claim from the given OidcConfig, best-effort
@@ -339,9 +340,9 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("getting cluster", "account_id", accountID, "cluster_id", clusterID)
 
 	attempt, _ := h.metrics.Start(authz.DescribeCluster)
-	prepared, err := h.prepareClusterAuthz(r)
+	prepared, err := prepareResourceAuthz(r, h.authorizer)
 	if err != nil {
-		h.writeClusterAuthzError(w, r, attempt, authz.DescribeCluster, err)
+		writeResourceAuthzError(w, r, attempt, authz.DescribeCluster, err, h.logger)
 		return
 	}
 	cr, err := h.db.GetCluster(ctx, clusterID)
@@ -359,7 +360,7 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	decision, err := prepared.Check(ctx, authz.DescribeCluster, h.clusterResource(cr))
 	if err != nil {
-		h.writeClusterAuthzError(w, r, attempt, authz.DescribeCluster, err)
+		writeResourceAuthzError(w, r, attempt, authz.DescribeCluster, err, h.logger)
 		return
 	}
 	if !decision.Allowed {
@@ -420,9 +421,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate using the raw spec map so only fields the client actually sent
-	// are checked — avoids false positives from zero-valued absent fields when
-	// the body is decoded into a full struct.
+	// Decode only to reject semantically empty specs before typed update analysis.
 	var rawSpec map[string]any
 	if err := json.Unmarshal(envelope.Spec, &rawSpec); err != nil {
 		writeAPIError(w, ErrClusterUpdateInvalidBody, h.logger)
@@ -433,23 +432,32 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, ErrClusterUpdateMissingFields, h.logger)
 		return
 	}
-	if errs := h.validator.ValidateUpdate(rawSpec, &cr.Spec, featuregate.Default); errs != nil {
-		writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
-		return
-	}
-	if err := hyperfleetdb.MergeSpecJSON(&cr.Spec, envelope.Spec); err != nil {
+	candidate := cr.DeepCopy()
+	if err := hyperfleetdb.MergeSpecJSON(&candidate.Spec, envelope.Spec); err != nil {
 		h.logger.Error("failed to merge cluster spec", "error", err)
 		writeAPIError(w, ErrClusterUpdateInvalidSpec, h.logger)
 		return
 	}
+	actions, errs := h.validator.AnalyzeUpdate(envelope.Spec, &cr.Spec, &candidate.Spec, featuregate.Default)
+	if errs != nil {
+		writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
+		return
+	}
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.UpdateCluster, h.clusterResource(cr), actions...) {
+		return
+	}
 
-	if err := h.db.UpdateCluster(ctx, cr); err != nil {
+	if err := h.db.UpdateCluster(ctx, candidate); err != nil {
+		if hyperfleetdb.IsConflict(err) {
+			writeAPIError(w, ErrResourceConflict, h.logger)
+			return
+		}
 		h.logger.Error("failed to update cluster", "error", err, "account_id", accountID, "cluster_id", clusterID)
 		writeAPIError(w, ErrClusterUpdateFailed, h.logger)
 		return
 	}
 
-	if err := api.Write(w, http.StatusOK, hyperfleetdb.InternalToPublicCluster(cr)); err != nil {
+	if err := api.Write(w, http.StatusOK, hyperfleetdb.InternalToPublicCluster(candidate)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }
@@ -463,8 +471,24 @@ func (h *ClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("deleting cluster", "account_id", accountID, "cluster_id", clusterID)
 
-	err := h.db.DeleteCluster(ctx, clusterID)
+	cr, err := h.db.GetCluster(ctx, clusterID)
 	if err != nil {
+		if hyperfleetdb.IsNotFound(err) {
+			writeAPIError(w, ErrClusterDeleteNotFound, h.logger)
+			return
+		}
+		writeAPIError(w, ErrClusterDeleteFailed, h.logger)
+		return
+	}
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.DeleteCluster, h.clusterResource(cr)) {
+		return
+	}
+	err = h.db.DeleteClusterObject(ctx, cr)
+	if err != nil {
+		if hyperfleetdb.IsConflict(err) {
+			writeAPIError(w, ErrResourceConflict, h.logger)
+			return
+		}
 		if hyperfleetdb.IsNotFound(err) {
 			writeAPIError(w, ErrClusterDeleteNotFound, h.logger)
 			return

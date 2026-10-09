@@ -7,7 +7,7 @@ mkdir -p "$output"
 output=$(cd "$output" && pwd)
 export AUTHZ_HTTP_OUTPUT_DIR="$output"
 export AUTHZ_HTTP_REQUIRED=1
-export AUTHZ_HTTP_API_BINARY="$root/bin/rosa-hyperfleet-api"
+export AUTHZ_HTTP_API_BINARY=${AUTHZ_HTTP_API_BINARY:-"$root/bin/rosa-hyperfleet-api"}
 
 real_podman=$(command -v podman || true)
 shim=$(mktemp -d)
@@ -85,8 +85,8 @@ fi
     git -C "$root" rev-parse HEAD
     go version
     "$real_podman" version
-    sha256sum "$AUTHZ_HTTP_API_BINARY" "$root/test/e2e-api/authz_http_test.go" "$root/test/e2e-api/testdata/authz-http.json"
-    printf '%s\n' 'Selected test: TestAuthzHTTP only' 'PostgreSQL: docker.io/library/postgres:16-alpine, runner-owned' 'API/health/metrics bind: 127.0.0.1, ephemeral ports' 'AUTHZ_RESOLVER=config AWS_REGION=us-east-1 AWS_EC2_METADATA_DISABLED=true' 'No AWS credentials; rate limiting disabled'
+    sha256sum "$AUTHZ_HTTP_API_BINARY" "$root/test/e2e-api/authz_http_test.go" "$root/test/e2e-api/authz_resources_http_test.go" "$root/test/e2e-api/testdata/authz-http.json"
+    printf '%s\n' 'Selected test: TestAuthzHTTP only' 'PostgreSQL: docker.io/library/postgres:16-alpine, runner-owned' 'API/health/metrics bind: 127.0.0.1, ephemeral ports' 'AWS_REGION=us-east-1 AWS_EC2_METADATA_DISABLED=true' 'No AWS credentials; rate limiting disabled'
 } > "$output/run-manifest.txt" 2>&1
 cd "$root/test"
 setsid go test -count=1 -timeout=10m -run '^TestAuthzHTTP$' -v ./e2e-api > "$output/authz-http.log" 2>&1 &

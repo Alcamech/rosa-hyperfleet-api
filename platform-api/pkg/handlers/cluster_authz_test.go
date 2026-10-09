@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"testing"
@@ -30,6 +32,7 @@ import (
 )
 
 const (
+	lifecyclePermit       = `permit(principal, action in HyperFleet::Action::"AllActions", resource);`
 	clusterAuthzRegion    = "us-east-1"
 	clusterReadPermit     = `permit(principal, action in HyperFleet::Action::"ReadOnly", resource);`
 	clusterListPermit     = `permit(principal, action == HyperFleet::Action::"ListClusters", resource);`
@@ -40,48 +43,34 @@ when { resource.hasTag("example.com/team") && resource.getTag("example.com/team"
 when { resource.hasTag("example.com/fault") && resource.getTag("example.com/fault") == "fault-detail-secret" && 9223372036854775807 + 1 == 0 };`
 )
 
-type clusterResolverFunc func(context.Context, authz.Identity) ([]authz.ResolvedBinding, error)
-
-func (f clusterResolverFunc) Resolve(ctx context.Context, id authz.Identity) ([]authz.ResolvedBinding, error) {
-	return f(ctx, id)
-}
-
-func clusterBindings(id authz.Identity, policies ...string) []authz.ResolvedBinding {
-	bindings := make([]authz.ResolvedBinding, 0, len(policies))
-	for i, policy := range policies {
-		attachment := fmt.Sprintf("grant-%d", i)
-		bindings = append(bindings, authz.ResolvedBinding{
-			Provenance: authz.Provenance{
-				DiagnosticID: "attachment/" + attachment, PolicyID: "read", PolicyRevision: "test-revision",
-				AttachmentID: attachment, AttachmentRevision: "test-revision", PrincipalARN: id.CallerARN, Scope: "global",
-			},
-			OwnerAccountID: id.AccountID, PolicyContent: policy, BindingMode: "exact-principal", Caller: id,
-		})
-	}
-	return bindings
-}
-
-func clusterAuthzFrom(t *testing.T, resolver authz.PolicyResolver) *authz.Authorizer {
+func clusterAuthorizer(t *testing.T, policies ...string) *authz.Authorizer {
 	t.Helper()
-	a, err := authz.NewAuthorizer(resolver)
+	bundle := map[string]any{"formatVersion": 1, "registeredAccounts": []string{testAccountID}, "policies": []any{}, "attachments": []any{}}
+	for i, policy := range policies {
+		id := fmt.Sprintf("grant-%d", i)
+		bundle["policies"] = append(bundle["policies"].([]any), map[string]any{"id": id, "ownerAccountID": testAccountID, "content": policy})
+		bundle["attachments"] = append(bundle["attachments"].([]any), map[string]any{"id": id, "policyID": id, "principalARN": "arn:aws:iam::" + testAccountID + ":user/test", "scope": "global"})
+	}
+	content, err := json.Marshal(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "authz.json")
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	a, err := authz.LoadConfig(path, clusterAuthzRegion)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return a
 }
 
-func clusterAuthorizer(t *testing.T, policies ...string) *authz.Authorizer {
-	t.Helper()
-	return clusterAuthzFrom(t, clusterResolverFunc(func(_ context.Context, id authz.Identity) ([]authz.ResolvedBinding, error) {
-		return clusterBindings(id, policies...), nil
-	}))
-}
-
 func clusterAuthzFixture(t *testing.T, fc client.Client, a *authz.Authorizer) (*ClusterHandler, *prometheus.Registry, *bytes.Buffer) {
 	t.Helper()
 	var logs bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(&logs, nil))
-	h := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, a, clusterAuthzRegion, logger)
+	logger := slog.New(slog.NewJSONHandler(&logs, nil)).With("region", clusterAuthzRegion)
+	h := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, a, logger)
 	registry := prometheus.NewRegistry()
 	metrics, err := authz.NewMetrics(registry)
 	if err != nil {
@@ -250,17 +239,11 @@ func TestClusterAuthz_ListVisibility(t *testing.T) {
 		{"invalid paging retains defaults", []string{clusterListPermit, clusterLabelPermit}, all, "?limit=101&offset=-1", []string{"visible-first", "visible-second"}, 2, 50, 0, http.StatusOK},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			preparations, reads := 0, 0
-			a := clusterAuthzFrom(t, clusterResolverFunc(func(_ context.Context, id authz.Identity) ([]authz.ResolvedBinding, error) {
-				preparations++
-				return clusterBindings(id, tc.policies...), nil
-			}))
+			reads := 0
+			a := clusterAuthorizer(t, tc.policies...)
 			fc := clusterOrderedStore(tc.objects, func(context.Context) error { reads++; return nil })
 			h, registry, _ := clusterAuthzFixture(t, fc, a)
 			w := clusterAuthzRequest(h, authz.ListClusters, tc.query, "")
-			if preparations != 1 {
-				t.Fatalf("prepared %d policy sets, want exactly one", preparations)
-			}
 			if tc.status == http.StatusForbidden {
 				assertClusterAuthzStatus(t, w, tc.status, "AUTHZ-DENIED-001: Access denied")
 				assertClusterAuthzMetrics(t, registry, authz.ListClusters, authz.OutcomeDeny, authz.StageNone)
@@ -365,41 +348,28 @@ func TestClusterAuthz_ForeignAndMissing(t *testing.T) {
 	assertClusterAuthzMetrics(t, registry, authz.ListClusters, authz.OutcomeAllow, authz.StageNone)
 }
 
-func TestClusterAuthz_RuntimePreparationErrors(t *testing.T) {
+func TestClusterAuthz_CanceledPreparation(t *testing.T) {
 	for _, operation := range []authz.Action{authz.ListClusters, authz.DescribeCluster} {
-		for _, tc := range []struct {
-			name    string
-			stage   authz.Stage
-			mutate  func([]authz.ResolvedBinding) ([]authz.ResolvedBinding, error)
-			logText string
-		}{
-			{"resolution", authz.StageResolution, func(b []authz.ResolvedBinding) ([]authz.ResolvedBinding, error) {
-				return b, errors.New("resolver-detail-secret")
-			}, "resolver-detail-secret"},
-			{"late parsing", authz.StageParsing, func(b []authz.ResolvedBinding) ([]authz.ResolvedBinding, error) {
-				b[1].PolicyContent = "forbid("
-				return b, nil
-			}, "attachment/grant-1"},
-			{"late binding", authz.StageBinding, func(b []authz.ResolvedBinding) ([]authz.ResolvedBinding, error) {
-				b[1].BindingMode = "binding-detail-secret"
-				return b, nil
-			}, "attachment/grant-1"},
-		} {
-			t.Run(string(operation)+"/"+tc.name, func(t *testing.T) {
-				reads := 0
-				fc := clusterOrderedStore([]*hyperfleetv1alpha1.Cluster{testClusterCR("owned", "owned", testAccountID)}, func(context.Context) error { reads++; return nil })
-				a := clusterAuthzFrom(t, clusterResolverFunc(func(_ context.Context, id authz.Identity) ([]authz.ResolvedBinding, error) {
-					return tc.mutate(clusterBindings(id, clusterReadPermit, clusterDescribePermit))
-				}))
-				h, registry, logs := clusterAuthzFixture(t, fc, a)
-				w := clusterAuthzRequest(h, operation, "", "owned")
-				assertClusterAuthzStatus(t, w, http.StatusInternalServerError, "AUTHZ-FAILED-001: Authorization failed")
-				assertClusterAuthzMetrics(t, registry, operation, authz.OutcomeError, tc.stage)
-				if reads != 0 || !bytes.Contains(logs.Bytes(), []byte(tc.logText)) || !bytes.Contains(logs.Bytes(), []byte(`"cause":`)) {
-					t.Fatalf("preparation failure reached storage or lost cause/provenance: reads=%d logs=%s", reads, logs.String())
-				}
-			})
-		}
+		t.Run(string(operation), func(t *testing.T) {
+			reads := 0
+			fc := clusterOrderedStore([]*hyperfleetv1alpha1.Cluster{testClusterCR("owned", "owned", testAccountID)}, func(context.Context) error { reads++; return nil })
+			h, registry, logs := clusterAuthzFixture(t, fc, clusterAuthorizer(t, clusterReadPermit))
+			ctx, cancel := context.WithCancel(testContext(testAccountID))
+			cancel()
+			r := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil).WithContext(ctx)
+			r = mux.SetURLVars(r, map[string]string{"id": "owned"})
+			w := httptest.NewRecorder()
+			if operation == authz.ListClusters {
+				h.List(w, r)
+			} else {
+				h.Get(w, r)
+			}
+			assertClusterAuthzStatus(t, w, http.StatusInternalServerError, "AUTHZ-FAILED-001: Authorization failed")
+			assertClusterAuthzMetrics(t, registry, operation, authz.OutcomeError, authz.StageResolution)
+			if reads != 0 || !bytes.Contains(logs.Bytes(), []byte("context canceled")) || !bytes.Contains(logs.Bytes(), []byte(`"cause":`)) || !bytes.Contains(logs.Bytes(), []byte(`"region":"us-east-1"`)) {
+				t.Fatalf("canceled preparation reached storage or lost cause/region: reads=%d logs=%s", reads, logs.String())
+			}
+		})
 	}
 }
 
@@ -468,7 +438,7 @@ func TestClusterAuthz_LateEvaluationError(t *testing.T) {
 			w := clusterAuthzRequest(h, operation, "?limit=1", "late")
 			assertClusterAuthzStatus(t, w, http.StatusInternalServerError, "AUTHZ-FAILED-001: Authorization failed")
 			assertClusterAuthzMetrics(t, registry, operation, authz.OutcomeError, authz.StageEvaluation)
-			if !bytes.Contains(logs.Bytes(), []byte("attachment/grant-1")) || !bytes.Contains(logs.Bytes(), []byte("test-revision")) || !bytes.Contains(logs.Bytes(), []byte("cedar evaluation diagnostics")) || !bytes.Contains(logs.Bytes(), []byte(`"diagnostics":[{`)) {
+			if !bytes.Contains(logs.Bytes(), []byte("attachment/grant-1")) || !bytes.Contains(logs.Bytes(), []byte(`"PolicyRevision":`)) || !bytes.Contains(logs.Bytes(), []byte(`"AttachmentRevision":`)) || !bytes.Contains(logs.Bytes(), []byte("cedar evaluation diagnostics")) || !bytes.Contains(logs.Bytes(), []byte(`"diagnostics":[{`)) {
 				t.Fatalf("evaluation failure lost detailed diagnostics/provenance: %s", logs.String())
 			}
 		})

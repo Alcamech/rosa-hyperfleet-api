@@ -110,7 +110,6 @@ var minSpec = map[string]any{
 	"hostedCluster": map[string]any{
 		"release":    map[string]any{"image": ""},
 		"networking": map[string]any{},
-		"platform":   map[string]any{"type": "AWS"},
 	},
 }
 
@@ -165,7 +164,7 @@ func TestClusterHandler_List_Success(t *testing.T) {
 		testClusterCR("uuid-2", "cluster-2", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -193,7 +192,7 @@ func TestClusterHandler_List_Empty(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -222,7 +221,7 @@ func TestClusterHandler_List_Pagination(t *testing.T) {
 		testClusterCR("uuid-foreign", "foreign", "999999999999"),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters?limit=2&offset=1", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -250,7 +249,7 @@ func TestClusterHandler_Create_Success(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, lifecyclePermit), logger)
 	handler.generateID = func() string { return "generated-cluster-id" }
 
 	spec := map[string]any{"accountId": "999999999999"}
@@ -297,7 +296,7 @@ func TestClusterHandler_Create_SetsCreatorARN(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, lifecyclePermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -328,7 +327,7 @@ func TestClusterHandler_Create_InvalidJSON(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader([]byte("not json")))
 	req = req.WithContext(testContext(testAccountID))
@@ -361,7 +360,7 @@ func TestClusterHandler_Create_MissingFields(t *testing.T) {
 			scheme := newTestScheme()
 			fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-			handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+			handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(tt.body))
 			req = req.WithContext(testContext(testAccountID))
@@ -380,7 +379,7 @@ func TestClusterHandler_Create_NameTooLong(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	longName := strings.Repeat("a", hyperfleetdb.MaxClusterNameLen+1)
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody(longName, nil)))
@@ -404,7 +403,7 @@ func TestClusterHandler_Create_LegacyPath_NoOidcConfig(t *testing.T) {
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	const baseURL = "https://oidc.example.com"
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), baseURL, 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), baseURL, 0, clusterAuthorizer(t, lifecyclePermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -443,7 +442,7 @@ func TestClusterHandler_Create_OidcConfigNotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -476,7 +475,7 @@ func TestClusterHandler_Create_OidcConfigLookupFailure(t *testing.T) {
 	scheme := newTestScheme()
 	fc := &oidcConfigGetFailingClient{Client: fake.NewClientBuilder().WithScheme(scheme).Build()}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -499,7 +498,7 @@ func TestClusterHandler_Create_OidcConfigWrongAccount(t *testing.T) {
 		testReadyOidcConfig(testOidcConfigID, otherAccount, testOidcConfigIssuerURL),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	// The OidcConfig exists but belongs to a different account; it must not
 	// be resolvable by a caller in testAccountID.
@@ -520,7 +519,7 @@ func TestClusterHandler_Create_UnmanagedOidcConfigNotReady(t *testing.T) {
 	pending.Status.Phase = hyperfleetv1alpha1.OidcConfigPhasePending
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pending).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -544,7 +543,7 @@ func TestClusterHandler_Create_ManagedOidcConfigPending_Succeeds(t *testing.T) {
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pending).
 		WithStatusSubresource(pending).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, lifecyclePermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -581,7 +580,7 @@ func TestClusterHandler_Create_OidcConfigError_Rejected(t *testing.T) {
 		errored.Status.Phase = hyperfleetv1alpha1.OidcConfigPhaseError
 		fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(errored).Build()
 		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-		handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+		handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 		req = req.WithContext(testContext(testAccountID))
@@ -608,7 +607,7 @@ func TestClusterHandler_Create_OidcConfigAlreadyInUse(t *testing.T) {
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(oidcConfig, existingCluster).
 		WithStatusSubresource(oidcConfig).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("new-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -642,7 +641,7 @@ func TestClusterHandler_Create_OidcConfigInUseDifferentAccountAllowed(t *testing
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(oidcConfigOther, existingCluster, oidcConfigMine).
 		WithStatusSubresource(oidcConfigOther, oidcConfigMine).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, lifecyclePermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("new-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -656,7 +655,7 @@ func TestClusterHandler_Create_OidcConfigInUseDifferentAccountAllowed(t *testing
 }
 
 // Races two real Creates for the same oidcConfigId against a plain fake client (no DB backstop);
-// verifies the label CAS in resolveAndClaimOidcConfig alone enforces the 1:1 binding post-migration-004.
+// verifies the label CAS in claimOidcConfig alone enforces the 1:1 binding post-migration-004.
 func TestClusterHandler_Create_ConcurrentOidcConfigCollision(t *testing.T) {
 	scheme := newTestScheme()
 	oidcConfig := testReadyOidcConfig(testOidcConfigID, testAccountID, testOidcConfigIssuerURL)
@@ -664,7 +663,7 @@ func TestClusterHandler_Create_ConcurrentOidcConfigCollision(t *testing.T) {
 		WithStatusSubresource(oidcConfig).Build()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, lifecyclePermit), logger)
 
 	var callCount int64
 	handler.generateID = func() string {
@@ -710,7 +709,7 @@ func TestClusterHandler_Create_DerivesIssuerURLAndUpdatesLastUsed(t *testing.T) 
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(oidcConfig).
 		WithStatusSubresource(oidcConfig).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, lifecyclePermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -770,7 +769,7 @@ func TestClusterHandler_Get_Success(t *testing.T) {
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).
 		WithStatusSubresource(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/cluster-123", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -803,7 +802,7 @@ func TestClusterHandler_Get_NotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/no-such-cluster", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -824,7 +823,7 @@ func TestClusterHandler_CrossAccountOperations(t *testing.T) {
 	foreign := testClusterCR("foreign-id", "foreign", "999999999999")
 	fc := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(foreign).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	tests := []struct {
 		name, method, body string
@@ -856,7 +855,7 @@ func TestClusterHandler_Delete_Success(t *testing.T) {
 		testClusterCR("cluster-123", "test-cluster", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, lifecyclePermit), logger)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v0/clusters/cluster-123", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -881,7 +880,7 @@ func TestClusterHandler_Delete_NotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v0/clusters/no-such-cluster", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -900,7 +899,7 @@ func TestClusterHandler_Update_Success(t *testing.T) {
 	cr := testClusterCR("cluster-123", "test-cluster", testAccountID)
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, lifecyclePermit), logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"metadata": map[string]any{
@@ -951,7 +950,7 @@ func TestClusterHandler_Update_RejectsAccountID(t *testing.T) {
 			cr.Spec.AccountID = testAccountID
 			fc := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(cr).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-			handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+			handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 			assertHandlerStatus(t, http.StatusUnprocessableEntity, http.MethodPut, "/api/v0/clusters/uuid-1",
 				body, map[string]string{"id": "uuid-1"}, testAccountID, handler.Update)
 			var stored hyperfleetv1alpha1.Cluster
@@ -969,7 +968,7 @@ func TestClusterHandler_Update_NotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"spec": map[string]any{"displayName": "x"},
@@ -1005,7 +1004,7 @@ func TestClusterHandler_Update_MissingSpec(t *testing.T) {
 				testClusterCR("cluster-123", "test-cluster", testAccountID),
 			).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-			handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+			handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 			req := httptest.NewRequest(http.MethodPut, "/api/v0/clusters/cluster-123", bytes.NewReader(tt.body))
 			req = req.WithContext(testContext(testAccountID))
@@ -1029,7 +1028,7 @@ func TestClusterHandler_Update_RejectsOidcConfigIdChange(t *testing.T) {
 	cr.Spec.OidcConfigID = testOidcConfigID
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"spec": map[string]any{
@@ -1059,7 +1058,7 @@ func TestClusterHandler_Update_RejectsOidcConfigIdAddition(t *testing.T) {
 	cr := testClusterCR("cluster-123", "test-cluster", testAccountID)
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"spec": map[string]any{
@@ -1088,7 +1087,7 @@ func TestClusterHandler_Create_DuplicateName(t *testing.T) {
 		testClusterCR("existing-id", "test-cluster", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("test-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -1112,7 +1111,7 @@ func TestClusterHandler_Create_DBError(t *testing.T) {
 		},
 	}).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, clusterAuthorizer(t, lifecyclePermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("test-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -1137,7 +1136,7 @@ func TestClusterHandler_Create_SameNameDifferentAccount(t *testing.T) {
 		oidcConfig,
 	).WithStatusSubresource(oidcConfig).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), clusterAuthzRegion, logger)
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, lifecyclePermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("test-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))

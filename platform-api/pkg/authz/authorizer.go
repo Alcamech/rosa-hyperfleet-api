@@ -14,9 +14,11 @@ import (
 
 type evaluator func(*cedar.PolicySet, cedar.EntityMap, cedar.Request) (cedar.Decision, cedar.Diagnostic, error)
 
-// Authorizer resolves material once per request. It never reads configuration files.
+// Authorizer selects validated policies once per request in a fixed service region.
 type Authorizer struct {
-	resolver  PolicyResolver
+	source    policySource
+	region    string
+	accounts  map[string]struct{}
 	model     *resolved.Schema
 	validator *validate.Validator
 	evaluate  evaluator
@@ -24,32 +26,36 @@ type Authorizer struct {
 
 // Prepared owns concrete immutable policy inputs for one identity and request.
 type Prepared struct {
-	identity   Identity
-	principal  cedar.EntityUID
-	entities   cedar.EntityMap
-	policies   *cedar.PolicySet
-	provenance map[cedar.PolicyID]Provenance
-	validator  *validate.Validator
-	evaluate   evaluator
+	identity        Identity
+	region          string
+	principal       cedar.EntityUID
+	entities        cedar.EntityMap
+	policies        *cedar.PolicySet
+	servicePolicies *cedar.PolicySet
+	requestContext  cedar.Record
+	provenance      map[cedar.PolicyID]Provenance
+	validator       *validate.Validator
+	evaluate        evaluator
 }
 
-func NewAuthorizer(resolver PolicyResolver) (*Authorizer, error) {
-	if resolver == nil {
-		return nil, fmt.Errorf("policy resolver is required")
+// IsAccountRegistered checks enrollment in the startup snapshot, not permission grants.
+// A canceled context returns false.
+func (a *Authorizer) IsAccountRegistered(ctx context.Context, account string) bool {
+	if ctx.Err() != nil {
+		return false
 	}
-	model, v, err := loadSchema()
-	if err != nil {
-		return nil, newFailure(StageParsing, err)
-	}
-	return &Authorizer{resolver: resolver, model: model, validator: v, evaluate: nativeEvaluate}, nil
+	_, exists := a.accounts[account]
+	return exists
 }
 
+// nativeEvaluate returns Cedar's decision and diagnostics for the supplied policies, entities, and request.
 func nativeEvaluate(set *cedar.PolicySet, entities cedar.EntityMap, req cedar.Request) (cedar.Decision, cedar.Diagnostic, error) {
 	decision, diagnostics := cedar.Authorize(set, entities, req)
 	return decision, diagnostics, nil
 }
 
-func (a *Authorizer) Prepare(ctx context.Context, id Identity) (*Prepared, error) {
+// Prepare freezes applicable policies, caller identity, and request context for all checks in one request.
+func (a *Authorizer) Prepare(ctx context.Context, id Identity, req RequestContext) (*Prepared, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, newFailure(StageResolution, err)
 	}
@@ -57,48 +63,49 @@ func (a *Authorizer) Prepare(ctx context.Context, id Identity) (*Prepared, error
 	if err != nil {
 		return nil, newFailure(StageResolution, err)
 	}
-	material, err := a.resolver.Resolve(ctx, id)
+	material, err := a.source.resolve(ctx, caller)
 	if err != nil {
 		return nil, newFailure(StageResolution, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, newFailure(StageResolution, err)
 	}
-	prepared := &Prepared{identity: id, principal: entityUID("Principal", id.CallerARN), entities: make(cedar.EntityMap), policies: cedar.NewPolicySet(), provenance: make(map[cedar.PolicyID]Provenance), validator: a.validator, evaluate: a.evaluate}
+	if req.RequestTime.IsZero() {
+		return nil, newFailure(StageResolution, fmt.Errorf("request time is required"))
+	}
+	timestamp := req.RequestTime.UTC()
+	day := int(timestamp.Weekday())
+	if day == 0 {
+		day = 7
+	}
+	prepared := &Prepared{identity: id, region: a.region, principal: entityUID("Principal", id.CallerARN), entities: make(cedar.EntityMap), policies: cedar.NewPolicySet(), servicePolicies: cedar.NewPolicySet(), provenance: make(map[cedar.PolicyID]Provenance), validator: a.validator, evaluate: a.evaluate,
+		requestContext: cedar.NewRecord(cedar.RecordMap{
+			"region": cedar.String(a.region), "accountId": cedar.String(id.AccountID), "principalArn": cedar.String(id.CallerARN),
+			"sourceIp": cedar.String(req.SourceIP), "userAgent": cedar.String(req.UserAgent),
+			"requestTime": cedar.NewRecord(cedar.RecordMap{"unixSeconds": cedar.Long(timestamp.Unix()), "dayOfWeek": cedar.Long(day), "hour": cedar.Long(timestamp.Hour())}),
+		}),
+	}
 	for uid, action := range a.model.Actions {
 		prepared.entities[uid] = action.Entity
 	}
 	attrs := cedar.NewRecord(cedar.RecordMap{"account": cedar.String(id.AccountID)})
 	parents := []cedar.EntityUID{}
-	roleAliases := make(map[string]string)
-	for _, binding := range material {
-		// Revalidate injected resolver material before it can become a usable set.
-		if err := checkedPolicy(binding.PolicyContent, binding.PolicyID, a.validator); err != nil {
-			return nil, newFailure(StageParsing, err, binding.Provenance)
-		}
-		target, mode, err := checkBinding(binding, id, caller)
-		if err != nil {
-			return nil, newFailure(StageBinding, err, binding.Provenance)
-		}
-		diagnosticID := cedar.PolicyID(binding.DiagnosticID)
-		if _, exists := prepared.provenance[diagnosticID]; exists {
-			return nil, newFailure(StageBinding, fmt.Errorf("duplicate diagnostic ID"), binding.Provenance)
-		}
-		bound, err := bindPolicy(binding.PolicyContent, target, mode)
-		if err != nil {
-			return nil, newFailure(StageBinding, err, binding.Provenance)
-		}
-		if err := a.validator.Policy(binding.DiagnosticID, expPolicy(bound)); err != nil {
-			return nil, newFailure(StageBinding, err, binding.Provenance)
-		}
-		prepared.policies.Add(diagnosticID, bound)
-		prepared.provenance[diagnosticID] = binding.Provenance
-		if mode == roleMembership {
-			if err := addRoleAlias(roleAliases, caller.roleAlias(), string(target.ID)); err != nil {
-				return nil, newFailure(StageBinding, err, binding.Provenance)
+	for _, domain := range []struct {
+		bindings []policyAttachment
+		set      *cedar.PolicySet
+	}{
+		{material.customer, prepared.policies},
+		{material.serviceOperator, prepared.servicePolicies},
+	} {
+		for _, binding := range domain.bindings {
+			diagnosticID := cedar.PolicyID(binding.DiagnosticID)
+			domain.set.Add(diagnosticID, binding.policy)
+			prepared.provenance[diagnosticID] = binding.Provenance
+			if binding.principal.kind == "role" {
+				role := entityUID("Role", binding.principal.original)
+				prepared.entities[role] = cedar.Entity{UID: role, Attributes: attrs}
+				parents = append(parents, role)
 			}
-			prepared.entities[target] = cedar.Entity{UID: target, Attributes: attrs}
-			parents = append(parents, target)
 		}
 	}
 	prepared.entities[prepared.principal] = cedar.Entity{UID: prepared.principal, Parents: cedar.NewEntityUIDSet(parents...), Attributes: attrs}
@@ -111,31 +118,7 @@ func (a *Authorizer) Prepare(ctx context.Context, id Identity) (*Prepared, error
 	return prepared, nil
 }
 
-func checkBinding(binding ResolvedBinding, id Identity, caller principalARN) (cedar.EntityUID, bindingMode, error) {
-	if !idPattern.MatchString(binding.PolicyID) || !idPattern.MatchString(binding.AttachmentID) || binding.DiagnosticID != "attachment/"+binding.AttachmentID || binding.PolicyRevision == "" || binding.AttachmentRevision == "" || binding.Caller != id || binding.OwnerAccountID != id.AccountID {
-		return cedar.EntityUID{}, "", fmt.Errorf("incomplete or inconsistent binding provenance")
-	}
-	target, err := parsePrincipal(binding.PrincipalARN)
-	if err != nil {
-		return cedar.EntityUID{}, "", err
-	}
-	mode, err := checkedMode(target, binding.BindingMode)
-	if err != nil {
-		return cedar.EntityUID{}, "", err
-	}
-	if err := checkedScope(binding.Scope, binding.Region); err != nil {
-		return cedar.EntityUID{}, "", err
-	}
-	if !matchesPrincipal(target, caller) || !appliesInRegion(binding.Scope, binding.Region, id.Region) {
-		return cedar.EntityUID{}, "", fmt.Errorf("binding does not apply to caller account, partition, principal, or region")
-	}
-	kind := "Principal"
-	if mode == roleMembership {
-		kind = "Role"
-	}
-	return entityUID(kind, target.original), mode, nil
-}
-
+// Check evaluates an action and trusted resource for the prepared caller, rejecting Cedar evaluation errors.
 func (p *Prepared) Check(ctx context.Context, action Action, resource Resource) (Decision, error) {
 	if err := ctx.Err(); err != nil {
 		return Decision{}, newFailure(StageEvaluation, err)
@@ -144,16 +127,18 @@ func (p *Prepared) Check(ctx context.Context, action Action, resource Resource) 
 	if err != nil {
 		return Decision{}, newFailure(StageEntityValidation, err)
 	}
-	req := cedar.Request{Principal: p.principal, Action: entityUID("Action", string(action)), Resource: resourceUID, Context: cedar.NewRecord(cedar.RecordMap{
-		"region": cedar.String(p.identity.Region), "accountId": cedar.String(p.identity.AccountID), "principalArn": cedar.String(p.identity.CallerARN),
-	})}
+	req := cedar.Request{Principal: p.principal, Action: entityUID("Action", string(action)), Resource: resourceUID, Context: p.requestContext}
 	if err := p.validator.Entities(entities); err != nil {
 		return Decision{}, newFailure(StageEntityValidation, err)
 	}
 	if err := p.validator.Request(req); err != nil {
 		return Decision{}, newFailure(StageEntityValidation, err)
 	}
-	decision, diagnostics, err := p.evaluate(p.policies, entities, req)
+	set := p.policies
+	if actionResourceKind(action) == ManagementCluster {
+		set = p.servicePolicies
+	}
+	decision, diagnostics, err := p.evaluate(set, entities, req)
 	if err != nil {
 		return Decision{}, newFailure(StageEvaluation, err)
 	}
@@ -184,6 +169,7 @@ func (p *Prepared) Check(ctx context.Context, action Action, resource Resource) 
 	return Decision{Allowed: decision == cedar.Allow, Provenance: provenance}, nil
 }
 
+// mapProvenance maps sorted, unique Cedar policy IDs to attachment provenance and reports unknown IDs.
 func (p *Prepared) mapProvenance(ids []cedar.PolicyID) ([]Provenance, error) {
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
@@ -200,35 +186,92 @@ func (p *Prepared) mapProvenance(ids []cedar.PolicyID) ([]Provenance, error) {
 	return provenance, mappingErr
 }
 
-func (p *Prepared) resourceEntities(action Action, resource Resource) (cedar.EntityMap, cedar.EntityUID, error) {
-	if resource.AccountID != p.identity.AccountID || resource.Region != p.identity.Region {
-		return nil, cedar.EntityUID{}, fmt.Errorf("resource ownership does not match identity account and region")
+// validateResourceIdentity checks action compatibility, ownership, and collection or object identity before building entities.
+func (p *Prepared) validateResourceIdentity(action Action, resource Resource) (ResourceKind, error) {
+	kind := actionResourceKind(action)
+	if kind == "" {
+		return "", fmt.Errorf("unsupported action")
+	}
+	service := kind == ManagementCluster
+	if !service && resource.AccountID != p.identity.AccountID {
+		return "", fmt.Errorf("resource ownership does not match identity account")
 	}
 	if owner, exists := resource.Labels["hyperfleet.io/account-id"]; exists && owner != resource.AccountID {
-		return nil, cedar.EntityUID{}, fmt.Errorf("resource account label contradicts ownership")
+		return "", fmt.Errorf("resource account label contradicts ownership")
 	}
+	if resource.Kind != NodePool && resource.ParentCluster != nil {
+		return "", fmt.Errorf("unexpected parent cluster")
+	}
+	if resource.Kind != ManagementCluster && resource.RegistrationRegion != "" {
+		return "", fmt.Errorf("unexpected registration region")
+	}
+	if listAction(action) {
+		want := Collection
+		if service {
+			want = ServiceCollection
+		}
+		if resource.Kind != want || resource.ID != "" || len(resource.Labels) != 0 || resource.ParentCluster != nil || resource.RegistrationRegion != "" || (!service && resource.CollectionKind != kind) || (service && (resource.AccountID != "" || resource.CollectionKind != "")) {
+			return "", fmt.Errorf("invalid collection identity or object metadata")
+		}
+	} else if resource.Kind != kind || !idPattern.MatchString(resource.ID) || resource.CollectionKind != "" {
+		return "", fmt.Errorf("action requires a compatible resource with a stable ID")
+	}
+	return kind, nil
+}
+
+// resourceEntities builds request-local Cedar entities and the resource UID from trusted facts and the fixed service region.
+func (p *Prepared) resourceEntities(action Action, resource Resource) (cedar.EntityMap, cedar.EntityUID, error) {
+	kind, err := p.validateResourceIdentity(action, resource)
+	if err != nil {
+		return nil, cedar.EntityUID{}, err
+	}
+	service := kind == ManagementCluster
 	entities := maps.Clone(p.entities)
-	attrs := cedar.NewRecord(cedar.RecordMap{"account": cedar.String(resource.AccountID), "region": cedar.String(resource.Region)})
-	collection := entityUID("Collection", resource.AccountID+"/"+resource.Region+"/clusters")
-	entities[collection] = cedar.Entity{UID: collection, Attributes: attrs}
-	switch resource.Kind {
-	case Collection:
-		if resource.ID != "" || len(resource.Labels) != 0 || action != ListClusters {
-			return nil, cedar.EntityUID{}, fmt.Errorf("collection requires ListClusters, no ID, and no labels")
-		}
-		return entities, collection, nil
-	case Cluster:
-		if !idPattern.MatchString(resource.ID) || action != DescribeCluster {
-			return nil, cedar.EntityUID{}, fmt.Errorf("cluster requires a stable ID and DescribeCluster")
-		}
-		cluster := entityUID("Cluster", resource.AccountID+"/"+resource.Region+"/"+resource.ID)
-		tags := make(cedar.RecordMap, len(resource.Labels))
-		for key, value := range resource.Labels {
-			tags[cedar.String(key)] = cedar.String(value)
-		}
-		entities[cluster] = cedar.Entity{UID: cluster, Attributes: attrs, Parents: cedar.NewEntityUIDSet(collection), Tags: cedar.NewRecord(tags)}
-		return entities, cluster, nil
-	default:
-		return nil, cedar.EntityUID{}, fmt.Errorf("unsupported resource kind %q", resource.Kind)
+	attrs := cedar.NewRecord(cedar.RecordMap{"account": cedar.String(resource.AccountID), "region": cedar.String(p.region)})
+	collection := entityUID("Collection", resource.AccountID+"/"+p.region+"/"+collectionName(kind))
+	if service {
+		collection = entityUID("ServiceCollection", p.region+"/management_clusters")
+		entities[collection] = cedar.Entity{UID: collection, Attributes: cedar.NewRecord(cedar.RecordMap{"region": cedar.String(p.region)})}
+	} else {
+		entities[collection] = cedar.Entity{UID: collection, Attributes: attrs}
 	}
+	if listAction(action) {
+		return entities, collection, nil
+	}
+	id := resource.AccountID + "/" + p.region + "/" + resource.ID
+	parents := []cedar.EntityUID{collection}
+	if kind == NodePool {
+		parent := resource.ParentCluster
+		if parent == nil || !idPattern.MatchString(parent.ID) || parent.AccountID != resource.AccountID {
+			return nil, cedar.EntityUID{}, fmt.Errorf("node pool requires its owned stored parent")
+		}
+		if owner, exists := parent.Labels["hyperfleet.io/account-id"]; exists && owner != parent.AccountID {
+			return nil, cedar.EntityUID{}, fmt.Errorf("parent account label contradicts ownership")
+		}
+		clusterCollection := entityUID("Collection", parent.AccountID+"/"+p.region+"/clusters")
+		entities[clusterCollection] = cedar.Entity{UID: clusterCollection, Attributes: attrs}
+		cluster := entityUID("Cluster", parent.AccountID+"/"+p.region+"/"+parent.ID)
+		entities[cluster] = cedar.Entity{UID: cluster, Attributes: attrs, Parents: cedar.NewEntityUIDSet(clusterCollection), Tags: resourceTags(parent.Labels)}
+		parents = append(parents, cluster)
+		id = resource.AccountID + "/" + p.region + "/" + parent.ID + "/" + resource.ID
+	}
+	if kind == ManagementCluster {
+		if resource.AccountID == "" || resource.RegistrationRegion == "" {
+			return nil, cedar.EntityUID{}, fmt.Errorf("management cluster requires hosting account and registration region")
+		}
+		id = p.region + "/" + resource.ID
+		attrs = cedar.NewRecord(cedar.RecordMap{"account": cedar.String(resource.AccountID), "region": cedar.String(p.region), "registrationRegion": cedar.String(resource.RegistrationRegion)})
+	}
+	uid := entityUID(string(kind), id)
+	entities[uid] = cedar.Entity{UID: uid, Attributes: attrs, Parents: cedar.NewEntityUIDSet(parents...), Tags: resourceTags(resource.Labels)}
+	return entities, uid, nil
+}
+
+// resourceTags converts resource labels into Cedar entity tags.
+func resourceTags(labels map[string]string) cedar.Record {
+	tags := make(cedar.RecordMap, len(labels))
+	for key, value := range labels {
+		tags[cedar.String(key)] = cedar.String(value)
+	}
+	return cedar.NewRecord(tags)
 }

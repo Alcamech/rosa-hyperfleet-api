@@ -97,16 +97,24 @@ func (c *Client) ListClusters(ctx context.Context) (*hyperfleetv1alpha1.ClusterL
 
 // UpdateCluster CAS-updates a cluster and re-pins account ownership from ctx.
 func (c *Client) UpdateCluster(ctx context.Context, cluster *hyperfleetv1alpha1.Cluster) error {
+	if err := hyperfleetdb.ValidateObjectResourceVersion(cluster); err != nil {
+		return err
+	}
 	accountID := middleware.GetAccountID(ctx)
 	setAccountLabel(cluster, accountID)
 	cluster.Spec.AccountID = accountID
 	return c.client.Update(ctx, cluster)
 }
 
-// DeleteCluster deletes a Cluster, scoped to the account in ctx.
-func (c *Client) DeleteCluster(ctx context.Context, clusterID string) error {
-	cluster, err := c.GetCluster(ctx, clusterID)
-	if err != nil {
+// DeleteClusterObject deletes the checked snapshot without fetching newer state.
+func (c *Client) DeleteClusterObject(ctx context.Context, cluster *hyperfleetv1alpha1.Cluster) error {
+	if err := hyperfleetdb.ValidateObjectResourceVersion(cluster); err != nil {
+		return err
+	}
+	if ClusterIDFromNamespace(cluster.Namespace) == "" {
+		return fmt.Errorf("invalid cluster namespace")
+	}
+	if err := validateOwnedSnapshot(ctx, cluster, clusterNamespace(ClusterIDFromNamespace(cluster.Namespace))); err != nil {
 		return err
 	}
 	return c.client.Delete(ctx, cluster)
@@ -176,16 +184,24 @@ func (c *Client) ListNodePools(ctx context.Context, clusterID string) (*hyperfle
 
 // UpdateNodePool CAS-updates a node pool and re-pins account ownership from ctx.
 func (c *Client) UpdateNodePool(ctx context.Context, np *hyperfleetv1alpha1.NodePool) error {
+	if err := hyperfleetdb.ValidateObjectResourceVersion(np); err != nil {
+		return err
+	}
 	accountID := middleware.GetAccountID(ctx)
 	setAccountLabel(np, accountID)
 	np.Spec.AccountID = accountID
 	return c.client.Update(ctx, np)
 }
 
-// DeleteNodePool deletes a NodePool by name, scoped to the account in ctx and cluster.
-func (c *Client) DeleteNodePool(ctx context.Context, clusterID, nodepoolName string) error {
-	np, err := c.GetNodePool(ctx, clusterID, nodepoolName)
-	if err != nil {
+// DeleteNodePoolObject deletes the checked child snapshot, never an unchecked reload.
+func (c *Client) DeleteNodePoolObject(ctx context.Context, np *hyperfleetv1alpha1.NodePool) error {
+	if err := hyperfleetdb.ValidateObjectResourceVersion(np); err != nil {
+		return err
+	}
+	if ClusterIDFromNamespace(np.Namespace) == "" {
+		return fmt.Errorf("invalid node pool namespace")
+	}
+	if err := validateOwnedSnapshot(ctx, np, clusterNamespace(ClusterIDFromNamespace(np.Namespace))); err != nil {
 		return err
 	}
 	return c.client.Delete(ctx, np)
@@ -287,15 +303,6 @@ func (c *Client) ListOidcConfigs(ctx context.Context) (*hyperfleetv1alpha1.OidcC
 	return &list, nil
 }
 
-// DeleteOidcConfig deletes an OidcConfig by configID for the account in ctx.
-func (c *Client) DeleteOidcConfig(ctx context.Context, configID string) error {
-	oc, err := c.GetOidcConfig(ctx, configID)
-	if err != nil {
-		return err
-	}
-	return c.client.Delete(ctx, oc)
-}
-
 // UpdateOidcConfigLastUsedTimestamp sets status.lastUsedTimestamp on an
 // OidcConfig, scoped to the account in ctx.
 func (c *Client) UpdateOidcConfigLastUsedTimestamp(ctx context.Context, configID string, ts metav1.Time) error {
@@ -309,12 +316,35 @@ func (c *Client) UpdateOidcConfigLastUsedTimestamp(ctx context.Context, configID
 
 // UpdateOidcConfigObject updates oc (e.g. its labels) via CAS on its current ResourceVersion; oc must be freshly fetched (e.g. via GetOidcConfig) so a concurrent change surfaces as a conflict (IsConflict) instead of overwriting it.
 func (c *Client) UpdateOidcConfigObject(ctx context.Context, oc *hyperfleetv1alpha1.OidcConfig) error {
+	if err := hyperfleetdb.ValidateObjectResourceVersion(oc); err != nil {
+		return err
+	}
 	return c.client.Update(ctx, oc)
 }
 
 // DeleteOidcConfigObject deletes oc via CAS on its current ResourceVersion; oc must be freshly fetched (e.g. via GetOidcConfig) so a concurrent change surfaces as a conflict (IsConflict) instead of deleting stale state.
 func (c *Client) DeleteOidcConfigObject(ctx context.Context, oc *hyperfleetv1alpha1.OidcConfig) error {
+	if err := validateOwnedSnapshot(ctx, oc, accountNamespace(middleware.GetAccountID(ctx))); err != nil {
+		return err
+	}
 	return c.client.Delete(ctx, oc)
+}
+
+func validateOwnedSnapshot(ctx context.Context, obj client.Object, namespace string) error {
+	if err := hyperfleetdb.ValidateObjectResourceVersion(obj); err != nil {
+		return err
+	}
+	account := middleware.GetAccountID(ctx)
+	if account == "" || obj.GetNamespace() != namespace || obj.GetName() == "" {
+		return fmt.Errorf("invalid snapshot identity")
+	}
+	if owner, exists := obj.GetLabels()[accountIDLabel]; exists && owner != account {
+		return fmt.Errorf("snapshot owner does not match caller")
+	}
+	if namespace != accountNamespace(account) && obj.GetLabels()[accountIDLabel] != account {
+		return fmt.Errorf("snapshot owner is required")
+	}
+	return nil
 }
 
 // GetOidcIssuerIndex is a best-effort, non-atomic fast-path check for whether indexName is reserved.

@@ -32,11 +32,14 @@ type Attempt struct {
 
 type metricsCollector struct{ metrics *Metrics }
 
+// Describe publishes descriptors for the authorization outcome, duration, and failure metrics.
 func (c metricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	c.metrics.requests.Describe(ch)
 	c.metrics.duration.Describe(ch)
 	c.metrics.failures.Describe(ch)
 }
+
+// Collect publishes the current authorization metric samples.
 func (c metricsCollector) Collect(ch chan<- prometheus.Metric) {
 	c.metrics.requests.Collect(ch)
 	c.metrics.duration.Collect(ch)
@@ -46,6 +49,7 @@ func (c metricsCollector) Collect(ch chan<- prometheus.Metric) {
 // DefaultMetrics registers production collectors once, independently of server construction.
 var DefaultMetrics = defaultMetrics()
 
+// defaultMetrics registers the production collectors and panics if registration fails.
 func defaultMetrics() *Metrics {
 	metrics, err := NewMetrics(prometheus.DefaultRegisterer)
 	if err != nil {
@@ -54,6 +58,7 @@ func defaultMetrics() *Metrics {
 	return metrics
 }
 
+// NewMetrics registers authorization outcome, duration, and failure collectors with the supplied registry.
 func NewMetrics(registerer prometheus.Registerer) (*Metrics, error) {
 	if registerer == nil {
 		return nil, fmt.Errorf("metrics registerer is required")
@@ -70,13 +75,15 @@ func NewMetrics(registerer prometheus.Registerer) (*Metrics, error) {
 	return metrics, nil
 }
 
+// Start begins timing one supported authorization operation.
 func (m *Metrics) Start(operation Action) (*Attempt, error) {
-	if operation != ListClusters && operation != DescribeCluster {
+	if actionResourceKind(operation) == "" {
 		return nil, fmt.Errorf("unsupported authorization operation")
 	}
 	return &Attempt{metrics: m, operation: operation, started: time.Now()}, nil
 }
 
+// Finish validates the terminal outcome and records metrics only for the first valid completion.
 func (a *Attempt) Finish(outcome Outcome, stage Stage) error {
 	switch outcome {
 	case OutcomeAllow, OutcomeDeny:

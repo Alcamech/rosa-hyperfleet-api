@@ -179,7 +179,7 @@ test-unit: test-api test-operator test-api-codegen test-clientset
 test-integration: test-hyperfleet-db test-operator-int test-api-int
 
 test-api-int:
-	cd platform-api && go test -v -race -count=1 -tags integration ./pkg/handlers/...
+	cd platform-api && go test -v -race -count=1 -tags integration ./pkg/handlers/... ./pkg/authz/...
 
 test-api:
 	cd platform-api && go test -v -race -count=1 $(if $(COVERAGE),-covermode=atomic -coverprofile=../coverage-platform-api.out,) $$(go list ./... | grep -v '/test/e2e')

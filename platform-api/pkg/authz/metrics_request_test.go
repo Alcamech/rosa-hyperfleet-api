@@ -68,15 +68,12 @@ func TestLateAttemptFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := NewAuthorizer(fixtureResolver(t, bundleFixture()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	a := fixtureAuthorizer(t, bundleFixture())
 	attempt, err := metrics.Start(ListClusters)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := a.Prepare(t.Context(), testIdentity(sessionARN))
+	p, err := a.Prepare(t.Context(), testIdentity(sessionARN), testRequestContext())
 	if err != nil {
 		t.Fatal(err)
 	}

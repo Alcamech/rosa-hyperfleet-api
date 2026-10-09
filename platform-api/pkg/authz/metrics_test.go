@@ -175,17 +175,14 @@ func TestNoPerCheckMetrics(t *testing.T) {
 	bundle := bundleFixture()
 	bundle["policies"].([]map[string]any)[0]["content"] = labelPermit
 	bundle["policies"] = append(bundle["policies"].([]map[string]any), map[string]any{"id": "list", "ownerAccountID": accountID, "content": `permit(principal, action == HyperFleet::Action::"ListClusters", resource);`})
-	bundle["attachments"] = append(bundle["attachments"].([]map[string]any), map[string]any{"id": "list", "policyID": "list", "principalARN": roleARN, "bindingMode": "role-membership", "scope": "global"})
-	a, err := NewAuthorizer(fixtureResolver(t, bundle))
-	if err != nil {
-		t.Fatal(err)
-	}
+	bundle["attachments"] = append(bundle["attachments"].([]map[string]any), map[string]any{"id": "list", "policyID": "list", "principalARN": roleARN, "scope": "global"})
+	a := fixtureAuthorizer(t, bundle)
 	defaultBefore := authzSampleTotals(t, prometheus.DefaultGatherer)
 	attempt, err := metrics.Start(ListClusters)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := a.Prepare(t.Context(), testIdentity(sessionARN))
+	p, err := a.Prepare(t.Context(), testIdentity(sessionARN), testRequestContext())
 	if err != nil {
 		t.Fatal(err)
 	}

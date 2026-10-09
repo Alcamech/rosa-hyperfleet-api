@@ -18,6 +18,8 @@ func writeAPIError(w http.ResponseWriter, def APIError, logger *slog.Logger) {
 	}
 }
 
+var ErrResourceConflict = APIError{Code: "RESOURCE-CONFLICT-001", HTTPStatus: http.StatusConflict, Message: "Resource changed; reload and retry"}
+
 // Cluster error codes
 var (
 	ErrClusterList APIError

@@ -11,11 +11,11 @@ import (
 func TestReloadSnapshot(t *testing.T) {
 	original := encodeBundle(t, bundleFixture())
 	path := configFile(t, original)
-	resolver, err := LoadConfig(path)
+	authorizer, err := LoadConfig(path, region)
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := resolver.Resolve(t.Context(), testIdentity(sessionARN))
+	first, err := authorizer.source.resolve(t.Context(), testPrincipal(t, sessionARN))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,42 +26,42 @@ func TestReloadSnapshot(t *testing.T) {
 	if err := os.WriteFile(path, []byte(changed), 0600); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := LoadConfig(path)
+	loaded, err := LoadConfig(path, region)
 	if err != nil {
 		t.Fatal(err)
 	}
-	old, err := resolver.Resolve(t.Context(), testIdentity(sessionARN))
+	old, err := authorizer.source.resolve(t.Context(), testPrincipal(t, sessionARN))
 	if err != nil {
 		t.Fatal(err)
 	}
-	fresh, err := loaded.Resolve(t.Context(), testIdentity(sessionARN))
+	fresh, err := loaded.source.resolve(t.Context(), testPrincipal(t, sessionARN))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(old) != 1 || len(fresh) != 0 || old[0].PolicyRevision != first[0].PolicyRevision || !resolver.IsAccountRegistered(t.Context(), accountID) || loaded.IsAccountRegistered(t.Context(), accountID) {
+	if len(old.customer) != 1 || len(fresh.customer) != 0 || old.customer[0].PolicyRevision != first.customer[0].PolicyRevision || !authorizer.IsAccountRegistered(t.Context(), accountID) || loaded.IsAccountRegistered(t.Context(), accountID) {
 		t.Fatalf("snapshot or reload semantics changed: old=%+v fresh=%+v", old, fresh)
 	}
 	whitespace := original + "\n"
 	if err := os.WriteFile(path, []byte(whitespace), 0600); err != nil {
 		t.Fatal(err)
 	}
-	next, err := LoadConfig(path)
+	next, err := LoadConfig(path, region)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bindings, err := next.Resolve(t.Context(), testIdentity(sessionARN))
+	bindings, err := next.source.resolve(t.Context(), testPrincipal(t, sessionARN))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bindings[0].PolicyRevision == first[0].PolicyRevision || bindings[0].PolicyRevision != fmt.Sprintf("%x", sha256.Sum256([]byte(whitespace))) {
+	if bindings.customer[0].PolicyRevision == first.customer[0].PolicyRevision || bindings.customer[0].PolicyRevision != fmt.Sprintf("%x", sha256.Sum256([]byte(whitespace))) {
 		t.Fatalf("revision does not identify exact bytes: %+v", bindings)
 	}
 	// Enrollment does not manufacture a grant or restrict policy resolution itself.
 	unenrolled := bundleFixture()
 	unenrolled["registeredAccounts"] = []string{}
-	independent := fixtureResolver(t, unenrolled)
-	applicable, err := independent.Resolve(t.Context(), testIdentity(sessionARN))
-	if err != nil || len(applicable) != 1 || independent.IsAccountRegistered(t.Context(), accountID) {
+	independent := fixtureAuthorizer(t, unenrolled)
+	applicable, err := independent.source.resolve(t.Context(), testPrincipal(t, sessionARN))
+	if err != nil || len(applicable.customer) != 1 || independent.IsAccountRegistered(t.Context(), accountID) {
 		t.Fatalf("enrollment and resolution were coupled: %+v %v", applicable, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -74,7 +74,7 @@ func TestReloadSnapshot(t *testing.T) {
 func TestStartupProvenance(t *testing.T) {
 	bundle := bundleFixture()
 	bundle["policies"].([]map[string]any)[0]["content"] = "forbid( secret"
-	if resolver, err := LoadConfig(configFile(t, encodeBundle(t, bundle))); resolver != nil || err == nil {
+	if resolver, err := LoadConfig(configFile(t, encodeBundle(t, bundle)), region); resolver != nil || err == nil {
 		t.Fatal("bad policy accepted")
 	} else {
 		failure := checkFailure(t, err, StageParsing)
@@ -83,8 +83,8 @@ func TestStartupProvenance(t *testing.T) {
 		}
 	}
 	bundle = bundleFixture()
-	bundle["attachments"].([]map[string]any)[0]["bindingMode"] = "unsupported"
-	if resolver, err := LoadConfig(configFile(t, encodeBundle(t, bundle))); resolver != nil || err == nil {
+	bundle["attachments"].([]map[string]any)[0]["scope"] = "unsupported"
+	if resolver, err := LoadConfig(configFile(t, encodeBundle(t, bundle)), region); resolver != nil || err == nil {
 		t.Fatal("bad binding accepted")
 	} else {
 		failure := checkFailure(t, err, StageBinding)

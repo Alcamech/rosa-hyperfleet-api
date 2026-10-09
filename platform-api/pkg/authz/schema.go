@@ -14,6 +14,7 @@ import (
 //go:embed testdata/hyperfleet.cedarschema
 var schemaContent []byte
 
+// loadSchema resolves the embedded Cedar schema and creates its strict validator.
 func loadSchema() (*resolved.Schema, *validate.Validator, error) {
 	var parsed schema.Schema
 	if err := parsed.UnmarshalCedar(schemaContent); err != nil {
@@ -26,25 +27,32 @@ func loadSchema() (*resolved.Schema, *validate.Validator, error) {
 	return model, validate.New(model, validate.WithStrict()), nil
 }
 
+// entityUID creates an entity identifier in the HyperFleet namespace.
 func entityUID(kind, id string) cedar.EntityUID {
 	return cedar.NewEntityUID(cedar.EntityType("HyperFleet::"+kind), cedar.String(id))
 }
 
+// expPolicy returns a read-only policy AST view for the experimental schema validator.
 func expPolicy(policy *cedar.Policy) *expast.Policy {
 	return (*expast.Policy)(policy.AST())
 }
 
-func checkedPolicy(content, id string, v *validate.Validator) error {
+// checkedPolicy parses exactly one Cedar statement and validates it against the schema.
+func checkedPolicy(content, id string, v *validate.Validator) (*cedar.Policy, error) {
 	policies, err := cedar.NewPolicyListFromBytes(id, []byte(content))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(policies) != 1 {
-		return fmt.Errorf("policy record requires exactly one statement")
+		return nil, fmt.Errorf("policy record requires exactly one statement")
 	}
-	return v.Policy(id, expPolicy(policies[0]))
+	if err := v.Policy(id, expPolicy(policies[0])); err != nil {
+		return nil, err
+	}
+	return policies[0], nil
 }
 
+// newFailure associates an internal cause and optional provenance with an authorization failure stage.
 func newFailure(stage Stage, err error, provenance ...Provenance) *Failure {
 	return &Failure{Stage: stage, Err: err, Provenance: provenance}
 }

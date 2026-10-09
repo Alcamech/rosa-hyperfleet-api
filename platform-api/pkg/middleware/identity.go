@@ -62,7 +62,7 @@ func Identity(next http.Handler) http.Handler {
 	})
 }
 
-func RequireIdentity(logger *slog.Logger, isAccountRegistered func(context.Context, string) bool, region string) func(http.Handler) http.Handler {
+func RequireIdentity(logger *slog.Logger, isAccountRegistered func(context.Context, string) bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
@@ -80,7 +80,7 @@ func RequireIdentity(logger *slog.Logger, isAccountRegistered func(context.Conte
 				return
 			}
 			// Reject inconsistent gateway identity before enrollment or grant selection.
-			identity := authz.Identity{AccountID: accountID, CallerARN: GetCallerARN(r.Context()), Region: region}
+			identity := authz.Identity{AccountID: accountID, CallerARN: GetCallerARN(r.Context())}
 			if err := identity.Validate(); err != nil {
 				logger.Warn("invalid caller identity", "error", err)
 				if err := api.WriteError(w, api.APIError{
@@ -115,6 +115,14 @@ func GetAccountID(ctx context.Context) string {
 func GetCallerARN(ctx context.Context) string {
 	if v := ctx.Value(ContextKeyCallerARN); v != nil {
 		return v.(string)
+	}
+	return ""
+}
+
+// GetSourceIP retrieves the gateway-supplied source address, never a forwarding header.
+func GetSourceIP(ctx context.Context) string {
+	if v, ok := ctx.Value(ContextKeySourceIP).(string); ok {
+		return v
 	}
 	return ""
 }

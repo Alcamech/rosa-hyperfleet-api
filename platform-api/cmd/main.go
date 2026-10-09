@@ -55,7 +55,6 @@ func init() {
 	serveCmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	serveCmd.Flags().StringVar(&logFormat, "log-format", "json", "Log format (json, text)")
 	serveCmd.Flags().String("allowed-accounts", "", "Deprecated compatibility flag; ignored")
-	serveCmd.Flags().String("authz-resolver", "config", "Authorization resolver (config only)")
 	serveCmd.Flags().String("authz-config-file", "", "Authorization configuration bundle (required)")
 	serveCmd.Flags().StringVar(&legacyDynamoDBRegion, "dynamodb-region", "", "Deprecated compatibility flag; used only as a region fallback")
 	serveCmd.Flags().String("dynamodb-prefix", "", "Deprecated compatibility flag; ignored")
@@ -79,17 +78,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 		"log_format", logFormat,
 	)
 
-	// Validate authorization before database connections or serving listeners.
-	cfg, authorizer, resolver, err := loadStartupConfig(cmd)
-	if err != nil {
-		if failure, ok := errors.AsType[*authz.Failure](err); ok {
-			logger.Error("authorization startup failed", "stage", failure.Stage, "cause", failure.Err, "provenance", failure.Provenance, "diagnostics", failure.Diagnostics)
-		} else {
-			logger.Error("authorization startup failed", "error", err)
-		}
-		return err
-	}
-
 	// Detect AWS region from SDK default chain (IMDS, AWS_REGION env var, etc.)
 	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background())
 	if err != nil {
@@ -103,6 +91,17 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	logger.Info("detected AWS region", "region", awsCfg.Region)
 
+	// Validate authorization before database connections or serving listeners.
+	cfg, authorizer, err := loadStartupConfig(cmd, awsCfg.Region)
+	if err != nil {
+		if failure, ok := errors.AsType[*authz.Failure](err); ok {
+			logger.Error("authorization startup failed", "stage", failure.Stage, "cause", failure.Err, "provenance", failure.Provenance, "diagnostics", failure.Diagnostics)
+		} else {
+			logger.Error("authorization startup failed", "error", err)
+		}
+		return err
+	}
+
 	cfg.Logging.Level = logLevel
 	cfg.Logging.Format = logFormat
 	if postgresDSN == "" {
@@ -115,7 +114,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	cfg.Regional.OIDCIssuerBaseURL = oidcIssuerBaseURL
 	cfg.Regional.DefaultClusterExpiration = defaultClusterExpiration
-	cfg.Regional.AWSRegion = awsCfg.Region
 	cfg.Server.APIPort = apiPort
 	cfg.Server.HealthPort = healthPort
 	cfg.Server.MetricsPort = metricsPort
@@ -173,7 +171,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	defer dbClient.Close()
 
 	// Create server
-	srv, err := server.New(cfg, dbClient, authorizer, resolver.IsAccountRegistered, logger)
+	srv, err := server.New(cfg, dbClient, authorizer, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}
