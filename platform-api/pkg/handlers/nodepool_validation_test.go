@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,6 +21,7 @@ import (
 
 	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
 	public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/authz"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
 )
@@ -222,7 +225,7 @@ func TestNodePoolHandlerCreateAllowsRootVolumeSizeOnly(t *testing.T) {
 	handler := newNodePoolValidationTestHandler(t, cluster)
 	body := `{"metadata":{"name":"` + clusterName + `.pool-a","namespace":"account-` + accountID + `"},"spec":{"nodePool":{"platform":{"aws":{"rootVolume":{"size":500}}}}}}`
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/nodepools", strings.NewReader(body))
-	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
+	request = request.WithContext(testContext(accountID))
 	response := httptest.NewRecorder()
 
 	handler.Create(response, request)
@@ -347,10 +350,11 @@ func TestNodePoolHandlerUpdateAllowsOmittedRootVolume(t *testing.T) {
 			},
 		},
 	}
-	handler := newNodePoolValidationTestHandler(t, object)
+	parent := &hyperfleetv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "my-cluster", Namespace: object.Namespace, Labels: object.Labels}}
+	handler := newNodePoolValidationTestHandler(t, object, parent)
 	body := `{"spec":{"nodePool":{"platform":{"aws":{"instanceType":"m5.xlarge"}}}}}`
 	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName, strings.NewReader(body))
-	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
+	request = request.WithContext(testContext(accountID))
 	request = mux.SetURLVars(request, map[string]string{"id": poolName})
 	response := httptest.NewRecorder()
 
@@ -436,6 +440,8 @@ func TestNodePoolHandlerUpdateRejectsExplicitNullAtParentLevels(t *testing.T) {
 	}
 }
 
+const nodePoolTestCaller = "arn:aws:iam::123456789012:user/test"
+
 func newNodePoolValidationTestHandler(t *testing.T, objects ...client.Object) *NodePoolHandler {
 	t.Helper()
 	scheme := runtime.NewScheme()
@@ -450,6 +456,7 @@ func newNodePoolValidationTestHandler(t *testing.T, objects ...client.Object) *N
 				resource.UID = "validation-parent"
 			}
 		case *hyperfleetv1alpha1.NodePool:
+			resource.UID = "validation-pool"
 			parent := testClusterCR("validation-parent", resource.Name, resource.Labels["hyperfleet.io/account-id"])
 			resource.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(parent, hyperfleetv1alpha1.GroupVersion.WithKind("Cluster"))}
 			resource.Labels[clusterUIDLabel] = string(parent.UID)
@@ -459,5 +466,13 @@ func newNodePoolValidationTestHandler(t *testing.T, objects ...client.Object) *N
 	}
 	dbClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewNodePoolHandler(hyperfleetdb.NewClientFrom(dbClient, logger), logger)
+	path := filepath.Join(t.TempDir(), "authz.json")
+	if err := os.WriteFile(path, []byte(`{"formatVersion":1,"registeredAccounts":["123456789012"],"policies":[{"id":"all","ownerAccountID":"123456789012","content":"permit(principal, action in HyperFleet::Action::\"AllActions\", resource);"}],"attachments":[{"id":"all","policyID":"all","principalARN":"`+nodePoolTestCaller+`","scope":"global"}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	authorizer, err := authz.LoadConfig(path, "us-east-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return NewNodePoolHandler(hyperfleetdb.NewClientFrom(dbClient, logger), authorizer, logger)
 }

@@ -384,6 +384,10 @@ func TestAuthzHTTP(t *testing.T) {
 		authzMetricDelta(t, before, authzMetrics(t, process), "", "", "")
 	})
 
+	run("all resource operations and snapshot CAS", func(t *testing.T) {
+		authzResourceOperations(t, process, store)
+	})
+
 	run("startup snapshot and restart enrollment", func(t *testing.T) {
 		var replacement struct {
 			FormatVersion      int               `json:"formatVersion"`
@@ -600,7 +604,7 @@ func authzStartProcess(t *testing.T, binary, config, dsn, output, name string) *
 	}
 	process.cmd = exec.Command(binary, "serve", "--api-port", ports[0], "--health-port", ports[1], "--metrics-port", ports[2])
 	process.cmd.Env = append(os.Environ(),
-		"POSTGRES_DSN="+dsn, "AUTHZ_RESOLVER=config", "AUTHZ_CONFIG_FILE="+config,
+		"POSTGRES_DSN="+dsn, "AUTHZ_CONFIG_FILE="+config,
 		"API_BIND_ADDRESS=127.0.0.1", "HEALTH_BIND_ADDRESS=127.0.0.1", "METRICS_BIND_ADDRESS=127.0.0.1",
 		"TARGET_GROUP_ARN=arn:aws:elasticloadbalancing:"+authzRegion+":"+authzAccount+":targetgroup/authz-http/fixture",
 	)
@@ -861,7 +865,7 @@ func authzMetrics(t *testing.T, process *authzProcess) map[string]float64 {
 			for _, label := range metric.Label {
 				labels[label.GetName()] = label.GetValue()
 			}
-			if len(labels) != 2 || !slices.Contains([]string{"ListClusters", "DescribeCluster"}, labels["operation"]) {
+			if len(labels) != 2 || !slices.Contains([]string{"ListClusters", "DescribeCluster", "CreateCluster", "UpdateCluster", "UpdateClusterConfig", "UpdateClusterVersion", "DeleteCluster", "ListNodePools", "DescribeNodePool", "CreateNodePool", "UpdateNodePool", "ScaleNodePool", "UpdateNodePoolVersion", "DeleteNodePool", "ListOIDCConfigs", "DescribeOIDCConfig", "CreateOIDCConfig", "DeleteOIDCConfig", "ListManagementClusters", "DescribeManagementCluster", "CreateManagementCluster"}, labels["operation"]) {
 				t.Errorf("unbounded metric labels %s %v", name, labels)
 			}
 			classification := labels["outcome"]

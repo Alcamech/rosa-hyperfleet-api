@@ -12,8 +12,8 @@ func TestNewConfig(t *testing.T) {
 		t.Fatal("expected non-nil config")
 	}
 
-	if cfg.Authz.Resolver != "config" || cfg.Authz.ConfigFile != "" {
-		t.Fatalf("expected config resolver and no implicit bundle, got %+v", cfg.Authz)
+	if cfg.Authz.ConfigFile != "" {
+		t.Fatalf("expected no implicit authorization bundle, got %+v", cfg.Authz)
 	}
 
 	// Test Server config defaults

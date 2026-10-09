@@ -21,7 +21,7 @@ func bundleFixture() map[string]any {
 		"formatVersion":      1,
 		"registeredAccounts": []string{accountID, "210987654321"},
 		"policies":           []map[string]any{{"id": "read", "ownerAccountID": accountID, "content": readPermit}},
-		"attachments":        []map[string]any{{"id": "role-read", "policyID": "read", "principalARN": roleARN, "bindingMode": "role-membership", "scope": "global"}},
+		"attachments":        []map[string]any{{"id": "role-read", "policyID": "read", "principalARN": roleARN, "scope": "global"}},
 	}
 }
 
@@ -43,59 +43,74 @@ func configFile(t *testing.T, content string) string {
 	return path
 }
 
-func fixtureResolver(t *testing.T, bundle map[string]any) *ConfigResolver {
+func fixtureAuthorizer(t *testing.T, bundle map[string]any) *Authorizer {
 	t.Helper()
-	resolver, err := LoadConfig(configFile(t, encodeBundle(t, bundle)))
+	authorizer, err := LoadConfig(configFile(t, encodeBundle(t, bundle)), region)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return resolver
+	return authorizer
 }
 
 func testIdentity(arn string) Identity {
-	return Identity{AccountID: accountID, CallerARN: arn, Region: region}
+	return Identity{AccountID: accountID, CallerARN: arn}
+}
+
+func testPrincipal(t *testing.T, arn string) principalARN {
+	t.Helper()
+	principal, err := parsePrincipal(arn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return principal
 }
 
 func TestResolution(t *testing.T) {
 	bundle := bundleFixture()
 	bundle["policies"] = append(bundle["policies"].([]map[string]any), map[string]any{"id": "block", "ownerAccountID": accountID, "content": `forbid(principal, action in HyperFleet::Action::"ReadOnly", resource);`})
 	bundle["attachments"] = append(bundle["attachments"].([]map[string]any),
-		map[string]any{"id": "session-block", "policyID": "block", "principalARN": sessionARN, "bindingMode": "exact-principal", "scope": "global"},
-		map[string]any{"id": "role-local", "policyID": "read", "principalARN": roleARN, "bindingMode": "role-membership", "scope": "regional", "region": region},
-		map[string]any{"id": "role-west", "policyID": "block", "principalARN": roleARN, "bindingMode": "role-membership", "scope": "regional", "region": "us-west-2"},
-		map[string]any{"id": "user-read", "policyID": "read", "principalARN": userARN, "bindingMode": "exact-principal", "scope": "global"},
-		map[string]any{"id": "foreign-role", "policyID": "foreign", "principalARN": "arn:aws:iam::210987654321:role/readers", "bindingMode": "role-membership", "scope": "global"},
+		map[string]any{"id": "session-block", "policyID": "block", "principalARN": sessionARN, "scope": "global"},
+		map[string]any{"id": "role-local", "policyID": "read", "principalARN": roleARN, "scope": "regional", "region": region},
+		map[string]any{"id": "role-west", "policyID": "block", "principalARN": roleARN, "scope": "regional", "region": "us-west-2"},
+		map[string]any{"id": "user-read", "policyID": "read", "principalARN": userARN, "scope": "global"},
+		map[string]any{"id": "foreign-role", "policyID": "foreign", "principalARN": "arn:aws:iam::210987654321:role/readers", "scope": "global"},
 	)
 	bundle["policies"] = append(bundle["policies"].([]map[string]any), map[string]any{"id": "foreign", "ownerAccountID": "210987654321", "content": readPermit})
 	content := encodeBundle(t, bundle)
 	path := configFile(t, content)
-	resolver, err := LoadConfig(path)
+	authorizer, err := LoadConfig(path, region)
 	if err != nil {
 		t.Fatal(err)
 	}
 	revision := fmt.Sprintf("%x", sha256.Sum256([]byte(content)))
 	for _, tc := range []struct {
-		name     string
-		identity Identity
-		want     []string
+		name          string
+		caller        string
+		serviceRegion string
+		want          []string
 	}{
-		{"session and parent role", testIdentity(sessionARN), []string{"role-read", "session-block", "role-local"}},
-		{"another session", testIdentity(otherSessionARN), []string{"role-read", "role-local"}},
-		{"exact user", testIdentity(userARN), []string{"user-read"}},
-		{"empty grants", testIdentity("arn:aws:iam::123456789012:user/bob"), []string{}},
-		{"off-region keeps globals", Identity{accountID, sessionARN, "eu-west-1"}, []string{"role-read", "session-block"}},
-		{"another account", Identity{"210987654321", "arn:aws:sts::210987654321:assumed-role/readers/s", region}, []string{"foreign-role"}},
+		{"session and parent role", sessionARN, region, []string{"role-read", "session-block", "role-local"}},
+		{"another session", otherSessionARN, region, []string{"role-read", "role-local"}},
+		{"exact user", userARN, region, []string{"user-read"}},
+		{"empty grants", "arn:aws:iam::123456789012:user/bob", region, []string{}},
+		{"unrelated role", "arn:aws:sts::123456789012:assumed-role/writers/s", region, []string{}},
+		{"off-region keeps globals", sessionARN, "eu-west-1", []string{"role-read", "session-block"}},
+		{"another account", "arn:aws:sts::210987654321:assumed-role/readers/s", region, []string{"foreign-role"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			bindings, err := resolver.Resolve(context.Background(), tc.identity)
+			a, err := LoadConfig(path, tc.serviceRegion)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bindings, err := a.source.resolve(context.Background(), testPrincipal(t, tc.caller))
 			if err != nil {
 				t.Fatal(err)
 			}
 			got := []string{}
 			ids := map[string]bool{}
-			for _, b := range bindings {
+			for _, b := range bindings.customer {
 				got = append(got, b.AttachmentID)
-				if b.PolicyRevision != revision || b.AttachmentRevision != revision || b.PolicyContent == "" || b.Caller != tc.identity || b.PolicyID == "" || b.PrincipalARN == "" || b.Scope == "" || b.BindingMode == "" || b.DiagnosticID == "" || ids[b.DiagnosticID] {
+				if b.PolicyRevision != revision || b.AttachmentRevision != revision || b.policy == nil || b.principal.original != b.PrincipalARN || ids[b.DiagnosticID] {
 					t.Fatalf("incomplete or duplicated provenance: %+v", b)
 				}
 				ids[b.DiagnosticID] = true
@@ -106,24 +121,45 @@ func TestResolution(t *testing.T) {
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("want %v, got %v", tc.want, got)
 			}
-			if len(bindings) > 0 {
-				bindings[0].PolicyContent = "corrupted"
-				bindings[0].PrincipalARN = "corrupted"
+			if len(bindings.customer) > 0 {
+				original := bindings.customer[0]
+				bindings.customer[0].policy = nil
+				bindings.customer[0].PrincipalARN = "corrupted"
+				again, err := a.source.resolve(t.Context(), testPrincipal(t, tc.caller))
+				if err != nil || len(again.customer) != len(bindings.customer) || again.customer[0] != original {
+					t.Fatalf("source attachment changed through returned copies: %+v %v", again, err)
+				}
 			}
 		})
 	}
-	if !resolver.IsAccountRegistered(context.Background(), accountID) || resolver.IsAccountRegistered(context.Background(), "999999999999") || resolver.IsAccountRegistered(context.Background(), "") {
+	if !authorizer.IsAccountRegistered(context.Background(), accountID) || authorizer.IsAccountRegistered(context.Background(), "999999999999") || authorizer.IsAccountRegistered(context.Background(), "") {
 		t.Fatal("enrollment is not exact membership")
 	}
 	if err := os.WriteFile(path, []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	bindings, err := resolver.Resolve(context.Background(), testIdentity(sessionARN))
-	if err != nil || len(bindings) != 3 || bindings[0].PolicyContent != readPermit {
+	bindings, err := authorizer.source.resolve(context.Background(), testPrincipal(t, sessionARN))
+	if err != nil || len(bindings.customer) != 3 || bindings.customer[0].policy == nil || bindings.customer[0].PrincipalARN != roleARN {
 		t.Fatalf("loaded snapshot changed: %v %+v", err, bindings)
 	}
-	if replacement, err := LoadConfig(path); err == nil || replacement != nil {
+	if replacement, err := LoadConfig(path, region); err == nil || replacement != nil {
 		t.Fatal("invalid replacement accepted")
+	}
+}
+
+func TestLoadConfigRejectsV2(t *testing.T) {
+	source := encodeBundle(t, bundleFixture())
+	if _, err := LoadConfig(configFile(t, source), region); err != nil {
+		t.Fatal(err)
+	}
+	service := serviceBundle()
+	wrapper := map[string]any{
+		"formatVersion": 2, "sourceConfig": source, "registeredAccount": accountID,
+		"serviceOperatorPolicies":    service["serviceOperatorPolicies"],
+		"serviceOperatorAttachments": service["serviceOperatorAttachments"],
+	}
+	if a, err := LoadConfig(configFile(t, encodeBundle(t, wrapper)), region); err == nil || a != nil {
+		t.Fatal("LoadConfig accepted a valid version-2 wrapper")
 	}
 }
 
@@ -173,10 +209,6 @@ func TestMalformedBundles(t *testing.T) {
 		{"China role rejected", func(b map[string]any) {
 			b["attachments"].([]map[string]any)[0]["principalARN"] = "arn:aws-cn:iam::123456789012:role/readers"
 		}},
-		{"bad mode", func(b map[string]any) { b["attachments"].([]map[string]any)[0]["bindingMode"] = "implicit" }},
-		{"exact role rejected", func(b map[string]any) { b["attachments"].([]map[string]any)[0]["bindingMode"] = "exact-principal" }},
-		{"session membership rejected", func(b map[string]any) { b["attachments"].([]map[string]any)[0]["principalARN"] = sessionARN }},
-		{"user membership rejected", func(b map[string]any) { b["attachments"].([]map[string]any)[0]["principalARN"] = userARN }},
 		{"unknown scope", func(b map[string]any) { b["attachments"].([]map[string]any)[0]["scope"] = "all" }},
 		{"regional needs region", func(b map[string]any) { b["attachments"].([]map[string]any)[0]["scope"] = "regional" }},
 		{"global forbids region", func(b map[string]any) { b["attachments"].([]map[string]any)[0]["region"] = region }},
@@ -186,7 +218,7 @@ func TestMalformedBundles(t *testing.T) {
 			a["region"] = " US EAST "
 		}},
 		{"ambiguous role alias", func(b map[string]any) {
-			b["attachments"] = append(b["attachments"].([]map[string]any), map[string]any{"id": "alias", "policyID": "read", "principalARN": "arn:aws:iam::123456789012:role/other/readers", "bindingMode": "role-membership", "scope": "regional", "region": "us-west-2"})
+			b["attachments"] = append(b["attachments"].([]map[string]any), map[string]any{"id": "alias", "policyID": "read", "principalARN": "arn:aws:iam::123456789012:role/other/readers", "scope": "regional", "region": "us-west-2"})
 		}},
 		{"malformed permit", func(b map[string]any) { b["policies"].([]map[string]any)[0]["content"] = "permit(" }},
 		{"malformed forbid off-region", func(b map[string]any) {
@@ -211,7 +243,7 @@ func TestMalformedBundles(t *testing.T) {
 			a := b["attachments"].([]map[string]any)[0]
 			a["scope"] = "regional"
 			a["region"] = "us-west-2"
-			a["bindingMode"] = "implicit"
+			a["principalARN"] = "invalid"
 		}},
 		{"off-region schema invalid forbid", func(b map[string]any) {
 			b["policies"].([]map[string]any)[0]["content"] = `forbid(principal, action == HyperFleet::Action::"DescribeCluster", resource) when { resource.missing == "blocked" };`
@@ -246,7 +278,7 @@ func TestMalformedBundles(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			b := bundleFixture()
 			tc.mutate(b)
-			r, err := LoadConfig(configFile(t, encodeBundle(t, b)))
+			r, err := LoadConfig(configFile(t, encodeBundle(t, b)), region)
 			if err == nil || r != nil {
 				t.Fatalf("accepted malformed bundle: %v %+v", err, r)
 			}
@@ -255,12 +287,12 @@ func TestMalformedBundles(t *testing.T) {
 	valid := encodeBundle(t, bundleFixture())
 	for name, content := range map[string]string{
 		"known-field anchor":   strings.Replace(valid, "scope: global", "scope: &scope global", 1),
-		"known-field alias":    strings.Replace(strings.Replace(valid, "scope: global", "scope: *mode", 1), "bindingMode: role-membership", "bindingMode: &mode role-membership", 1),
+		"known-field alias":    strings.Replace(strings.Replace(valid, "scope: global", "scope: *scope", 1), "id: role-read", "id: &scope role-read", 1),
 		"nested duplicate key": strings.Replace(valid, "scope: global", "scope: global\n      scope: global", 1),
 		"timestamp scalar":     strings.Replace(valid, "scope: global", "scope: 2026-01-01", 1),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if r, err := LoadConfig(configFile(t, content)); err == nil || r != nil {
+			if r, err := LoadConfig(configFile(t, content), region); err == nil || r != nil {
 				t.Fatalf("accepted malformed YAML: %v %+v", err, r)
 			}
 		})
@@ -269,25 +301,25 @@ func TestMalformedBundles(t *testing.T) {
 		"empty": "", "syntax": "[", "nonobject": "[]", "second document": valid + "\n---\n{}\n", "empty trailing document": valid + "\n---\n", "trailing junk": valid + "\nnot yaml", "duplicate YAML key": valid + "\nformatVersion: 1\n", "alias": strings.Replace(valid, "scope: global", "scope: &s global", 1) + "\nextra: *s\n", "custom tag": strings.Replace(valid, "scope: global", "scope: !custom global", 1), "merge key": valid + "\n<<: {}\n", "numeric account": strings.Replace(valid, `"123456789012"`, "123456789012", 1),
 	} {
 		t.Run(name, func(t *testing.T) {
-			r, err := LoadConfig(configFile(t, content))
+			r, err := LoadConfig(configFile(t, content), region)
 			if err == nil || r != nil {
 				t.Fatalf("accepted malformed YAML: %v %+v", err, r)
 			}
 		})
 	}
-	if r, err := LoadConfig(filepath.Join(t.TempDir(), "missing")); err == nil || r != nil {
+	if r, err := LoadConfig(filepath.Join(t.TempDir(), "missing"), region); err == nil || r != nil {
 		t.Fatal("missing file accepted")
 	}
 	empty := map[string]any{"formatVersion": 1, "registeredAccounts": []string{}, "policies": []any{}, "attachments": []any{}}
-	r := fixtureResolver(t, empty)
-	bindings, err := r.Resolve(context.Background(), testIdentity(userARN))
-	if err != nil || len(bindings) != 0 || r.IsAccountRegistered(context.Background(), accountID) {
+	r := fixtureAuthorizer(t, empty)
+	bindings, err := r.source.resolve(context.Background(), testPrincipal(t, userARN))
+	if err != nil || len(bindings.customer) != 0 || len(bindings.serviceOperator) != 0 || r.IsAccountRegistered(context.Background(), accountID) {
 		t.Fatalf("empty deny bundle failed: %v %+v", err, bindings)
 	}
 }
 
 func TestIdentityARNBoundary(t *testing.T) {
-	resolver := fixtureResolver(t, bundleFixture())
+	authorizer := fixtureAuthorizer(t, bundleFixture())
 	for _, arn := range []string{
 		"arn:aws-us-gov:iam::123456789012:user/alice",
 		"arn:aws-us-gov:sts::123456789012:assumed-role/readers/session",
@@ -296,20 +328,20 @@ func TestIdentityARNBoundary(t *testing.T) {
 		"", "arn:aws:iam::210987654321:user/alice", "arn:aws:s3::123456789012:user/alice", "arn:aws:iam:us-east-1:123456789012:user/alice", "arn:aws:iam::123:user/alice", "arn:aws:iam::123456789012:root", "arn:aws:iam::123456789012:role/readers", "arn:aws:sts::123456789012:assumed-role/path/readers/session", "arn:aws:sts::123456789012:assumed-role/readers/", "arn:aws:iam::123456789012:user//alice", "arn:aws:iam::123456789012:user/../alice", "arn:aws:iam::123456789012:user/alice ", "arn:unknown:iam::123456789012:user/alice", "arn:aws:iam::123456789012:user/alice:extra",
 	} {
 		t.Run(arn, func(t *testing.T) {
-			b, err := resolver.Resolve(context.Background(), testIdentity(arn))
+			b, err := authorizer.Prepare(context.Background(), testIdentity(arn), testRequestContext())
 			if err == nil || b != nil {
 				t.Fatalf("bad caller accepted: %v %+v", err, b)
 			}
 		})
 	}
-	for _, id := range []Identity{{"123", userARN, region}, {accountID, userARN, ""}, {accountID, userARN, "bad region"}} {
-		if b, err := resolver.Resolve(context.Background(), id); err == nil || b != nil {
+	for _, id := range []Identity{{"123", userARN}, {"", userARN}} {
+		if b, err := authorizer.Prepare(context.Background(), id, testRequestContext()); err == nil || b != nil {
 			t.Fatalf("bad identity accepted: %v %+v", err, b)
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if b, err := resolver.Resolve(ctx, testIdentity(userARN)); err == nil || b != nil {
+	if b, err := authorizer.Prepare(ctx, testIdentity(userARN), testRequestContext()); err == nil || b != nil {
 		t.Fatal("canceled resolution succeeded")
 	}
 }

@@ -1,9 +1,7 @@
 package authz
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"os"
 	"reflect"
 	"slices"
@@ -70,16 +68,6 @@ func checkPolicy(t *testing.T, v *validate.Validator, id cedar.PolicyID, policy 
 	}
 }
 
-func boundPolicy(t *testing.T, v *validate.Validator, content string, target cedar.EntityUID, mode bindingMode) *cedar.Policy {
-	t.Helper()
-	policy, err := bindPolicy(content, target, mode)
-	if err != nil {
-		t.Fatal(err)
-	}
-	checkPolicy(t, v, "binding", policy)
-	return policy
-}
-
 func policySet(t *testing.T, v *validate.Validator, policies map[cedar.PolicyID]*cedar.Policy) *cedar.PolicySet {
 	t.Helper()
 	set := cedar.NewPolicySet()
@@ -131,6 +119,8 @@ func gateRequest(action string, principal cedar.EntityUID) cedar.Request {
 	}
 	return cedar.Request{Principal: principal, Action: uid("Action", action), Resource: resource, Context: cedar.NewRecord(cedar.RecordMap{
 		"region": cedar.String(region), "accountId": cedar.String(accountID), "principalArn": principal.ID,
+		"sourceIp": cedar.String("192.0.2.1"), "userAgent": cedar.String("authz-test"),
+		"requestTime": cedar.NewRecord(cedar.RecordMap{"unixSeconds": cedar.Long(1), "dayOfWeek": cedar.Long(1), "hour": cedar.Long(12)}),
 	})}
 }
 
@@ -153,7 +143,7 @@ func checkDecision(t *testing.T, set *cedar.PolicySet, entities cedar.EntityMap,
 
 func TestSchemaValidation(t *testing.T) {
 	model, v := gateSchema(t)
-	if len(model.Entities) != 4 || len(model.Actions) != 3 {
+	if len(model.Entities) != 8 || len(model.Actions) != 27 {
 		t.Fatalf("resolved declarations: %+v", model)
 	}
 	cluster := model.Entities["HyperFleet::Cluster"]
@@ -207,7 +197,7 @@ func TestSchemaValidation(t *testing.T) {
 	for name, content := range map[string]string{
 		"unknown attribute":     `permit(principal, action == HyperFleet::Action::"DescribeCluster", resource) when { resource.unknown == "x" };`,
 		"wrong attribute type":  `permit(principal, action == HyperFleet::Action::"DescribeCluster", resource) when { resource.account == 12 };`,
-		"unknown action":        `permit(principal, action == HyperFleet::Action::"DeleteCluster", resource);`,
+		"unknown action":        `permit(principal, action == HyperFleet::Action::"UnimplementedAction", resource);`,
 		"wrong action resource": `permit(principal, action == HyperFleet::Action::"ListClusters", resource is HyperFleet::Cluster);`,
 		"unguarded tag":         `permit(principal, action == HyperFleet::Action::"DescribeCluster", resource) when { resource.getTag("example.com/team") == "blue" };`,
 	} {
@@ -333,216 +323,23 @@ func TestMetadataLabelTags(t *testing.T) {
 	}
 }
 
-func TestBindingExactAndMembership(t *testing.T) {
-	model, v := gateSchema(t)
-	entities := gateEntities(model, map[string]string{"example.com/team": `blue "team"`})
-	for _, tc := range []struct {
-		name   string
-		target cedar.EntityUID
-		mode   bindingMode
-		caller cedar.EntityUID
-		want   cedar.Decision
-	}{
-		{"exact user", uid("Principal", userARN), exactPrincipal, uid("Principal", userARN), cedar.Allow},
-		{"user is not session", uid("Principal", userARN), exactPrincipal, uid("Principal", sessionARN), cedar.Deny},
-		{"exact session", uid("Principal", sessionARN), exactPrincipal, uid("Principal", sessionARN), cedar.Allow},
-		{"other session", uid("Principal", sessionARN), exactPrincipal, uid("Principal", otherSessionARN), cedar.Deny},
-		{"exact role is not membership", uid("Role", roleARN), exactPrincipal, uid("Principal", sessionARN), cedar.Deny},
-		{"exact role itself", uid("Role", roleARN), exactPrincipal, uid("Role", roleARN), cedar.Allow},
-		{"role child", uid("Role", roleARN), roleMembership, uid("Principal", sessionARN), cedar.Allow},
-		{"other role child", uid("Role", roleARN), roleMembership, uid("Principal", otherSessionARN), cedar.Allow},
-		{"unrelated user", uid("Role", roleARN), roleMembership, uid("Principal", userARN), cedar.Deny},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			policy := boundPolicy(t, v, labelPermit, tc.target, tc.mode)
-			set := policySet(t, v, map[cedar.PolicyID]*cedar.Policy{"attachment": policy})
-			req := gateRequest(describeCluster, tc.caller)
-			if err := v.Request(req); err != nil {
-				t.Fatal(err)
-			}
-			if tc.want == cedar.Allow {
-				checkDecision(t, set, entities, req, tc.want, "attachment")
-			} else {
-				checkDecision(t, set, entities, req, tc.want)
-			}
-		})
-	}
-}
-
-func TestBindingOnlyNarrows(t *testing.T) {
-	model, v := gateSchema(t)
-	content := `@description("retain every original constraint")
-permit(principal == HyperFleet::Principal::"arn:aws:sts::123456789012:assumed-role/readers/session-a", action == HyperFleet::Action::"DescribeCluster", resource in HyperFleet::Collection::"123456789012/us-east-1/clusters")
-when { resource.hasTag("example.com/team") && resource.getTag("example.com/team") == "blue \"team\"" }
-unless { resource.hasTag("example.com/blocked") };`
-	original := parsePolicy(t, content)
-	before := policyJSON(t, original)
-	bound := boundPolicy(t, v, content, uid("Role", roleARN), roleMembership)
-	assertAddedConstraint(t, original, bound)
-	set := policySet(t, v, map[cedar.PolicyID]*cedar.Policy{"narrowed": bound})
-	entities := gateEntities(model, map[string]string{"example.com/team": `blue "team"`})
-	checkDecision(t, set, entities, gateRequest(describeCluster, uid("Principal", sessionARN)), cedar.Allow, "narrowed")
-	checkDecision(t, set, entities, gateRequest(describeCluster, uid("Principal", otherSessionARN)), cedar.Deny)
-	checkDecision(t, set, entities, gateRequest(listClusters, uid("Principal", sessionARN)), cedar.Deny)
-	for _, labels := range []map[string]string{nil, {"example.com/team": "red"}, {"example.com/team": `blue "team"`, "example.com/blocked": "yes"}} {
-		checkDecision(t, set, gateEntities(model, labels), gateRequest(describeCluster, uid("Principal", sessionARN)), cedar.Deny)
-	}
-	resource := entities[gateRequest(describeCluster, uid("Principal", sessionARN)).Resource]
-	resource.Parents = cedar.NewEntityUIDSet()
-	entities[resource.UID] = resource
-	checkDecision(t, set, entities, gateRequest(describeCluster, uid("Principal", sessionARN)), cedar.Deny)
-	if !bytes.Equal(before, policyJSON(t, original)) {
-		t.Fatal("source policy changed")
-	}
-
-	t.Run("explicit equality remains equality", func(t *testing.T) {
-		content := `permit(principal == HyperFleet::Role::"arn:aws:iam::123456789012:role/platform/readers", action in HyperFleet::Action::"ReadOnly", resource);`
-		policy := boundPolicy(t, v, content, uid("Role", roleARN), roleMembership)
-		assertAddedConstraint(t, parsePolicy(t, content), policy)
-		set := policySet(t, v, map[cedar.PolicyID]*cedar.Policy{"role-equality": policy})
-		checkDecision(t, set, gateEntities(model, nil), gateRequest(describeCluster, uid("Principal", sessionARN)), cedar.Deny)
-		checkDecision(t, set, gateEntities(model, nil), gateRequest(describeCluster, uid("Role", roleARN)), cedar.Allow, "role-equality")
-	})
-}
-
-func policyJSON(t *testing.T, policy *cedar.Policy) []byte {
-	t.Helper()
-	encoded, err := policy.MarshalJSON()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return encoded
-}
-
-func assertAddedConstraint(t *testing.T, source, bound *cedar.Policy) {
-	t.Helper()
-	var before, after map[string]json.RawMessage
-	if err := json.Unmarshal(policyJSON(t, source), &before); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(policyJSON(t, bound), &after); err != nil {
-		t.Fatal(err)
-	}
-	var oldConditions, newConditions []json.RawMessage
-	if len(before["conditions"]) > 0 {
-		if err := json.Unmarshal(before["conditions"], &oldConditions); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := json.Unmarshal(after["conditions"], &newConditions); err != nil {
-		t.Fatal(err)
-	}
-	if len(newConditions) != len(oldConditions)+1 || !slices.EqualFunc(oldConditions, newConditions[1:], func(a, b json.RawMessage) bool { return bytes.Equal(a, b) }) {
-		t.Fatalf("binding did not preserve conditions and prepend exactly one constraint: %s", policyJSON(t, bound))
-	}
-	delete(before, "conditions")
-	delete(after, "conditions")
-	if !reflect.DeepEqual(before, after) {
-		t.Fatalf("binding changed original effect, annotations, or scopes: before %v, after %v", before, after)
-	}
-}
-
-func TestConcurrentBindings(t *testing.T) {
-	model, v := gateSchema(t)
-	original := parsePolicy(t, labelPermit)
-	before := policyJSON(t, original)
-	entities := gateEntities(model, map[string]string{"example.com/team": `blue "team"`})
-	first := boundPolicy(t, v, labelPermit, uid("Principal", sessionARN), exactPrincipal)
-	firstJSON := policyJSON(t, first)
-	second := boundPolicy(t, v, labelPermit, uid("Principal", otherSessionARN), exactPrincipal)
-	if !bytes.Equal(firstJSON, policyJSON(t, first)) {
-		t.Fatal("second attachment changed first binding")
-	}
-	set := policySet(t, v, map[cedar.PolicyID]*cedar.Policy{"attachment-a": first, "attachment-b": second})
-	checkDecision(t, set, entities, gateRequest(describeCluster, uid("Principal", sessionARN)), cedar.Allow, "attachment-a")
-	checkDecision(t, set, entities, gateRequest(describeCluster, uid("Principal", otherSessionARN)), cedar.Allow, "attachment-b")
-	for i := range 32 {
-		arn := fmt.Sprintf("arn:aws:sts::123456789012:assumed-role/readers/session-%d", i)
-		principal := uid("Principal", arn)
-		entities[principal] = cedar.Entity{UID: principal, Parents: cedar.NewEntityUIDSet(uid("Role", roleARN)), Attributes: cedar.NewRecord(cedar.RecordMap{"account": cedar.String(accountID)})}
-	}
-	if err := v.Entities(entities); err != nil {
-		t.Fatal(err)
-	}
-	t.Run("sessions", func(t *testing.T) {
-		for i := range 32 {
-			t.Run(fmt.Sprintf("attachment-%d", i), func(t *testing.T) {
-				t.Parallel()
-				arn := fmt.Sprintf("arn:aws:sts::123456789012:assumed-role/readers/session-%d", i)
-				other := fmt.Sprintf("arn:aws:sts::123456789012:assumed-role/readers/session-%d", (i+1)%32)
-				for range 8 {
-					policy := boundPolicy(t, v, labelPermit, uid("Principal", arn), exactPrincipal)
-					assertAddedConstraint(t, original, policy)
-					id := cedar.PolicyID(fmt.Sprintf("attachment-%d", i))
-					set := policySet(t, v, map[cedar.PolicyID]*cedar.Policy{id: policy})
-					checkDecision(t, set, entities, gateRequest(describeCluster, uid("Principal", arn)), cedar.Allow, id)
-					checkDecision(t, set, entities, gateRequest(describeCluster, uid("Principal", other)), cedar.Deny)
-					role := boundPolicy(t, v, labelPermit, uid("Role", roleARN), roleMembership)
-					roleSet := policySet(t, v, map[cedar.PolicyID]*cedar.Policy{"role": role})
-					checkDecision(t, roleSet, entities, gateRequest(describeCluster, uid("Principal", other)), cedar.Allow, "role")
-				}
-			})
-		}
-	})
-	if !bytes.Equal(before, policyJSON(t, original)) {
-		t.Fatal("concurrent binding mutated source policy")
-	}
-}
-
-func TestInvalidBindings(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		content string
-		target  cedar.EntityUID
-		mode    bindingMode
-	}{
-		{"unknown mode", labelPermit, uid("Principal", sessionARN), bindingMode("unknown")},
-		{"empty target", labelPermit, uid("Principal", ""), exactPrincipal},
-		{"wrong exact type", labelPermit, uid("Cluster", "cluster"), exactPrincipal},
-		{"session is not role", labelPermit, uid("Principal", sessionARN), roleMembership},
-		{"bad syntax", "permit(", uid("Principal", sessionARN), exactPrincipal},
-		{"unsupported native slot", `permit(principal == ?principal, action, resource);`, uid("Principal", sessionARN), exactPrincipal},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			policy, err := bindPolicy(tc.content, tc.target, tc.mode)
-			if err == nil || policy != nil {
-				t.Fatalf("want error and no usable policy, got %v, %v", policy, err)
-			}
-		})
-	}
-	t.Run("quoted principal is data", func(t *testing.T) {
-		model, v := gateSchema(t)
-		target := uid("Principal", `session"; forbid(principal, action, resource); //`)
-		policy := boundPolicy(t, v, labelPermit, target, exactPrincipal)
-		entities := gateEntities(model, map[string]string{"example.com/team": `blue "team"`})
-		entities[target] = cedar.Entity{UID: target, Attributes: cedar.NewRecord(cedar.RecordMap{"account": cedar.String(accountID)})}
-		if err := v.Entities(entities); err != nil {
-			t.Fatal(err)
-		}
-		set := policySet(t, v, map[cedar.PolicyID]*cedar.Policy{"quoted": policy})
-		checkDecision(t, set, entities, gateRequest(describeCluster, target), cedar.Allow, "quoted")
-		checkDecision(t, set, entities, gateRequest(describeCluster, uid("Principal", sessionARN)), cedar.Deny)
-	})
-}
-
 func TestForbidsAndDiagnostics(t *testing.T) {
 	model, v := gateSchema(t)
 	entities := gateEntities(model, map[string]string{"example.com/team": `blue "team"`})
-	permit := boundPolicy(t, v, labelPermit, uid("Role", roleARN), roleMembership)
-	forbidContent := `@description("exact session prohibition") forbid(principal, action == HyperFleet::Action::"DescribeCluster", resource);`
-	forbid := boundPolicy(t, v, forbidContent, uid("Principal", sessionARN), exactPrincipal)
-	assertAddedConstraint(t, parsePolicy(t, forbidContent), forbid)
+	permit := parsePolicy(t, labelPermit)
+	forbidContent := `@description("exact session prohibition") forbid(principal == HyperFleet::Principal::"arn:aws:sts::123456789012:assumed-role/readers/session-a", action == HyperFleet::Action::"DescribeCluster", resource);`
+	forbid := parsePolicy(t, forbidContent)
 	set := policySet(t, v, map[cedar.PolicyID]*cedar.Policy{"role-permit": permit, "session-forbid": forbid})
 	checkDecision(t, set, entities, gateRequest(describeCluster, uid("Principal", sessionARN)), cedar.Deny, "session-forbid")
 	checkDecision(t, set, entities, gateRequest(describeCluster, uid("Principal", otherSessionARN)), cedar.Allow, "role-permit")
 	checkDecision(t, cedar.NewPolicySet(), entities, gateRequest(describeCluster, uid("Principal", sessionARN)), cedar.Deny)
 
 	t.Run("permit plus failing forbid", func(t *testing.T) {
-		failingContent := `forbid(principal, action == HyperFleet::Action::"DescribeCluster", resource) when { resource.account == "blocked" };`
-		failing := boundPolicy(t, v, failingContent, uid("Principal", sessionARN), exactPrincipal)
-		unaffected := boundPolicy(t, v, failingContent, uid("Principal", otherSessionARN), exactPrincipal)
+		failingContent := `forbid(principal == HyperFleet::Principal::"arn:aws:sts::123456789012:assumed-role/readers/session-a", action == HyperFleet::Action::"DescribeCluster", resource) when { resource.account == "blocked" };`
+		failing := parsePolicy(t, failingContent)
+		unaffected := parsePolicy(t, strings.Replace(failingContent, "session-a", "session-b", 1))
 		set := policySet(t, v, map[cedar.PolicyID]*cedar.Policy{
-			"permit":              boundPolicy(t, v, `permit(principal, action == HyperFleet::Action::"DescribeCluster", resource);`, uid("Role", roleARN), roleMembership),
+			"permit":              parsePolicy(t, `permit(principal, action == HyperFleet::Action::"DescribeCluster", resource);`),
 			"forbid-attachment-a": failing, "forbid-attachment-b": unaffected,
 		})
 		req := gateRequest(describeCluster, uid("Principal", sessionARN))

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -37,74 +36,40 @@ attachments:
   - id: user-read
     policyID: read
     principalARN: arn:aws:iam::123456789012:user/test
-    bindingMode: exact-principal
     scope: global
   - id: unregistered-user-read
     policyID: unregistered-read
     principalARN: arn:aws:iam::999999999999:user/test
-    bindingMode: exact-principal
     scope: global
 `
 
-func configuredResolver(t *testing.T, cfg *config.Config) *authz.ConfigResolver {
+func configuredAuthorizer(t *testing.T, cfg *config.Config) *authz.Authorizer {
 	t.Helper()
 	cfg.Regional.AWSRegion = "us-east-1"
-	cfg.Authz.Resolver = "config"
 	cfg.Authz.ConfigFile = filepath.Join(t.TempDir(), "authz.yaml")
 	if err := os.WriteFile(cfg.Authz.ConfigFile, []byte(serverBundle), 0600); err != nil {
 		t.Fatal(err)
 	}
-	resolver, err := authz.LoadConfig(cfg.Authz.ConfigFile)
+	authorizer, err := authz.LoadConfig(cfg.Authz.ConfigFile, cfg.Regional.AWSRegion)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return resolver
+	return authorizer
 }
 
 func newConfiguredServer(t *testing.T, cfg *config.Config, db *hyperfleetdb.Client, logger *slog.Logger) (*Server, error) {
 	t.Helper()
-	resolver := configuredResolver(t, cfg)
-	authorizer, err := authz.NewAuthorizer(resolver)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return New(cfg, db, authorizer, resolver.IsAccountRegistered, logger)
+	authorizer := configuredAuthorizer(t, cfg)
+	return New(cfg, db, authorizer, logger)
 }
 
-func TestNewRequiresDependencies(t *testing.T) {
+func TestNewRequiresAuthorizer(t *testing.T) {
 	cfg := config.NewConfig()
-	resolver := configuredResolver(t, cfg)
-	authorizer, err := authz.NewAuthorizer(resolver)
-	if err != nil {
-		t.Fatal(err)
-	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	for _, tc := range []struct {
-		name       string
-		authorizer *authz.Authorizer
-		lookup     func(context.Context, string) bool
-	}{
-		{"authorizer", nil, resolver.IsAccountRegistered},
-		{"lookup", authorizer, nil},
-		{"both", nil, nil},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			server, err := New(cfg, nil, tc.authorizer, tc.lookup, logger)
-			if err == nil || server != nil {
-				t.Fatalf("missing dependency accepted: server=%v error=%v", server, err)
-			}
-		})
+	srv, err := New(cfg, nil, nil, logger)
+	if err == nil || srv != nil {
+		t.Fatalf("missing authorizer accepted: server=%v error=%v", srv, err)
 	}
-}
-
-type resolutionProbe struct {
-	resolver *authz.ConfigResolver
-	calls    int
-}
-
-func (p *resolutionProbe) Resolve(ctx context.Context, identity authz.Identity) ([]authz.ResolvedBinding, error) {
-	p.calls++
-	return p.resolver.Resolve(ctx, identity)
 }
 
 func authzMetricSamples(t *testing.T) map[string]float64 {
@@ -138,25 +103,20 @@ func authzMetricSamples(t *testing.T) map[string]float64 {
 func TestServerEnrollment(t *testing.T) {
 	t.Setenv("TARGET_GROUP_ARN", "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/test/id")
 	cfg := config.NewConfig()
-	resolver := configuredResolver(t, cfg)
-	probe := &resolutionProbe{resolver: resolver}
-	authorizer, err := authz.NewAuthorizer(probe)
-	if err != nil {
-		t.Fatal(err)
-	}
+	authorizer := configuredAuthorizer(t, cfg)
 	scheme := runtime.NewScheme()
 	if err := hyperfleetv1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db := hyperfleetdb.NewClientFrom(fake.NewClientBuilder().WithScheme(scheme).Build(), logger)
-	srv, err := New(cfg, db, authorizer, resolver.IsAccountRegistered, logger)
+	srv, err := New(cfg, db, authorizer, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
 		name, path, account, caller string
-		wantStatus, wantResolutions int
+		wantStatus, wantAttempts    int
 	}{
 		{"enrolled with grant", "/api/v0/clusters", "123456789012", "arn:aws:iam::123456789012:user/test", http.StatusOK, 1},
 		{"enrolled without grant", "/api/v0/clusters", "123456789012", "arn:aws:iam::123456789012:user/no-grants", http.StatusForbidden, 1},
@@ -170,17 +130,26 @@ func TestServerEnrollment(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before := authzMetricSamples(t)
-			calls := probe.calls
 			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
 			req.Header.Set(middleware.HeaderAccountID, tc.account)
 			req.Header.Set(middleware.HeaderCallerARN, tc.caller)
 			w := httptest.NewRecorder()
 			srv.apiServer.Handler.ServeHTTP(w, req)
-			if w.Code != tc.wantStatus || probe.calls-calls != tc.wantResolutions {
-				t.Fatalf("status=%d, resolutions=%d, body=%s", w.Code, probe.calls-calls, w.Body.String())
+			if w.Code != tc.wantStatus {
+				t.Fatalf("status=%d, body=%s", w.Code, w.Body.String())
 			}
-			if tc.wantResolutions == 0 && !reflect.DeepEqual(before, authzMetricSamples(t)) {
+			after := authzMetricSamples(t)
+			if tc.wantAttempts == 0 && !reflect.DeepEqual(before, after) {
 				t.Fatal("public or admission rejection counted as authorization attempt")
+			}
+			var attempts float64
+			for key, value := range after {
+				if strings.HasPrefix(key, "authz_requests_total/") {
+					attempts += value - before[key]
+				}
+			}
+			if attempts != float64(tc.wantAttempts) {
+				t.Fatalf("authorization attempts=%v, want %d", attempts, tc.wantAttempts)
 			}
 			if w.Code != http.StatusForbidden {
 				return
@@ -221,19 +190,9 @@ func TestServerMultipleMetrics(t *testing.T) {
 func TestServerRateLimitBeforeAdmission(t *testing.T) {
 	cfg := config.NewConfig()
 	cfg.RateLimit = config.RateLimitConfig{Enabled: true, InMemory: true, DefaultRate: 1, DefaultBurst: 1, DefaultWindow: 60}
-	resolver := configuredResolver(t, cfg)
-	probe := &resolutionProbe{resolver: resolver}
-	authorizer, err := authz.NewAuthorizer(probe)
-	if err != nil {
-		t.Fatal(err)
-	}
+	authorizer := configuredAuthorizer(t, cfg)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	lookups := 0
-	lookup := func(ctx context.Context, account string) bool {
-		lookups++
-		return resolver.IsAccountRegistered(ctx, account)
-	}
-	srv, err := New(cfg, nil, authorizer, lookup, logger)
+	srv, err := New(cfg, nil, authorizer, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +207,7 @@ func TestServerRateLimitBeforeAdmission(t *testing.T) {
 			t.Fatalf("want %d, got %d: %s", want, w.Code, w.Body.String())
 		}
 	}
-	if lookups != 1 || probe.calls != 0 || !reflect.DeepEqual(before, authzMetricSamples(t)) {
-		t.Fatalf("rate-limited request reached admission or authorization: lookups=%d resolutions=%d", lookups, probe.calls)
+	if !reflect.DeepEqual(before, authzMetricSamples(t)) {
+		t.Fatal("admission rejection or rate-limited request counted as authorization attempt")
 	}
 }

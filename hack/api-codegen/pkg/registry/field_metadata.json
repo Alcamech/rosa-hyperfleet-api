@@ -36,6 +36,13 @@
     "ownerGVK": ""
   },
   {
+    "fieldPath": "rootVolume",
+    "writeMode": "mutable",
+    "reducedContainer": true,
+    "ownerType": "AWSNodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
     "fieldPath": "rootVolume.encrypted",
     "writeMode": "service-set",
     "ownerType": "AWSNodePoolPlatform",
@@ -86,7 +93,14 @@
   },
   {
     "fieldPath": "spec.additionalTrustBundle",
+    "updateAction": "UpdateCluster",
     "writeMode": "mutable",
+    "ownerType": "Cluster",
+    "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
+  },
+  {
+    "fieldPath": "spec.controlPlaneUpgradePolicy",
+    "updateAction": "UpdateClusterVersion",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
@@ -99,6 +113,7 @@
   },
   {
     "fieldPath": "spec.deleteProtection",
+    "updateAction": "UpdateCluster",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
@@ -111,6 +126,7 @@
   },
   {
     "fieldPath": "spec.expirationTimestamp",
+    "updateAction": "UpdateCluster",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
@@ -131,6 +147,7 @@
   },
   {
     "fieldPath": "spec.hostedCluster.autoNode",
+    "updateAction": "UpdateCluster",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
@@ -150,6 +167,7 @@
   },
   {
     "fieldPath": "spec.hostedCluster.channel",
+    "updateAction": "UpdateCluster",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
@@ -158,6 +176,15 @@
     "fieldPath": "spec.hostedCluster.clusterID",
     "writeMode": "service-set",
     "hidden": true,
+    "ownerType": "Cluster",
+    "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
+  },
+  {
+    "fieldPath": "spec.hostedCluster.configuration",
+    "updateAction": "UpdateClusterConfig",
+    "writeMode": "service-set",
+    "hidden": true,
+    "reducedContainer": true,
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
@@ -230,6 +257,13 @@
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
+    "fieldPath": "spec.hostedCluster.configuration.kubelet",
+    "writeMode": "service-set",
+    "reducedContainer": true,
+    "ownerType": "Cluster",
+    "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
+  },
+  {
     "fieldPath": "spec.hostedCluster.configuration.kubelet.allowedUnsafeSysctls",
     "writeMode": "service-set",
     "hidden": true,
@@ -238,12 +272,14 @@
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.kubelet.containerLogMaxFiles",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.kubelet.containerLogMaxSize",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
@@ -292,18 +328,21 @@
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.kubelet.imageGCHighThresholdPercent",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.kubelet.imageGCLowThresholdPercent",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.kubelet.imageMinimumGCAge",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
@@ -316,6 +355,7 @@
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.kubelet.maxPods",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
@@ -329,12 +369,14 @@
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.kubelet.podPidsLimit",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.kubelet.registryBurst",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "featureGate": "HyperFleetKubeletAdvanced",
     "ownerType": "Cluster",
@@ -342,6 +384,7 @@
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.kubelet.registryPullQPS",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "featureGate": "HyperFleetKubeletAdvanced",
     "ownerType": "Cluster",
@@ -349,6 +392,7 @@
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.kubelet.serializeImagePulls",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "featureGate": "HyperFleetKubeletAdvanced",
     "ownerType": "Cluster",
@@ -356,6 +400,7 @@
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.kubelet.streamingConnectionIdleTimeout",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
@@ -377,6 +422,13 @@
     "fieldPath": "spec.hostedCluster.configuration.kubelet.topologyManagerScope",
     "writeMode": "service-set",
     "hidden": true,
+    "ownerType": "Cluster",
+    "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
+  },
+  {
+    "fieldPath": "spec.hostedCluster.configuration.machineConfig",
+    "writeMode": "service-set",
+    "reducedContainer": true,
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
@@ -444,18 +496,21 @@
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.proxy.httpProxy",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.proxy.httpsProxy",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.proxy.noProxy",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
@@ -501,6 +556,14 @@
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
+    "fieldPath": "spec.hostedCluster.dns",
+    "writeMode": "service-set",
+    "hidden": true,
+    "reducedContainer": true,
+    "ownerType": "Cluster",
+    "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
+  },
+  {
     "fieldPath": "spec.hostedCluster.dns.baseDomain",
     "writeMode": "service-set",
     "ownerType": "Cluster",
@@ -539,6 +602,7 @@
   },
   {
     "fieldPath": "spec.hostedCluster.imageContentSources",
+    "updateAction": "UpdateCluster",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
@@ -574,6 +638,14 @@
     "fieldPath": "spec.hostedCluster.labels",
     "writeMode": "service-set",
     "hidden": true,
+    "ownerType": "Cluster",
+    "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
+  },
+  {
+    "fieldPath": "spec.hostedCluster.networking",
+    "writeMode": "service-set",
+    "hidden": true,
+    "reducedContainer": true,
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
@@ -640,7 +712,16 @@
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
+    "fieldPath": "spec.hostedCluster.platform",
+    "writeMode": "service-set",
+    "hidden": true,
+    "reducedContainer": true,
+    "ownerType": "Cluster",
+    "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
+  },
+  {
     "fieldPath": "spec.hostedCluster.platform.aws",
+    "updateAction": "UpdateCluster",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
@@ -660,6 +741,7 @@
   },
   {
     "fieldPath": "spec.hostedCluster.release",
+    "updateAction": "UpdateClusterVersion",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
@@ -721,6 +803,7 @@
   },
   {
     "fieldPath": "spec.properties",
+    "updateAction": "UpdateCluster",
     "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
@@ -812,6 +895,13 @@
     "ownerGVK": ""
   },
   {
+    "fieldPath": "kubelet",
+    "writeMode": "service-set",
+    "reducedContainer": true,
+    "ownerType": "ClusterConfiguration",
+    "ownerGVK": ""
+  },
+  {
     "fieldPath": "kubelet.allowedUnsafeSysctls",
     "writeMode": "service-set",
     "hidden": true,
@@ -820,12 +910,14 @@
   },
   {
     "fieldPath": "kubelet.containerLogMaxFiles",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "ClusterConfiguration",
     "ownerGVK": ""
   },
   {
     "fieldPath": "kubelet.containerLogMaxSize",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "ClusterConfiguration",
     "ownerGVK": ""
@@ -874,18 +966,21 @@
   },
   {
     "fieldPath": "kubelet.imageGCHighThresholdPercent",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "ClusterConfiguration",
     "ownerGVK": ""
   },
   {
     "fieldPath": "kubelet.imageGCLowThresholdPercent",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "ClusterConfiguration",
     "ownerGVK": ""
   },
   {
     "fieldPath": "kubelet.imageMinimumGCAge",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "ClusterConfiguration",
     "ownerGVK": ""
@@ -898,6 +993,7 @@
   },
   {
     "fieldPath": "kubelet.maxPods",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "ClusterConfiguration",
     "ownerGVK": ""
@@ -911,12 +1007,14 @@
   },
   {
     "fieldPath": "kubelet.podPidsLimit",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "ClusterConfiguration",
     "ownerGVK": ""
   },
   {
     "fieldPath": "kubelet.registryBurst",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "featureGate": "HyperFleetKubeletAdvanced",
     "ownerType": "ClusterConfiguration",
@@ -924,6 +1022,7 @@
   },
   {
     "fieldPath": "kubelet.registryPullQPS",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "featureGate": "HyperFleetKubeletAdvanced",
     "ownerType": "ClusterConfiguration",
@@ -931,6 +1030,7 @@
   },
   {
     "fieldPath": "kubelet.serializeImagePulls",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "featureGate": "HyperFleetKubeletAdvanced",
     "ownerType": "ClusterConfiguration",
@@ -938,6 +1038,7 @@
   },
   {
     "fieldPath": "kubelet.streamingConnectionIdleTimeout",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "ClusterConfiguration",
     "ownerGVK": ""
@@ -959,6 +1060,13 @@
     "fieldPath": "kubelet.topologyManagerScope",
     "writeMode": "service-set",
     "hidden": true,
+    "ownerType": "ClusterConfiguration",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "machineConfig",
+    "writeMode": "service-set",
+    "reducedContainer": true,
     "ownerType": "ClusterConfiguration",
     "ownerGVK": ""
   },
@@ -1026,18 +1134,21 @@
   },
   {
     "fieldPath": "proxy.httpProxy",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "ClusterConfiguration",
     "ownerGVK": ""
   },
   {
     "fieldPath": "proxy.httpsProxy",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "ClusterConfiguration",
     "ownerGVK": ""
   },
   {
     "fieldPath": "proxy.noProxy",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "ClusterConfiguration",
     "ownerGVK": ""
@@ -1198,12 +1309,14 @@
   },
   {
     "fieldPath": "containerLogMaxFiles",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "KubeletConfig",
     "ownerGVK": ""
   },
   {
     "fieldPath": "containerLogMaxSize",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "KubeletConfig",
     "ownerGVK": ""
@@ -1252,18 +1365,21 @@
   },
   {
     "fieldPath": "imageGCHighThresholdPercent",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "KubeletConfig",
     "ownerGVK": ""
   },
   {
     "fieldPath": "imageGCLowThresholdPercent",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "KubeletConfig",
     "ownerGVK": ""
   },
   {
     "fieldPath": "imageMinimumGCAge",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "KubeletConfig",
     "ownerGVK": ""
@@ -1276,6 +1392,7 @@
   },
   {
     "fieldPath": "maxPods",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "KubeletConfig",
     "ownerGVK": ""
@@ -1289,12 +1406,14 @@
   },
   {
     "fieldPath": "podPidsLimit",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "KubeletConfig",
     "ownerGVK": ""
   },
   {
     "fieldPath": "registryBurst",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "featureGate": "HyperFleetKubeletAdvanced",
     "ownerType": "KubeletConfig",
@@ -1302,6 +1421,7 @@
   },
   {
     "fieldPath": "registryPullQPS",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "featureGate": "HyperFleetKubeletAdvanced",
     "ownerType": "KubeletConfig",
@@ -1309,6 +1429,7 @@
   },
   {
     "fieldPath": "serializeImagePulls",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "featureGate": "HyperFleetKubeletAdvanced",
     "ownerType": "KubeletConfig",
@@ -1316,6 +1437,7 @@
   },
   {
     "fieldPath": "streamingConnectionIdleTimeout",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "KubeletConfig",
     "ownerGVK": ""
@@ -1391,6 +1513,7 @@
   },
   {
     "fieldPath": "spec.autoRepair",
+    "updateAction": "UpdateNodePool",
     "writeMode": "mutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
@@ -1404,6 +1527,7 @@
   },
   {
     "fieldPath": "spec.labels",
+    "updateAction": "UpdateNodePool",
     "writeMode": "mutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
@@ -1429,18 +1553,21 @@
   },
   {
     "fieldPath": "spec.nodePool.autoScaling",
+    "updateAction": "ScaleNodePool",
     "writeMode": "mutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
   {
     "fieldPath": "spec.nodePool.clusterName",
+    "updateAction": "UpdateNodePool",
     "writeMode": "mutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
   {
     "fieldPath": "spec.nodePool.config",
+    "updateAction": "UpdateNodePool",
     "writeMode": "mutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
@@ -1453,6 +1580,7 @@
   },
   {
     "fieldPath": "spec.nodePool.nodeDrainTimeout",
+    "updateAction": "UpdateNodePool",
     "writeMode": "mutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
@@ -1482,6 +1610,22 @@
     "fieldPath": "spec.nodePool.pausedUntil",
     "writeMode": "service-set",
     "hidden": true,
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.nodePool.platform",
+    "writeMode": "service-set",
+    "hidden": true,
+    "reducedContainer": true,
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.nodePool.platform.aws",
+    "updateAction": "UpdateNodePool",
+    "writeMode": "mutable",
+    "reducedContainer": true,
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
@@ -1518,6 +1662,13 @@
   {
     "fieldPath": "spec.nodePool.platform.aws.resourceTags",
     "writeMode": "mutable",
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.nodePool.platform.aws.rootVolume",
+    "writeMode": "mutable",
+    "reducedContainer": true,
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
@@ -1571,18 +1722,21 @@
   },
   {
     "fieldPath": "spec.nodePool.release",
+    "updateAction": "UpdateNodePoolVersion",
     "writeMode": "mutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
   {
     "fieldPath": "spec.nodePool.replicas",
+    "updateAction": "ScaleNodePool",
     "writeMode": "mutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
   {
     "fieldPath": "spec.nodePool.taints",
+    "updateAction": "UpdateNodePool",
     "writeMode": "mutable",
     "hidden": true,
     "ownerType": "NodePool",
@@ -1590,9 +1744,18 @@
   },
   {
     "fieldPath": "spec.nodePool.tuningConfig",
+    "updateAction": "UpdateNodePool",
     "writeMode": "mutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "aws",
+    "updateAction": "UpdateNodePool",
+    "writeMode": "mutable",
+    "reducedContainer": true,
+    "ownerType": "NodePoolPlatform",
+    "ownerGVK": ""
   },
   {
     "fieldPath": "aws.ami",
@@ -1627,6 +1790,13 @@
   {
     "fieldPath": "aws.resourceTags",
     "writeMode": "mutable",
+    "ownerType": "NodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "aws.rootVolume",
+    "writeMode": "mutable",
+    "reducedContainer": true,
     "ownerType": "NodePoolPlatform",
     "ownerGVK": ""
   },
@@ -1711,6 +1881,7 @@
   },
   {
     "fieldPath": "aws",
+    "updateAction": "UpdateCluster",
     "writeMode": "mutable",
     "ownerType": "PlatformSpec",
     "ownerGVK": ""
@@ -1723,18 +1894,21 @@
   },
   {
     "fieldPath": "httpProxy",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "ProxyConfiguration",
     "ownerGVK": ""
   },
   {
     "fieldPath": "httpsProxy",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "ProxyConfiguration",
     "ownerGVK": ""
   },
   {
     "fieldPath": "noProxy",
+    "updateAction": "UpdateClusterConfig",
     "writeMode": "mutable",
     "ownerType": "ProxyConfiguration",
     "ownerGVK": ""

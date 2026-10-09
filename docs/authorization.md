@@ -10,7 +10,6 @@ Run `bin/rosa-hyperfleet-api serve`:
 
 | Flag | Environment variable | Default / behavior |
 | --- | --- | --- |
-| `--authz-resolver` | `AUTHZ_RESOLVER` | `config`, the only accepted resolver. |
 | `--authz-config-file` | `AUTHZ_CONFIG_FILE` | Required nonblank, readable bundle path; no default. |
 | `--api-port` | None | `8000`. |
 | `--health-port` | None | `8080`. |
@@ -19,7 +18,7 @@ Run `bin/rosa-hyperfleet-api serve`:
 | `--postgres-dsn` | `POSTGRES_DSN` | Required; a nonempty flag wins. |
 | `--dynamodb-region` | AWS SDK region chain, including `AWS_REGION` | Deprecated flag is a fallback only when the SDK finds no region. |
 
-Authorization precedence is explicit flag > present environment variable > flag default, including empty values. Empty resolver/path inputs are invalid. Service region is trusted configuration, never a request header or attachment.
+Authorization precedence is explicit flag > present environment variable > flag default, including empty values. An empty bundle path is invalid. Startup resolves service region through the AWS SDK configuration chain before constructing the authorizer. `AWS_REGION` is one supported input; the deprecated region flag remains a fallback. Service region is trusted deployment configuration, never a request header or attachment.
 
 `--allowed-accounts` and `--dynamodb-prefix` are deprecated and ignored; `ALLOWED_ACCOUNTS` does not enroll callers. DynamoDB provides no policy/enrollment fallback. Logging defaults: `--log-format=json`, `--log-level=info`.
 
@@ -27,7 +26,7 @@ The API trusts gateway-provided account and caller ARN headers. Deployed access 
 
 ## Version 1 bundle
 
-`LoadConfig` accepts exactly one YAML document (including JSON objects). All four top-level fields are required; empty arrays are valid and grant no protected reads. Account IDs are quoted 12-digit strings; `formatVersion` is integer `1`.
+`LoadConfig(path, serviceRegion)` returns an authorizer for a fixed, validated service region. It accepts exactly one YAML document (including JSON objects). All four top-level fields are required; empty arrays are valid and grant no protected reads. Account IDs are quoted 12-digit strings; `formatVersion` is integer `1`.
 
 This example grants Alice collection access and blue-label visibility, grants the readers role regional reads, and forbids one exact session globally. The second account is enrolled without grants.
 
@@ -58,45 +57,41 @@ attachments:
   - id: alice-list
     policyID: list
     principalARN: arn:aws:iam::123456789012:user/alice
-    bindingMode: exact-principal
     scope: global
   - id: alice-blue
     policyID: blue
     principalARN: arn:aws:iam::123456789012:user/alice
-    bindingMode: exact-principal
     scope: global
   - id: readers-regional
     policyID: read
     principalARN: arn:aws:iam::123456789012:role/platform/readers
-    bindingMode: role-membership
     scope: regional
     region: us-east-1
   - id: blocked-session
     policyID: forbid
     principalARN: arn:aws:sts::123456789012:assumed-role/readers/blocked
-    bindingMode: exact-principal
     scope: global
 ```
 
 - Policy and attachment IDs are unique within their respective lists and match `[A-Za-z0-9][A-Za-z0-9._-]*`.
 - Each policy contains exactly one Cedar statement. Attachments reference existing policies whose owner account matches the principal ARN account.
 - `global` applies in every service region and has no region value. `regional` requires a valid region matching the service region to apply.
-- The loader rejects unknown fields, duplicate YAML keys, null collections, nonstring record values, aliases, anchors, merge keys, unsupported tags, extra documents, excessive nesting, malformed/schema-invalid policies, templates, dangling references, duplicate IDs, unsupported binding modes, and cross-account attachments.
+- The loader rejects unknown fields, duplicate YAML keys, null collections, nonstring record values, aliases, anchors, merge keys, unsupported tags, extra documents, excessive nesting, malformed/schema-invalid policies, templates, dangling references, duplicate IDs, and cross-account attachments.
 - Startup validation includes unattached policies and off-region attachments; scope cannot hide invalid material.
 
-## Enrollment and attachment seeding
+## Enrollment and explicit attachments
 
 Enrollment is exact membership in `registeredAccounts`, separate from authorization. Enrolled callers without applicable policies are denied; grants cannot bypass enrollment. Enrollment alone grants neither service-operator access nor ManagementCluster permissions. No account-wide or allow-all fallback exists.
 
-Local/ephemeral seeds must enroll actual caller accounts and attach grants to verified principals. Use complete IAM user ARNs with `exact-principal`, complete IAM role ARNs (including paths) with `role-membership`, and complete STS assumed-role ARNs (including session names) with `exact-principal` for session permits/forbids. Exact role bindings and session membership bindings are invalid.
+Local and ephemeral bundles must enroll actual caller accounts and attach grants to verified principals. Complete IAM user and STS assumed-role ARNs (including session names) apply only to that exact caller. Complete IAM role ARNs (including paths) apply to matching assumed-role sessions.
 
-`test/e2e-api/testdata/authz-http.json` uses example accounts: `111111111111` is enrolled with Alice's list/blue-label grants; `222222222222` is enrolled without grants; `333333333333` has an unusable grant but is not enrolled. It also covers a readers role, an exact blocked session, list-only/describe-only users, and a global forbid beside a regional permit. These are test identities, not verified deployed principals or credentials; ephemeral seeds need environment-specific caller records.
+`test/e2e-api/testdata/authz-http.json` uses example accounts: `111111111111` is enrolled with Alice's list/blue-label grants; `222222222222` is enrolled without grants; `333333333333` has an unusable grant but is not enrolled. It also covers a readers role, an exact blocked session, list-only/describe-only users, and a global forbid beside a regional permit. These are test identities, not verified deployed principals or credentials; ephemeral bundles need environment-specific caller records.
 
-### Binding and role-path limits
+### Attachment matching and role-path limits
 
-The request principal is `HyperFleet::Principal` identified by the complete caller ARN. Matching role attachments add the configured `HyperFleet::Role` as a parent. Binding adds exact-principal equality or role membership while preserving original principal/action/resource scopes and `when`/`unless` conditions.
+The request principal is `HyperFleet::Principal` identified by the complete caller ARN. Matching role attachments add the configured `HyperFleet::Role` as a parent. The private source selects applicable attachments for the caller and configured service region. Only those attachments enter a request-local policy set for that fixed principal. Original policies are evaluated unchanged; no principal constraint is added to their ASTs. Configuration loading retains compiled policies for read-only reuse; preparation does not reparse policy text or revalidate checked attachments.
 
-Binding does not rewrite equality: `principal == HyperFleet::Role::"arn:aws:iam::123456789012:role/platform/readers"` rejects child sessions; `principal in HyperFleet::Role::"arn:aws:iam::123456789012:role/platform/readers"` can match them.
+Authored equality remains equality: `principal == HyperFleet::Role::"arn:aws:iam::123456789012:role/platform/readers"` rejects child sessions; `principal in HyperFleet::Role::"arn:aws:iam::123456789012:role/platform/readers"` can match them.
 
 STS session ARNs omit role paths. Matching uses partition, account, and final role name: `role/platform/readers` matches `assumed-role/readers/allowed` in the same partition/account. Configured role ARNs/paths remain in entities/provenance. Two paths with the same partition/account/final name fail startup as ambiguous, even across regions. This static match does not verify role paths through STS/IAM; different partitions, accounts, or final names cannot match.
 
@@ -122,14 +117,14 @@ Lists check collection permission, then `DescribeCluster` on every candidate, in
 
 ## Snapshot lifecycle and error logs
 
-Startup loads/validates the entire bundle before database setup or API/health/metrics listeners open. The resolver retains an immutable snapshot; requests never reread the file. File replacement requires restart. Invalid replacements fail startup without reusing the old snapshot or serving requests.
+Startup resolves service region, then loads and validates the entire bundle before database setup or API/health/metrics listeners open. The authorizer retains an immutable snapshot; requests never reread the file. `Prepare` freezes one caller and request context for all checks. Handlers do not supply service region through identity, resource, or parent inputs. Cedar context, entity attributes, and UIDs still contain the configured region. Attachment region and ManagementCluster registration region remain independent facts. File replacement requires restart. Invalid replacements fail startup without reusing the old snapshot or serving requests.
 
 `PolicyRevision` and `AttachmentRevision` are lowercase hexadecimal SHA-256 of the complete file bytes, including whitespace. Each attachment has diagnostic ID `attachment/<attachment-id>`, even when sharing a policy.
 
-- Startup logs `authorization startup failed`. Typed failures include `stage`, `cause`, `provenance`, `diagnostics`: missing files use `resolution`, malformed bundles/policies `parsing`, invalid attachment material `binding`. Missing inputs/unsupported resolvers log the input error. Exit is nonzero, without permissive fallback.
+- Startup logs `authorization startup failed`. Typed failures include `stage`, `cause`, `provenance`, `diagnostics`: missing files use `resolution`, malformed bundles/policies `parsing`, invalid attachment material `binding` (attachment validation, not policy rewriting). Missing inputs log the input error. Exit is nonzero, without permissive fallback.
 - Runtime logs `cluster authorization failed` with operation, trusted identity, region, stage, cause, provenance, diagnostics. Preparation/evaluation failures return structured `AUTHZ-FAILED-001` 500 (`Authorization failed`); ordinary denies return `AUTHZ-DENIED-001` 403. Database failures retain existing API errors. Internal causes/diagnostics stay out of public response text; identity/policy metadata in logs requires restricted access.
 
-In sibling `rosa-hyperfleet`, source values `applications.regional-cluster.platformApi.authz.resolver` and `.config` feed chart values `platformApi.authz`. The chart creates `authz-config`, mounts `config.yaml` read-only at `/etc/platform-api/authz/config.yaml`, and sets `AUTHZ_RESOLVER`/`AUTHZ_CONFIG_FILE`. Mode `0644` permits reads by image UID/GID 65534.
+In sibling `rosa-hyperfleet`, source value `applications.regional-cluster.platformApi.authz.config` supplies the chart's authorization bundle. The chart creates `authz-config`, mounts `config.yaml` read-only at `/etc/platform-api/authz/config.yaml`, and sets `AUTHZ_CONFIG_FILE`. Mode `0644` permits reads by image UID/GID 65534.
 
 Pod-template annotation `checksum/authz-config` hashes the complete rendered ConfigMap, so account/policy/attachment changes trigger rollout. The rate-limit mount/checksum is separate. Chart defaults contain empty arrays, not example grants. Rendering/checksum tests do not prove deployed rollout.
 
@@ -151,7 +146,7 @@ Labels never contain URLs, IDs, accounts, ARNs, principals, policy text, or erro
 
 Bucket upper bounds (seconds): `0.001`, `0.005`, `0.01`, `0.025`, `0.05`, `0.1`, `0.25`, `0.5`, `1`, automatic `+Inf`. Prometheus emits `_bucket` with `le`, `_sum`, `_count`. The 50 ms bucket is a measurement boundary, not an SLO or demonstrated performance guarantee.
 
-Timing spans preparation through terminal authorization, including resolution, parsing, binding, entity construction/validation, evaluation, and required resource reads. It excludes identity/enrollment admission, rate limiting, response conversion/serialization, socket writes, request output, and client delivery. This is neither engine-only nor whole-request latency.
+Timing spans preparation through terminal authorization, including attachment selection, entity construction/validation, evaluation, and required resource reads. Configuration parsing and attachment validation occur at startup, outside request timing. It excludes identity/enrollment admission, rate limiting, response conversion/serialization, socket writes, request output, and client delivery. This is neither engine-only nor whole-request latency.
 
 - Successful filtered list, including all items denied: one `ListClusters/allow`.
 - Collection/object deny: one deny; 403.
@@ -175,7 +170,7 @@ Paths are relative to the API repo root:
 | Root | `make test-api-int` | Integration-tagged handler tests, race detection. |
 | Root | `make build-api` | API binary. |
 | Root | `make lint` | All Makefile-configured modules. |
-| `platform-api` | `go test -race -count=1 ./pkg/authz/...` | Resolver, binding, evaluation, strict capabilities, snapshots, metrics. |
+| `platform-api` | `go test -race -count=1 ./pkg/authz/...` | Resolver, attachment applicability, evaluation, strict capabilities, snapshots, metrics. |
 | `platform-api` | `../hack/tools/bin/golangci-lint run --config ../.golangci.yml --timeout 5m ./pkg/authz/...` | Authorization lint. |
 | `test` | `go test -race -count=1 ./helpers/aws` | Local/signed-client regressions. |
 | `test` | `go test -race -count=1 -run '^TestPatchMethodHeaders$' ./e2e-api` | Unsigned-localhost regression. |
@@ -197,4 +192,4 @@ Git revision alone misses uncommitted changes; checksums identify actual binary/
 
 ## Dependency boundary
 
-Pinned dependency: `github.com/cedar-policy/cedar-go v1.8.0`. Production schema resolution/strict validation uses experimental `x/exp/ast`, `x/exp/schema`, `x/exp/schema/resolved`, `x/exp/schema/validate`, without stable-package compatibility guarantees. Upgrades require passing strict capability, binding, diagnostic, entity-tag, and schema tests, never weakening validation or ignoring forbid diagnostics to accommodate changes.
+Pinned dependency: `github.com/cedar-policy/cedar-go v1.8.0`. Production schema resolution/strict validation uses experimental `x/exp/ast`, `x/exp/schema`, `x/exp/schema/resolved`, `x/exp/schema/validate`, without stable-package compatibility guarantees. Upgrades require passing strict capability, attachment-isolation, diagnostic, entity-tag, and schema tests, never weakening validation or ignoring forbid diagnostics to accommodate changes.

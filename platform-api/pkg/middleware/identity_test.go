@@ -290,7 +290,7 @@ func TestRequireIdentity(t *testing.T) {
 				}
 				return account == "123456789012"
 			}
-			handler := Identity(RequireIdentity(logger, lookup, "us-east-1")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler := Identity(RequireIdentity(logger, lookup)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				called = true
 				w.WriteHeader(http.StatusNoContent)
 			})))
