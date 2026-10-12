@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -98,6 +99,276 @@ func TestNodePoolHandlerUpdateRejectsNegativeReplicas(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), "spec.nodePool.replicas") {
 		t.Fatalf("Update() response does not identify replicas: %s", response.Body.String())
+	}
+}
+
+// TestNodePoolHandlerCreateRejectsRootVolumeServiceSetFields verifies that a create request setting
+// rootVolume.type/iops/encrypted/encryptionKey is rejected end-to-end via FieldValidator.
+func TestNodePoolHandlerCreateRejectsRootVolumeServiceSetFields(t *testing.T) {
+	const clusterID = "550e8400-e29b-41d4-a716-446655440000"
+	handler := newNodePoolValidationTestHandler(t)
+
+	tests := []struct {
+		name      string
+		rootVol   string
+		wantField string
+	}{
+		{"type", `"size":500,"type":"io2"`, "spec.nodePool.platform.aws.rootVolume.type"},
+		{"iops", `"size":500,"iops":3000`, "spec.nodePool.platform.aws.rootVolume.iops"},
+		// Note: "encrypted":false is indistinguishable from omitted (bool zero value), so it's not rejected;
+		// "encrypted":true is the value this check can actually detect as customer-supplied.
+		{"encrypted", `"size":500,"encrypted":true`, "spec.nodePool.platform.aws.rootVolume.encrypted"},
+		{"encryptionKey", `"size":500,"encryptionKey":"arn:aws:kms:us-east-1:123:key/abc"`, "spec.nodePool.platform.aws.rootVolume.encryptionKey"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := `{"metadata":{"name":"pool-a","namespace":"cluster-` + clusterID + `"},"spec":{"nodePool":{"platform":{"aws":{"rootVolume":{` + tt.rootVol + `}}}}}}`
+			request := httptest.NewRequest(http.MethodPost, "/api/v0/nodepools", strings.NewReader(body))
+			request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, "123456789012"))
+			response := httptest.NewRecorder()
+
+			handler.Create(response, request)
+
+			if response.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("Create() status = %d, want %d; body=%s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
+			}
+			if !strings.Contains(response.Body.String(), tt.wantField) {
+				t.Fatalf("Create() response does not identify %s: %s", tt.wantField, response.Body.String())
+			}
+		})
+	}
+}
+
+// TestNodePoolHandlerCreateAllowsRootVolumeSizeOnly verifies a create request setting only
+// rootVolume.size succeeds — size remains the one customer-settable field, matching v1.
+func TestNodePoolHandlerCreateAllowsRootVolumeSizeOnly(t *testing.T) {
+	const clusterID = "550e8400-e29b-41d4-a716-446655440000"
+	cluster := &hyperfleetv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-cluster",
+			Namespace: hyperfleetdb.ClusterNSPrefix + clusterID,
+			Labels:    map[string]string{"hyperfleet.io/account-id": "123456789012"},
+		},
+	}
+	handler := newNodePoolValidationTestHandler(t, cluster)
+	body := `{"metadata":{"name":"pool-a","namespace":"cluster-` + clusterID + `"},"spec":{"nodePool":{"platform":{"aws":{"rootVolume":{"size":500}}}}}}`
+	request := httptest.NewRequest(http.MethodPost, "/api/v0/nodepools", strings.NewReader(body))
+	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, "123456789012"))
+	response := httptest.NewRecorder()
+
+	handler.Create(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("Create() status = %d, want %d; body=%s", response.Code, http.StatusCreated, response.Body.String())
+	}
+}
+
+// TestNodePoolHandlerUpdateRejectsRootVolumeSizeChange verifies an update changing an already-set
+// rootVolume.size is rejected — size is settable on create only, matching v1.
+func TestNodePoolHandlerUpdateRejectsRootVolumeSizeChange(t *testing.T) {
+	const (
+		accountID = "123456789012"
+		clusterID = "550e8400-e29b-41d4-a716-446655440000"
+		poolName  = "pool-a"
+	)
+	object := &hyperfleetv1alpha1.NodePool{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      poolName,
+			Namespace: hyperfleetdb.ClusterNSPrefix + clusterID,
+			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+		},
+		Spec: hyperfleetv1alpha1.NodePoolSpec{
+			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
+				Platform: hypershiftv1beta1.NodePoolPlatform{
+					AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
+						RootVolume: &hypershiftv1beta1.Volume{Size: 500},
+					},
+				},
+			},
+		},
+	}
+	handler := newNodePoolValidationTestHandler(t, object)
+	body := `{"spec":{"nodePool":{"platform":{"aws":{"rootVolume":{"size":800}}}}}}`
+	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName+"?clusterId="+clusterID, strings.NewReader(body))
+	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
+	request = mux.SetURLVars(request, map[string]string{"id": poolName})
+	response := httptest.NewRecorder()
+
+	handler.Update(response, request)
+
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("Update() status = %d, want %d; body=%s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "spec.nodePool.platform.aws.rootVolume.size") {
+		t.Fatalf("Update() response does not identify rootVolume.size: %s", response.Body.String())
+	}
+}
+
+// TestNodePoolHandlerUpdateRejectsExplicitNullRootVolume verifies that an update
+// explicitly setting rootVolume to null is rejected the same as changing its size
+func TestNodePoolHandlerUpdateRejectsExplicitNullRootVolume(t *testing.T) {
+	const (
+		accountID = "123456789012"
+		clusterID = "550e8400-e29b-41d4-a716-446655440000"
+		poolName  = "pool-a"
+	)
+	object := &hyperfleetv1alpha1.NodePool{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      poolName,
+			Namespace: hyperfleetdb.ClusterNSPrefix + clusterID,
+			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+		},
+		Spec: hyperfleetv1alpha1.NodePoolSpec{
+			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
+				Platform: hypershiftv1beta1.NodePoolPlatform{
+					AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
+						RootVolume: &hypershiftv1beta1.Volume{Size: 500},
+					},
+				},
+			},
+		},
+	}
+	handler := newNodePoolValidationTestHandler(t, object)
+	body := `{"spec":{"nodePool":{"platform":{"aws":{"rootVolume":null}}}}}`
+	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName+"?clusterId="+clusterID, strings.NewReader(body))
+	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
+	request = mux.SetURLVars(request, map[string]string{"id": poolName})
+	response := httptest.NewRecorder()
+
+	handler.Update(response, request)
+
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("Update() status = %d, want %d; body=%s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "spec.nodePool.platform.aws.rootVolume.size") {
+		t.Fatalf("Update() response does not identify rootVolume.size: %s", response.Body.String())
+	}
+
+	// Confirm the stored RootVolume was NOT wiped out by a rejected request.
+	stored, err := handler.db.GetNodePool(context.Background(), accountID, clusterID, poolName)
+	if err != nil {
+		t.Fatalf("GetNodePool: %v", err)
+	}
+	if stored.Spec.NodePool.Platform.AWS == nil || stored.Spec.NodePool.Platform.AWS.RootVolume == nil {
+		t.Fatal("RootVolume was wiped out despite the rejected update")
+	}
+	if stored.Spec.NodePool.Platform.AWS.RootVolume.Size != 500 {
+		t.Errorf("RootVolume.Size = %d, want 500 (unchanged)", stored.Spec.NodePool.Platform.AWS.RootVolume.Size)
+	}
+}
+
+// TestNodePoolHandlerUpdateAllowsOmittedRootVolume verifies that omitting rootVolume
+// (vs. sending explicit null) is allowed and leaves the existing RootVolume untouched.
+func TestNodePoolHandlerUpdateAllowsOmittedRootVolume(t *testing.T) {
+	const (
+		accountID = "123456789012"
+		clusterID = "550e8400-e29b-41d4-a716-446655440000"
+		poolName  = "pool-a"
+	)
+	object := &hyperfleetv1alpha1.NodePool{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      poolName,
+			Namespace: hyperfleetdb.ClusterNSPrefix + clusterID,
+			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+		},
+		Spec: hyperfleetv1alpha1.NodePoolSpec{
+			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
+				Platform: hypershiftv1beta1.NodePoolPlatform{
+					AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
+						RootVolume: &hypershiftv1beta1.Volume{Size: 500},
+					},
+				},
+			},
+		},
+	}
+	handler := newNodePoolValidationTestHandler(t, object)
+	body := `{"spec":{"nodePool":{"platform":{"aws":{"instanceType":"m5.xlarge"}}}}}`
+	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName+"?clusterId="+clusterID, strings.NewReader(body))
+	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
+	request = mux.SetURLVars(request, map[string]string{"id": poolName})
+	response := httptest.NewRecorder()
+
+	handler.Update(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("Update() status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+	}
+
+	stored, err := handler.db.GetNodePool(context.Background(), accountID, clusterID, poolName)
+	if err != nil {
+		t.Fatalf("GetNodePool: %v", err)
+	}
+	if stored.Spec.NodePool.Platform.AWS == nil || stored.Spec.NodePool.Platform.AWS.RootVolume == nil {
+		t.Fatal("RootVolume was unexpectedly cleared by an update that omitted it")
+	}
+	if stored.Spec.NodePool.Platform.AWS.RootVolume.Size != 500 {
+		t.Errorf("RootVolume.Size = %d, want 500 (preserved)", stored.Spec.NodePool.Platform.AWS.RootVolume.Size)
+	}
+}
+
+// TestNodePoolHandlerUpdateRejectsExplicitNullAtParentLevels verifies null at aws,
+// platform, or nodePool is rejected the same as null at rootVolume itself.
+func TestNodePoolHandlerUpdateRejectsExplicitNullAtParentLevels(t *testing.T) {
+	const (
+		accountID = "123456789012"
+		clusterID = "550e8400-e29b-41d4-a716-446655440000"
+	)
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"aws null", `{"spec":{"nodePool":{"platform":{"aws":null}}}}`},
+		{"platform null", `{"spec":{"nodePool":{"platform":null}}}`},
+		{"nodePool null", `{"spec":{"nodePool":null}}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			poolName := "pool-" + strings.ReplaceAll(tt.name, " ", "-")
+			object := &hyperfleetv1alpha1.NodePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      poolName,
+					Namespace: hyperfleetdb.ClusterNSPrefix + clusterID,
+					Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+				},
+				Spec: hyperfleetv1alpha1.NodePoolSpec{
+					NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
+						Platform: hypershiftv1beta1.NodePoolPlatform{
+							AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
+								RootVolume: &hypershiftv1beta1.Volume{Size: 500},
+							},
+						},
+					},
+				},
+			}
+			handler := newNodePoolValidationTestHandler(t, object)
+			request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName+"?clusterId="+clusterID, strings.NewReader(tt.body))
+			request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
+			request = mux.SetURLVars(request, map[string]string{"id": poolName})
+			response := httptest.NewRecorder()
+
+			handler.Update(response, request)
+
+			if response.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("Update() status = %d, want %d; body=%s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
+			}
+			if !strings.Contains(response.Body.String(), "spec.nodePool.platform.aws.rootVolume.size") {
+				t.Fatalf("Update() response does not identify rootVolume.size: %s", response.Body.String())
+			}
+
+			stored, err := handler.db.GetNodePool(context.Background(), accountID, clusterID, poolName)
+			if err != nil {
+				t.Fatalf("GetNodePool: %v", err)
+			}
+			if stored.Spec.NodePool.Platform.AWS == nil || stored.Spec.NodePool.Platform.AWS.RootVolume == nil {
+				t.Fatal("RootVolume was wiped out despite the rejected update")
+			}
+			if stored.Spec.NodePool.Platform.AWS.RootVolume.Size != 500 {
+				t.Errorf("RootVolume.Size = %d, want 500 (unchanged)", stored.Spec.NodePool.Platform.AWS.RootVolume.Size)
+			}
+		})
 	}
 }
 

@@ -22,6 +22,86 @@ const (
 // FieldRegistry is a per-CRD-type field registry that allows different validation rules
 // for the same field path in different resource types (e.g., Cluster vs NodePool)
 var FieldRegistry = TypedFieldRegistry{
+	"AWSNodePoolPlatform": {
+		"ami": {
+			FieldPath: "ami",
+			WriteMode: Mutable,
+			OwnerType: "AWSNodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"imageType": {
+			FieldPath: "imageType",
+			WriteMode: Mutable,
+			OwnerType: "AWSNodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"instanceProfile": {
+			FieldPath: "instanceProfile",
+			WriteMode: Mutable,
+			OwnerType: "AWSNodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"instanceType": {
+			FieldPath: "instanceType",
+			WriteMode: Mutable,
+			OwnerType: "AWSNodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"placement": {
+			FieldPath: "placement",
+			WriteMode: Mutable,
+			OwnerType: "AWSNodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"resourceTags": {
+			FieldPath: "resourceTags",
+			WriteMode: Mutable,
+			OwnerType: "AWSNodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"rootVolume.encrypted": {
+			FieldPath: "rootVolume.encrypted",
+			WriteMode: ServiceSet,
+			OwnerType: "AWSNodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"rootVolume.encryptionKey": {
+			FieldPath: "rootVolume.encryptionKey",
+			WriteMode: ServiceSet,
+			OwnerType: "AWSNodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"rootVolume.iops": {
+			FieldPath: "rootVolume.iops",
+			WriteMode: ServiceSet,
+			OwnerType: "AWSNodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"rootVolume.size": {
+			FieldPath: "rootVolume.size",
+			WriteMode: Immutable,
+			OwnerType: "AWSNodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"rootVolume.type": {
+			FieldPath: "rootVolume.type",
+			WriteMode: ServiceSet,
+			OwnerType: "AWSNodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"securityGroups": {
+			FieldPath: "securityGroups",
+			WriteMode: Mutable,
+			OwnerType: "AWSNodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"subnet": {
+			FieldPath: "subnet",
+			WriteMode: Mutable,
+			OwnerType: "AWSNodePoolPlatform",
+			OwnerGVK:  "",
+		},
+	},
 	"Cluster": {
 		"spec.accountId": {
 			FieldPath: "spec.accountId",
@@ -1400,8 +1480,80 @@ var FieldRegistry = TypedFieldRegistry{
 			OwnerType: "NodePool",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
 		},
-		"spec.nodePool.platform.aws": {
-			FieldPath: "spec.nodePool.platform.aws",
+		"spec.nodePool.platform.aws.ami": {
+			FieldPath: "spec.nodePool.platform.aws.ami",
+			WriteMode: Mutable,
+			OwnerType: "NodePool",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
+		},
+		"spec.nodePool.platform.aws.imageType": {
+			FieldPath: "spec.nodePool.platform.aws.imageType",
+			WriteMode: Mutable,
+			OwnerType: "NodePool",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
+		},
+		"spec.nodePool.platform.aws.instanceProfile": {
+			FieldPath: "spec.nodePool.platform.aws.instanceProfile",
+			WriteMode: Mutable,
+			OwnerType: "NodePool",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
+		},
+		"spec.nodePool.platform.aws.instanceType": {
+			FieldPath: "spec.nodePool.platform.aws.instanceType",
+			WriteMode: Mutable,
+			OwnerType: "NodePool",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
+		},
+		"spec.nodePool.platform.aws.placement": {
+			FieldPath: "spec.nodePool.platform.aws.placement",
+			WriteMode: Mutable,
+			OwnerType: "NodePool",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
+		},
+		"spec.nodePool.platform.aws.resourceTags": {
+			FieldPath: "spec.nodePool.platform.aws.resourceTags",
+			WriteMode: Mutable,
+			OwnerType: "NodePool",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
+		},
+		"spec.nodePool.platform.aws.rootVolume.encrypted": {
+			FieldPath: "spec.nodePool.platform.aws.rootVolume.encrypted",
+			WriteMode: ServiceSet,
+			OwnerType: "NodePool",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
+		},
+		"spec.nodePool.platform.aws.rootVolume.encryptionKey": {
+			FieldPath: "spec.nodePool.platform.aws.rootVolume.encryptionKey",
+			WriteMode: ServiceSet,
+			OwnerType: "NodePool",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
+		},
+		"spec.nodePool.platform.aws.rootVolume.iops": {
+			FieldPath: "spec.nodePool.platform.aws.rootVolume.iops",
+			WriteMode: ServiceSet,
+			OwnerType: "NodePool",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
+		},
+		"spec.nodePool.platform.aws.rootVolume.size": {
+			FieldPath: "spec.nodePool.platform.aws.rootVolume.size",
+			WriteMode: Immutable,
+			OwnerType: "NodePool",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
+		},
+		"spec.nodePool.platform.aws.rootVolume.type": {
+			FieldPath: "spec.nodePool.platform.aws.rootVolume.type",
+			WriteMode: ServiceSet,
+			OwnerType: "NodePool",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
+		},
+		"spec.nodePool.platform.aws.securityGroups": {
+			FieldPath: "spec.nodePool.platform.aws.securityGroups",
+			WriteMode: Mutable,
+			OwnerType: "NodePool",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
+		},
+		"spec.nodePool.platform.aws.subnet": {
+			FieldPath: "spec.nodePool.platform.aws.subnet",
 			WriteMode: Mutable,
 			OwnerType: "NodePool",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
@@ -1439,8 +1591,80 @@ var FieldRegistry = TypedFieldRegistry{
 		},
 	},
 	"NodePoolPlatform": {
-		"aws": {
-			FieldPath: "aws",
+		"aws.ami": {
+			FieldPath: "aws.ami",
+			WriteMode: Mutable,
+			OwnerType: "NodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"aws.imageType": {
+			FieldPath: "aws.imageType",
+			WriteMode: Mutable,
+			OwnerType: "NodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"aws.instanceProfile": {
+			FieldPath: "aws.instanceProfile",
+			WriteMode: Mutable,
+			OwnerType: "NodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"aws.instanceType": {
+			FieldPath: "aws.instanceType",
+			WriteMode: Mutable,
+			OwnerType: "NodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"aws.placement": {
+			FieldPath: "aws.placement",
+			WriteMode: Mutable,
+			OwnerType: "NodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"aws.resourceTags": {
+			FieldPath: "aws.resourceTags",
+			WriteMode: Mutable,
+			OwnerType: "NodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"aws.rootVolume.encrypted": {
+			FieldPath: "aws.rootVolume.encrypted",
+			WriteMode: ServiceSet,
+			OwnerType: "NodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"aws.rootVolume.encryptionKey": {
+			FieldPath: "aws.rootVolume.encryptionKey",
+			WriteMode: ServiceSet,
+			OwnerType: "NodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"aws.rootVolume.iops": {
+			FieldPath: "aws.rootVolume.iops",
+			WriteMode: ServiceSet,
+			OwnerType: "NodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"aws.rootVolume.size": {
+			FieldPath: "aws.rootVolume.size",
+			WriteMode: Immutable,
+			OwnerType: "NodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"aws.rootVolume.type": {
+			FieldPath: "aws.rootVolume.type",
+			WriteMode: ServiceSet,
+			OwnerType: "NodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"aws.securityGroups": {
+			FieldPath: "aws.securityGroups",
+			WriteMode: Mutable,
+			OwnerType: "NodePoolPlatform",
+			OwnerGVK:  "",
+		},
+		"aws.subnet": {
+			FieldPath: "aws.subnet",
 			WriteMode: Mutable,
 			OwnerType: "NodePoolPlatform",
 			OwnerGVK:  "",
@@ -1545,6 +1769,38 @@ var FieldRegistry = TypedFieldRegistry{
 			FieldPath: "profile",
 			WriteMode: Mutable,
 			OwnerType: "SchedulerConfiguration",
+			OwnerGVK:  "",
+		},
+	},
+	"Volume": {
+		"encrypted": {
+			FieldPath: "encrypted",
+			WriteMode: ServiceSet,
+			OwnerType: "Volume",
+			OwnerGVK:  "",
+		},
+		"encryptionKey": {
+			FieldPath: "encryptionKey",
+			WriteMode: ServiceSet,
+			OwnerType: "Volume",
+			OwnerGVK:  "",
+		},
+		"iops": {
+			FieldPath: "iops",
+			WriteMode: ServiceSet,
+			OwnerType: "Volume",
+			OwnerGVK:  "",
+		},
+		"size": {
+			FieldPath: "size",
+			WriteMode: Immutable,
+			OwnerType: "Volume",
+			OwnerGVK:  "",
+		},
+		"type": {
+			FieldPath: "type",
+			WriteMode: ServiceSet,
+			OwnerType: "Volume",
 			OwnerGVK:  "",
 		},
 	},

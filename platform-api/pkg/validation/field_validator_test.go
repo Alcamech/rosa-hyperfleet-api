@@ -149,6 +149,32 @@ func TestValidateCreate_AllowsProxyConfiguration(t *testing.T) {
 	}
 }
 
+// TestValidateCreate_FIPSZeroValueStillAllowed confirms the pointer-aware ServiceSet
+// check still falls back correctly for FIPS, a plain (non-pointer) bool field.
+func TestValidateCreate_FIPSZeroValueStillAllowed(t *testing.T) {
+	v := NewFieldValidator("Cluster")
+
+	errs := v.ValidateCreate(rest.ClusterSpec{
+		HostedCluster: rest.HostedClusterSpecPassthrough{FIPS: false},
+	}, featuregate.Default)
+	if errs != nil {
+		t.Errorf("expected FIPS zero value to be allowed, got %v", errs)
+	}
+
+	errs = v.ValidateCreate(rest.ClusterSpec{
+		HostedCluster: rest.HostedClusterSpecPassthrough{FIPS: true},
+	}, featuregate.Default)
+	found := false
+	for _, e := range errs {
+		if e.Field == "spec.hostedCluster.fips" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected explicit fips:true to still be rejected, got %v", errs)
+	}
+}
+
 func TestValidateCreate_ValidatesAdditionalTrustBundle(t *testing.T) {
 	v := NewFieldValidator("Cluster")
 	errs := v.ValidateCreate(map[string]any{
@@ -389,6 +415,137 @@ func TestFlattenToFieldPaths(t *testing.T) {
 		if _, found := result[path]; !found {
 			t.Errorf("expected path %s in result, not found", path)
 		}
+	}
+}
+
+// Root volume write-mode matches v1: size is settable on create only; type/iops/encrypted/encryptionKey
+// are always computed by the platform and enforced here against the real registry.FieldRegistry.
+func TestValidateCreate_RejectsNonDefaultRootVolumeServiceSetFields(t *testing.T) {
+	v := NewFieldValidator("NodePool")
+
+	newSpecWithRootVolume := func(rv rest.Volume) *rest.NodePoolSpec {
+		return &rest.NodePoolSpec{
+			NodePool: rest.NodePoolSpecPassthrough{
+				Platform: rest.NodePoolPlatform{
+					AWS: &rest.AWSNodePoolPlatform{
+						RootVolume: &rv,
+					},
+				},
+			},
+		}
+	}
+
+	trueVal, falseVal := true, false
+	tests := []struct {
+		name      string
+		rv        rest.Volume
+		wantField string
+	}{
+		{"type", rest.Volume{Size: 500, Type: "io2"}, "spec.nodePool.platform.aws.rootVolume.type"},
+		{"iops", rest.Volume{Size: 500, IOPS: 3000}, "spec.nodePool.platform.aws.rootVolume.iops"},
+		{"encrypted true", rest.Volume{Size: 500, Encrypted: &trueVal}, "spec.nodePool.platform.aws.rootVolume.encrypted"},
+		// A non-nil pointer to false is still an explicit value, not an omitted field.
+		{"encrypted false", rest.Volume{Size: 500, Encrypted: &falseVal}, "spec.nodePool.platform.aws.rootVolume.encrypted"},
+		{"encryptionKey", rest.Volume{Size: 500, EncryptionKey: "arn:aws:kms:us-east-1:123:key/abc"}, "spec.nodePool.platform.aws.rootVolume.encryptionKey"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := v.ValidateCreate(newSpecWithRootVolume(tt.rv), featuregate.Default)
+			if errs == nil {
+				t.Fatalf("expected validation error for non-default rootVolume.%s, got nil", tt.name)
+			}
+			found := false
+			for _, e := range errs {
+				if e.Field == tt.wantField {
+					found = true
+					if e.Reason != "field is platform-managed and cannot be set by customers" {
+						t.Errorf("unexpected reason: %s", e.Reason)
+					}
+				}
+			}
+			if !found {
+				t.Errorf("expected error on %s, got %v", tt.wantField, errs)
+			}
+		})
+	}
+}
+
+func TestValidateCreate_AllowsRootVolumeWithOnlySizeSet(t *testing.T) {
+	v := NewFieldValidator("NodePool")
+
+	spec := &rest.NodePoolSpec{
+		NodePool: rest.NodePoolSpecPassthrough{
+			Platform: rest.NodePoolPlatform{
+				AWS: &rest.AWSNodePoolPlatform{
+					RootVolume: &rest.Volume{Size: 500},
+				},
+			},
+		},
+	}
+
+	errs := v.ValidateCreate(spec, featuregate.Default)
+	if errs != nil {
+		t.Errorf("expected no errors for rootVolume with only size set, got %v", errs)
+	}
+}
+
+func TestValidateUpdate_RejectsRootVolumeSizeChange(t *testing.T) {
+	v := NewFieldValidator("NodePool")
+
+	existing := &rest.NodePoolSpec{
+		NodePool: rest.NodePoolSpecPassthrough{
+			Platform: rest.NodePoolPlatform{
+				AWS: &rest.AWSNodePoolPlatform{
+					RootVolume: &rest.Volume{Size: 500},
+				},
+			},
+		},
+	}
+	updated := &rest.NodePoolSpec{
+		NodePool: rest.NodePoolSpecPassthrough{
+			Platform: rest.NodePoolPlatform{
+				AWS: &rest.AWSNodePoolPlatform{
+					RootVolume: &rest.Volume{Size: 800},
+				},
+			},
+		},
+	}
+
+	errs := v.ValidateUpdate(updated, existing, featuregate.Default)
+	if errs == nil {
+		t.Fatal("expected validation error for changing rootVolume.size on update")
+	}
+	found := false
+	for _, e := range errs {
+		if e.Field == "spec.nodePool.platform.aws.rootVolume.size" {
+			found = true
+			if e.Reason != "field is immutable and cannot be changed after creation" {
+				t.Errorf("unexpected reason: %s", e.Reason)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected error on spec.nodePool.platform.aws.rootVolume.size, got %v", errs)
+	}
+}
+
+func TestValidateUpdate_AllowsRootVolumeUnchanged(t *testing.T) {
+	v := NewFieldValidator("NodePool")
+
+	spec := &rest.NodePoolSpec{
+		NodePool: rest.NodePoolSpecPassthrough{
+			Platform: rest.NodePoolPlatform{
+				AWS: &rest.AWSNodePoolPlatform{
+					RootVolume: &rest.Volume{Size: 500},
+				},
+			},
+		},
+	}
+
+	errs := v.ValidateUpdate(spec, spec, featuregate.Default)
+	if errs != nil {
+		t.Errorf("expected no errors when rootVolume is unchanged, got %v", errs)
 	}
 }
 

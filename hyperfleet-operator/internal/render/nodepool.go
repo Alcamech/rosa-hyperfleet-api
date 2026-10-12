@@ -49,13 +49,16 @@ func NodePoolResource(nodePool *hyperfleetv1alpha1.NodePool, cluster *hyperfleet
 			npSpec.Platform.AWS.InstanceType = "t3a.xlarge"
 		}
 		if npSpec.Platform.AWS.RootVolume == nil {
-			npSpec.Platform.AWS.RootVolume = &hypershiftv1beta1.Volume{Size: defaultRootVolumeSizeGiB, Type: "gp3"}
+			npSpec.Platform.AWS.RootVolume = &hypershiftv1beta1.Volume{Size: defaultRootVolumeSizeGiB, Type: "gp3", Encrypted: ptr.To(true)}
 		} else {
 			if npSpec.Platform.AWS.RootVolume.Size == 0 {
 				npSpec.Platform.AWS.RootVolume.Size = defaultRootVolumeSizeGiB
 			}
 			if npSpec.Platform.AWS.RootVolume.Type == "" {
 				npSpec.Platform.AWS.RootVolume.Type = "gp3"
+			}
+			if npSpec.Platform.AWS.RootVolume.Encrypted == nil {
+				npSpec.Platform.AWS.RootVolume.Encrypted = ptr.To(true)
 			}
 		}
 		// The worker EC2 instances are created by the NodePool, not the
