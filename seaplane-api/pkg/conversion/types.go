@@ -14,8 +14,6 @@ import (
 type ServiceSetFieldsDNS struct {
 	// BaseDomain is service-set (platform-managed, hidden from API)
 	BaseDomain string `json:"baseDomain,omitempty"`
-	// BaseDomainPrefix is service-set (platform-managed, hidden from API)
-	BaseDomainPrefix *string `json:"baseDomainPrefix,omitempty"`
 	// PrivateZoneID is service-set (platform-managed, hidden from API)
 	PrivateZoneID string `json:"privateZoneID,omitempty"`
 	// PublicZoneID is service-set (platform-managed, hidden from API)
@@ -128,8 +126,6 @@ type ServiceSetFields struct {
 	Arch string `json:"arch,omitempty"`
 	// BaseDomain is service-set (platform-managed, hidden from API)
 	BaseDomain string `json:"baseDomain,omitempty"`
-	// BaseDomainPrefix is service-set (platform-managed, hidden from API)
-	BaseDomainPrefix *string `json:"baseDomainPrefix,omitempty"`
 	// ClusterDeletionPolicy is service-set (platform-managed, hidden from API)
 	ClusterDeletionPolicy v1alpha1.DNSReservationClusterDeletionPolicy `json:"clusterDeletionPolicy,omitempty"`
 	// CpuManagerPolicy is service-set (platform-managed, hidden from API)
