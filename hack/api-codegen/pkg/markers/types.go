@@ -30,9 +30,6 @@ type FieldMeta struct {
 	// FieldPath is the JSON path to the field (e.g., "spec.name", "spec.hostedCluster.release")
 	FieldPath string
 
-	// UpdateAction is required when a submitted update effectively changes this field.
-	UpdateAction string `json:"updateAction,omitempty"`
-
 	// WriteMode controls customer mutability
 	WriteMode WriteMode
 
@@ -43,9 +40,6 @@ type FieldMeta struct {
 	// (+k8s:openapi-gen=false). Mutable hidden fields can still be exposed by
 	// HyperFleet's custom public API schema.
 	Hidden bool
-
-	// IsReducedContainer keeps ancestor restrictions separate from leaf projection/enrichment.
-	IsReducedContainer bool `json:"reducedContainer,omitempty"`
 
 	// FeatureGateAwareWriteModes allows write-mode to vary based on enabled feature gates
 	// Empty FeatureGate in an entry means "default" (when no gates are enabled)
@@ -64,7 +58,7 @@ type FieldMeta struct {
 // HyperFleet-managed public API types and schemas. A mutable field explicitly
 // opts into that API even when standard Kubernetes OpenAPI generation is off.
 func (m FieldMeta) HiddenFromPublicAPI() bool {
-	return m.Hidden && m.WriteMode != Mutable && !m.IsReducedContainer
+	return m.Hidden && m.WriteMode != Mutable
 }
 
 // TypedFieldRegistry maps CRD type kinds to their field metadata
@@ -110,11 +104,6 @@ type MarkerScanner struct {
 	// embeddedUpstreamTypes tracks where upstream-reduced types are embedded in CRDs
 	// Key: "CRDOwner.ContainerFieldPath.LocalType" to deduplicate
 	embeddedUpstreamTypes map[string]EmbeddedUpstreamType
-
-	// UpdateActions supplies authoritative build-time declarations for passthrough fields.
-	UpdateActions []UpdateActionDeclaration
-
-	declarationError error
 
 	// verbose enables detailed logging to stderr
 	verbose bool

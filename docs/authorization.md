@@ -95,7 +95,7 @@ Authored equality remains equality: `principal == HyperFleet::Role::"arn:aws:iam
 
 STS session ARNs omit role paths. Matching uses partition, account, and final role name: `role/platform/readers` matches `assumed-role/readers/allowed` in the same partition/account. Configured role ARNs/paths remain in entities/provenance. Two paths with the same partition/account/final name fail startup as ambiguous, even across regions. This static match does not verify role paths through STS/IAM; different partitions, accounts, or final names cannot match.
 
-All applicable global/regional attachments enter one request policy set. Forbid overrides permit; an exact-session forbid affects only that session, even beside a role permit. Any evaluation diagnostic fails authorization, even if native Cedar returns allow. Resolver errors invalidate partial material.
+All applicable global/regional attachments enter one request policy set. Forbid overrides permit; an exact-session forbid affects only that session, even beside a role permit. Any evaluation diagnostic fails authorization, even if native Cedar returns allow.
 
 ## Resources and stored labels
 
@@ -119,10 +119,10 @@ Lists check collection permission, then `DescribeCluster` on every candidate, in
 
 Startup resolves service region, then loads and validates the entire bundle before database setup or API/health/metrics listeners open. The authorizer retains an immutable snapshot; requests never reread the file. `Prepare` freezes one caller and request context for all checks. Handlers do not supply service region through identity, resource, or parent inputs. Cedar context, entity attributes, and UIDs still contain the configured region. Attachment region and ManagementCluster registration region remain independent facts. File replacement requires restart. Invalid replacements fail startup without reusing the old snapshot or serving requests.
 
-`PolicyRevision` and `AttachmentRevision` are lowercase hexadecimal SHA-256 of the complete file bytes, including whitespace. Each attachment has diagnostic ID `attachment/<attachment-id>`, even when sharing a policy.
+`PolicyRevision` is the lowercase hexadecimal SHA-256 of the complete file bytes, including whitespace. Each attachment has diagnostic ID `attachment/<attachment-id>`, even when sharing a policy.
 
 - Startup logs `authorization startup failed`. Typed failures include `stage`, `cause`, `provenance`, `diagnostics`: missing files use `resolution`, malformed bundles/policies `parsing`, invalid attachment material `binding` (attachment validation, not policy rewriting). Missing inputs log the input error. Exit is nonzero, without permissive fallback.
-- Runtime logs `cluster authorization failed` with operation, trusted identity, region, stage, cause, provenance, diagnostics. Preparation/evaluation failures return structured `AUTHZ-FAILED-001` 500 (`Authorization failed`); ordinary denies return `AUTHZ-DENIED-001` 403. Database failures retain existing API errors. Internal causes/diagnostics stay out of public response text; identity/policy metadata in logs requires restricted access.
+- Runtime logs `request authorization failed` with operation, the failing action, trusted identity, region, stage, cause, provenance, diagnostics. Preparation/evaluation failures return structured `AUTHZ-FAILED-001` 500 (`Authorization failed`); ordinary denies return `AUTHZ-DENIED-001` 403. Database failures retain existing API errors. Internal causes/diagnostics stay out of public response text; identity/policy metadata in logs requires restricted access.
 
 In sibling `rosa-hyperfleet`, source value `applications.regional-cluster.platformApi.authz.config` supplies the chart's authorization bundle. The chart creates `authz-config`, mounts `config.yaml` read-only at `/etc/platform-api/authz/config.yaml`, and sets `AUTHZ_CONFIG_FILE`. Mode `0644` permits reads by image UID/GID 65534.
 
@@ -170,7 +170,7 @@ Paths are relative to the API repo root:
 | Root | `make test-api-int` | Integration-tagged handler tests, race detection. |
 | Root | `make build-api` | API binary. |
 | Root | `make lint` | All Makefile-configured modules. |
-| `platform-api` | `go test -race -count=1 ./pkg/authz/...` | Resolver, attachment applicability, evaluation, strict capabilities, snapshots, metrics. |
+| `platform-api` | `go test -race -count=1 ./pkg/authz/...` | Bundle loading, attachment applicability, decisions, evaluation failures, schema, snapshots, metrics. |
 | `platform-api` | `../hack/tools/bin/golangci-lint run --config ../.golangci.yml --timeout 5m ./pkg/authz/...` | Authorization lint. |
 | `test` | `go test -race -count=1 ./helpers/aws` | Local/signed-client regressions. |
 | `test` | `go test -race -count=1 -run '^TestPatchMethodHeaders$' ./e2e-api` | Unsigned-localhost regression. |

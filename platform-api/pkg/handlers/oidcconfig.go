@@ -85,7 +85,7 @@ func NewOidcConfigHandler(db *hyperfleetdb.Client, oidcIssuerBaseURL string, aut
 func (h *OidcConfigHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
-	prepared, attempt := authorizeCollection(w, r, h.authorizer, authz.DefaultMetrics, h.logger, authz.ListOIDCConfigs, authz.Resource{Kind: authz.Collection, CollectionKind: authz.OIDCConfig, AccountID: accountID})
+	prepared, attempt := authorizeCollection(w, r, h.authorizer, h.logger, authz.ListOIDCConfigs, authz.Resource{Kind: authz.Collection, CollectionKind: authz.OIDCConfig, AccountID: accountID})
 	if prepared == nil {
 		return
 	}
@@ -113,7 +113,7 @@ func (h *OidcConfigHandler) List(w http.ResponseWriter, r *http.Request) {
 	list, err := h.db.ListOidcConfigs(ctx)
 	if err != nil {
 		h.logger.Error("failed to list oidc configs", "error", err, "account_id", accountID)
-		_ = attempt.Finish(authz.OutcomeError, authz.StageResourceLoading)
+		attempt.Finish(authz.OutcomeError, authz.StageResourceLoading)
 		writeAPIError(w, ErrOidcConfigList, h.logger)
 		return
 	}
@@ -129,7 +129,7 @@ func (h *OidcConfigHandler) List(w http.ResponseWriter, r *http.Request) {
 			configs = append(configs, hyperfleetdb.InternalToPublicOidcConfig(&list.Items[i]))
 		}
 	}
-	_ = attempt.Finish(authz.OutcomeAllow, authz.StageNone)
+	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 
 	total := len(configs)
 

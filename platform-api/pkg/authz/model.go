@@ -70,15 +70,12 @@ type Resource struct {
 	RegistrationRegion string
 }
 
+// Provenance identifies the attachment and file revision behind a decision.
 type Provenance struct {
-	DiagnosticID       string
-	PolicyID           string
-	PolicyRevision     string
-	AttachmentID       string
-	AttachmentRevision string
-	PrincipalARN       string
-	Scope              string
-	Region             string
+	DiagnosticID   string
+	PolicyID       string
+	PolicyRevision string
+	AttachmentID   string
 }
 
 type Decision struct {
@@ -101,6 +98,7 @@ const (
 // Failure keeps sensitive diagnostic material separate from the safe error text.
 type Failure struct {
 	Stage       Stage
+	Action      Action
 	Provenance  []Provenance
 	Diagnostics []cedar.DiagnosticError
 	Err         error

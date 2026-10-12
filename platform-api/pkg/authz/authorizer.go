@@ -16,7 +16,8 @@ type evaluator func(*cedar.PolicySet, cedar.EntityMap, cedar.Request) (cedar.Dec
 
 // Authorizer selects validated policies once per request in a fixed service region.
 type Authorizer struct {
-	source    policySource
+	customer  []policyAttachment
+	service   []policyAttachment
 	region    string
 	accounts  map[string]struct{}
 	model     *resolved.Schema
@@ -63,13 +64,6 @@ func (a *Authorizer) Prepare(ctx context.Context, id Identity, req RequestContex
 	if err != nil {
 		return nil, newFailure(StageResolution, err)
 	}
-	material, err := a.source.resolve(ctx, caller)
-	if err != nil {
-		return nil, newFailure(StageResolution, err)
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, newFailure(StageResolution, err)
-	}
 	if req.RequestTime.IsZero() {
 		return nil, newFailure(StageResolution, fmt.Errorf("request time is required"))
 	}
@@ -94,10 +88,13 @@ func (a *Authorizer) Prepare(ctx context.Context, id Identity, req RequestContex
 		bindings []policyAttachment
 		set      *cedar.PolicySet
 	}{
-		{material.customer, prepared.policies},
-		{material.serviceOperator, prepared.servicePolicies},
+		{a.customer, prepared.policies},
+		{a.service, prepared.servicePolicies},
 	} {
 		for _, binding := range domain.bindings {
+			if !matchesPrincipal(binding.principal, caller) || !appliesInRegion(binding.scope, binding.region, a.region) {
+				continue
+			}
 			diagnosticID := cedar.PolicyID(binding.DiagnosticID)
 			domain.set.Add(diagnosticID, binding.policy)
 			prepared.provenance[diagnosticID] = binding.Provenance
@@ -119,7 +116,14 @@ func (a *Authorizer) Prepare(ctx context.Context, id Identity, req RequestContex
 }
 
 // Check evaluates an action and trusted resource for the prepared caller, rejecting Cedar evaluation errors.
-func (p *Prepared) Check(ctx context.Context, action Action, resource Resource) (Decision, error) {
+func (p *Prepared) Check(ctx context.Context, action Action, resource Resource) (decision Decision, err error) {
+	// Record which check failed; one request can check several actions.
+	defer func() {
+		var failure *Failure
+		if errors.As(err, &failure) {
+			failure.Action = action
+		}
+	}()
 	if err := ctx.Err(); err != nil {
 		return Decision{}, newFailure(StageEvaluation, err)
 	}
@@ -138,7 +142,7 @@ func (p *Prepared) Check(ctx context.Context, action Action, resource Resource) 
 	if actionResourceKind(action) == ManagementCluster {
 		set = p.servicePolicies
 	}
-	decision, diagnostics, err := p.evaluate(set, entities, req)
+	verdict, diagnostics, err := p.evaluate(set, entities, req)
 	if err != nil {
 		return Decision{}, newFailure(StageEvaluation, err)
 	}
@@ -166,7 +170,7 @@ func (p *Prepared) Check(ctx context.Context, action Action, resource Resource) 
 	if err != nil {
 		return Decision{}, newFailure(StageEvaluation, err)
 	}
-	return Decision{Allowed: decision == cedar.Allow, Provenance: provenance}, nil
+	return Decision{Allowed: verdict == cedar.Allow, Provenance: provenance}, nil
 }
 
 // mapProvenance maps sorted, unique Cedar policy IDs to attachment provenance and reports unknown IDs.

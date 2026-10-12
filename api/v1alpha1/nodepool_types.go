@@ -50,13 +50,11 @@ const (
 type NodePoolSpec struct {
 	// AutoRepair controls whether unhealthy nodes are automatically replaced.
 	// +hyperfleet:write-mode=mutable
-	// +hyperfleet:update-action=UpdateNodePool
 	// +optional
 	AutoRepair *bool `json:"autoRepair,omitempty"`
 
 	// Labels are customer-defined labels applied to nodes in this pool.
 	// +hyperfleet:write-mode=mutable
-	// +hyperfleet:update-action=UpdateNodePool
 	// +kubebuilder:validation:MaxProperties=100
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
@@ -194,7 +192,6 @@ type NodePoolPlatform struct {
 	// aws specifies the platform-specific AWS configuration for this NodePool.
 	// +k8s:openapi-gen=true
 	// +hyperfleet:write-mode=mutable
-	// +hyperfleet:update-action=UpdateNodePool
 	// +optional
 	AWS *AWSNodePoolPlatform `json:"aws,omitempty"`
 }

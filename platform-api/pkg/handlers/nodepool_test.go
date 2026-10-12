@@ -345,8 +345,8 @@ func TestNodePoolHandler_List_InvalidSelector(t *testing.T) {
 	}
 }
 
-// Valid updates must survive ignored account-ID overrides, including case variants.
-func TestNodePoolUpdateOwnership(t *testing.T) {
+// Reject accountId from raw spec even though the public type omits it.
+func TestNodePoolHandler_Update_RejectsAccountID(t *testing.T) {
 	for _, body := range []string{
 		`{"spec":{"accountId":"999999999999","labels":{"changed":"true"}}}`,
 		`{"spec":{"AccountId":"","labels":{"changed":"true"}}}`,
@@ -357,7 +357,7 @@ func TestNodePoolUpdateOwnership(t *testing.T) {
 			fc := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(parent, np).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 			handler := NewNodePoolHandler(hyperfleetdb.NewClientFrom(fc, logger), clusterAuthorizer(t, lifecyclePermit), logger)
-			assertHandlerStatus(t, http.StatusOK, http.MethodPut,
+			assertHandlerStatus(t, http.StatusUnprocessableEntity, http.MethodPut,
 				"/api/v0/nodepools/"+np.Name, body,
 				map[string]string{"id": np.Name}, testAccountID, handler.Update)
 
@@ -365,11 +365,8 @@ func TestNodePoolUpdateOwnership(t *testing.T) {
 			if err := fc.Get(context.Background(), client.ObjectKeyFromObject(np), &stored); err != nil {
 				t.Fatal(err)
 			}
-			if stored.Spec.AccountID != testAccountID || stored.Labels["hyperfleet.io/account-id"] != testAccountID {
-				t.Errorf("stored ownership = (%q, %q), want caller account %q", stored.Spec.AccountID, stored.Labels["hyperfleet.io/account-id"], testAccountID)
-			}
-			if stored.Spec.Labels["changed"] != "true" {
-				t.Error("valid label update was not saved")
+			if stored.Spec.AccountID != testAccountID {
+				t.Errorf("stored account ID = %q, want %q", stored.Spec.AccountID, testAccountID)
 			}
 		})
 	}

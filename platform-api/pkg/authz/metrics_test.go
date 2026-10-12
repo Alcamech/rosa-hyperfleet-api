@@ -1,12 +1,16 @@
 package authz
 
 import (
-	"reflect"
+	"errors"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	cedar "github.com/cedar-policy/cedar-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	dto "github.com/prometheus/client_model/go"
 )
 
@@ -35,91 +39,8 @@ func metricSample(t *testing.T, r prometheus.Gatherer, name string, labels map[s
 	return &dto.Metric{}
 }
 
-func TestMetricsAccounting(t *testing.T) {
-	registry := prometheus.NewRegistry()
-	metrics, err := NewMetrics(registry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, tc := range []struct {
-		name      string
-		operation Action
-		outcome   Outcome
-		stage     Stage
-	}{
-		{"allow", ListClusters, OutcomeAllow, StageNone},
-		{"deny", DescribeCluster, OutcomeDeny, StageNone},
-		{"resolution", ListClusters, OutcomeError, StageResolution},
-		{"parsing", DescribeCluster, OutcomeError, StageParsing},
-		{"binding", ListClusters, OutcomeError, StageBinding},
-		{"entities", DescribeCluster, OutcomeError, StageEntityValidation},
-		{"evaluation", ListClusters, OutcomeError, StageEvaluation},
-		{"resource loading", DescribeCluster, OutcomeError, StageResourceLoading},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			labels := map[string]string{"operation": string(tc.operation), "outcome": string(tc.outcome)}
-			beforeCount := metricSample(t, registry, "authz_requests_total", labels).GetCounter().GetValue()
-			beforeSamples := metricSample(t, registry, "authz_duration_seconds", labels).GetHistogram().GetSampleCount()
-			failureLabels := map[string]string{"operation": string(tc.operation), "stage": string(tc.stage)}
-			beforeFailures := metricSample(t, registry, "authz_failures_total", failureLabels).GetCounter().GetValue()
-			attempt, err := metrics.Start(tc.operation)
-			if err != nil {
-				t.Fatal(err)
-			}
-			attempt.started = time.Now().Add(-52 * time.Millisecond)
-			if err := attempt.Finish(tc.outcome, tc.stage); err != nil {
-				t.Fatal(err)
-			}
-			if err := attempt.Finish(OutcomeDeny, StageNone); err != nil {
-				t.Fatal(err)
-			}
-			counter := metricSample(t, registry, "authz_requests_total", labels).GetCounter().GetValue()
-			histogram := metricSample(t, registry, "authz_duration_seconds", labels).GetHistogram()
-			if counter-beforeCount != 1 || histogram.GetSampleCount()-beforeSamples != 1 || histogram.GetSampleSum() < 0.05 {
-				t.Fatalf("bad sample delta: count=%v histogram=%+v", counter-beforeCount, histogram)
-			}
-			wantBuckets := []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1}
-			if len(histogram.Bucket) != len(wantBuckets) {
-				t.Fatalf("unexpected buckets: %+v", histogram)
-			}
-			for i, bucket := range histogram.Bucket {
-				if bucket.GetUpperBound() != wantBuckets[i] {
-					t.Fatalf("bucket %d: %v", i, bucket)
-				}
-			}
-			afterFailures := metricSample(t, registry, "authz_failures_total", failureLabels).GetCounter().GetValue()
-			wantFailure := 0.0
-			if tc.outcome == OutcomeError {
-				wantFailure = 1
-			}
-			if afterFailures-beforeFailures != wantFailure {
-				t.Fatalf("failure delta %v", afterFailures-beforeFailures)
-			}
-		})
-	}
-	t.Run("concurrent finalization", func(t *testing.T) {
-		labels := map[string]string{"operation": string(ListClusters), "outcome": string(OutcomeAllow)}
-		before := metricSample(t, registry, "authz_requests_total", labels).GetCounter().GetValue()
-		attempt, err := metrics.Start(ListClusters)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var group sync.WaitGroup
-		for range 32 {
-			group.Go(func() {
-				if err := attempt.Finish(OutcomeAllow, StageNone); err != nil {
-					t.Error(err)
-				}
-			})
-		}
-		group.Wait()
-		if delta := metricSample(t, registry, "authz_requests_total", labels).GetCounter().GetValue() - before; delta != 1 {
-			t.Fatalf("concurrent delta %v", delta)
-		}
-	})
-}
-
-func TestMetricsBoundedLabels(t *testing.T) {
+func newTestMetrics(t *testing.T) (*Metrics, *prometheus.Registry) {
+	t.Helper()
 	registry := prometheus.NewRegistry()
 	metrics, err := NewMetrics(registry)
 	if err != nil {
@@ -128,89 +49,109 @@ func TestMetricsBoundedLabels(t *testing.T) {
 	if _, err := NewMetrics(registry); err == nil {
 		t.Fatal("duplicate registration not reported")
 	}
-	if attempt, err := metrics.Start(Action("/clusters/id")); err == nil || attempt != nil {
-		t.Fatal("arbitrary operation admitted")
-	}
-	attempt, err := metrics.Start(ListClusters)
-	if err != nil {
-		t.Fatal(err)
-	}
+	return metrics, registry
+}
+
+func TestMetricsAccounting(t *testing.T) {
+	metrics, registry := newTestMetrics(t)
 	for _, tc := range []struct {
 		outcome Outcome
 		stage   Stage
-	}{{Outcome("arbitrary"), StageNone}, {OutcomeError, Stage("secret")}, {OutcomeError, StageNone}, {OutcomeAllow, StageEvaluation}, {OutcomeDeny, StageBinding}} {
-		if err := attempt.Finish(tc.outcome, tc.stage); err == nil {
-			t.Fatalf("arbitrary or inconsistent labels accepted: %+v", tc)
+	}{
+		{OutcomeAllow, StageNone}, {OutcomeDeny, StageNone},
+		{OutcomeError, StageResolution}, {OutcomeError, StageParsing}, {OutcomeError, StageBinding},
+		{OutcomeError, StageEntityValidation}, {OutcomeError, StageEvaluation}, {OutcomeError, StageResourceLoading},
+	} {
+		t.Run(string(tc.outcome)+" "+string(tc.stage), func(t *testing.T) {
+			labels := map[string]string{"operation": string(DescribeCluster), "outcome": string(tc.outcome)}
+			failureLabels := map[string]string{"operation": string(DescribeCluster), "stage": string(tc.stage)}
+			before := metricSample(t, registry, "authz_requests_total", labels).GetCounter().GetValue()
+			beforeSamples := metricSample(t, registry, "authz_duration_seconds", labels).GetHistogram().GetSampleCount()
+			beforeFailures := metricSample(t, registry, "authz_failures_total", failureLabels).GetCounter().GetValue()
+
+			attempt := metrics.Start(DescribeCluster)
+			attempt.started = time.Now().Add(-52 * time.Millisecond)
+			attempt.Finish(tc.outcome, tc.stage)
+			attempt.Finish(OutcomeDeny, StageNone)
+
+			histogram := metricSample(t, registry, "authz_duration_seconds", labels).GetHistogram()
+			if metricSample(t, registry, "authz_requests_total", labels).GetCounter().GetValue()-before != 1 || histogram.GetSampleCount()-beforeSamples != 1 || histogram.GetSampleSum() < 0.05 {
+				t.Fatalf("bad sample delta: %+v", histogram)
+			}
+			if len(histogram.Bucket) != 9 || histogram.Bucket[0].GetUpperBound() != 0.001 || histogram.Bucket[8].GetUpperBound() != 1 {
+				t.Fatalf("unexpected buckets: %+v", histogram.Bucket)
+			}
+			wantFailure := 0.0
+			if tc.outcome == OutcomeError {
+				wantFailure = 1
+			}
+			if delta := metricSample(t, registry, "authz_failures_total", failureLabels).GetCounter().GetValue() - beforeFailures; delta != wantFailure {
+				t.Fatalf("failure delta %v", delta)
+			}
+		})
+	}
+
+	t.Run("concurrent finish counts once", func(t *testing.T) {
+		labels := map[string]string{"operation": string(ListClusters), "outcome": string(OutcomeAllow)}
+		before := metricSample(t, registry, "authz_requests_total", labels).GetCounter().GetValue()
+		attempt := metrics.Start(ListClusters)
+		var group sync.WaitGroup
+		for range 32 {
+			group.Go(func() { attempt.Finish(OutcomeAllow, StageNone) })
 		}
-	}
-	families, err := registry.Gather()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(families) != 0 {
-		t.Fatalf("invalid outcomes created samples: %+v", families)
-	}
-	if err := attempt.Finish(OutcomeAllow, StageNone); err != nil {
-		t.Fatal(err)
-	}
-	isolated := prometheus.NewRegistry()
-	if _, err := NewMetrics(isolated); err != nil {
-		t.Fatal(err)
-	}
-	isolatedFamilies, err := isolated.Gather()
-	if err != nil || len(isolatedFamilies) != 0 {
-		t.Fatalf("registries share samples: %+v %v", isolatedFamilies, err)
-	}
-	if DefaultMetrics == nil {
-		t.Fatal("missing default production collectors")
-	}
+		group.Wait()
+		if delta := metricSample(t, registry, "authz_requests_total", labels).GetCounter().GetValue() - before; delta != 1 {
+			t.Fatalf("concurrent delta %v", delta)
+		}
+	})
 }
 
-func TestNoPerCheckMetrics(t *testing.T) {
-	registry := prometheus.NewRegistry()
-	metrics, err := NewMetrics(registry)
-	if err != nil {
-		t.Fatal(err)
-	}
+// Checks emit nothing; only the request-level attempt is counted, and a late
+// evaluation failure turns the whole list into one error.
+func TestMetricsPerRequest(t *testing.T) {
+	metrics, registry := newTestMetrics(t)
 	bundle := bundleFixture()
-	bundle["policies"].([]map[string]any)[0]["content"] = labelPermit
-	bundle["policies"] = append(bundle["policies"].([]map[string]any), map[string]any{"id": "list", "ownerAccountID": accountID, "content": `permit(principal, action == HyperFleet::Action::"ListClusters", resource);`})
-	bundle["attachments"] = append(bundle["attachments"].([]map[string]any), map[string]any{"id": "list", "policyID": "list", "principalARN": roleARN, "scope": "global"})
 	a := fixtureAuthorizer(t, bundle)
-	defaultBefore := authzSampleTotals(t, prometheus.DefaultGatherer)
-	attempt, err := metrics.Start(ListClusters)
-	if err != nil {
-		t.Fatal(err)
-	}
+	attempt := metrics.Start(ListClusters)
 	p, err := a.Prepare(t.Context(), testIdentity(sessionARN), testRequestContext())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Check(t.Context(), ListClusters, testCollection()); err != nil {
-		t.Fatal(err)
+	if d, err := p.Check(t.Context(), ListClusters, testCollection()); err != nil || !d.Allowed {
+		t.Fatalf("collection: %+v %v", d, err)
 	}
 	for range 10 {
-		if _, err := p.Check(t.Context(), DescribeCluster, testCluster()); err != nil {
-			t.Fatal(err)
+		if d, err := p.Check(t.Context(), DescribeCluster, testCluster()); err != nil || !d.Allowed {
+			t.Fatalf("item: %+v %v", d, err)
 		}
 	}
-	hidden := testCluster()
-	hidden.Labels = nil
-	if decision, err := p.Check(t.Context(), DescribeCluster, hidden); err != nil || decision.Allowed {
-		t.Fatalf("hidden object did not deny: %+v %v", decision, err)
-	}
-	families, err := registry.Gather()
-	if err != nil || len(families) != 0 {
+	if families, err := registry.Gather(); err != nil || len(families) != 0 {
 		t.Fatalf("checks emitted metrics: %+v %v", families, err)
 	}
-	if !reflect.DeepEqual(defaultBefore, authzSampleTotals(t, prometheus.DefaultGatherer)) {
-		t.Fatal("preparation or checks emitted default metrics")
+	p.evaluate = func(*cedar.PolicySet, cedar.EntityMap, cedar.Request) (cedar.Decision, cedar.Diagnostic, error) {
+		return cedar.Allow, cedar.Diagnostic{}, errors.New("late failure")
 	}
-	if err := attempt.Finish(OutcomeAllow, StageNone); err != nil {
-		t.Fatal(err)
+	_, err = p.Check(t.Context(), DescribeCluster, testCluster())
+	attempt.Finish(OutcomeError, checkFailure(t, err, StageEvaluation).Stage)
+	attempt.Finish(OutcomeAllow, StageNone)
+
+	errorLabels := map[string]string{"operation": string(ListClusters), "outcome": string(OutcomeError)}
+	allowLabels := map[string]string{"operation": string(ListClusters), "outcome": string(OutcomeAllow)}
+	if metricSample(t, registry, "authz_requests_total", errorLabels).GetCounter().GetValue() != 1 || metricSample(t, registry, "authz_requests_total", allowLabels).GetCounter().GetValue() != 0 || metricSample(t, registry, "authz_failures_total", map[string]string{"operation": string(ListClusters), "stage": string(StageEvaluation)}).GetCounter().GetValue() != 1 {
+		t.Fatal("late failure did not count exactly once as error")
 	}
-	labels := map[string]string{"operation": string(ListClusters), "outcome": string(OutcomeAllow)}
-	if metricSample(t, registry, "authz_requests_total", labels).GetCounter().GetValue() != 1 || metricSample(t, registry, "authz_duration_seconds", labels).GetHistogram().GetSampleCount() != 1 {
-		t.Fatal("list did not count once")
+}
+
+func TestDefaultMetricsExposed(t *testing.T) {
+	labels := map[string]string{"operation": string(DescribeCluster), "outcome": string(OutcomeDeny)}
+	before := metricSample(t, prometheus.DefaultGatherer, "authz_requests_total", labels).GetCounter().GetValue()
+	DefaultMetrics.Start(DescribeCluster).Finish(OutcomeDeny, StageNone)
+	if metricSample(t, prometheus.DefaultGatherer, "authz_requests_total", labels).GetCounter().GetValue()-before != 1 {
+		t.Fatal("default registry did not receive the sample")
+	}
+	recorder := httptest.NewRecorder()
+	promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{}).ServeHTTP(recorder, httptest.NewRequest("GET", "/metrics", nil))
+	if !strings.Contains(recorder.Body.String(), `authz_duration_seconds_bucket{operation="DescribeCluster",outcome="deny",le="+Inf"}`) {
+		t.Fatalf("missing +Inf bucket in exposition")
 	}
 }

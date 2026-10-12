@@ -20,7 +20,6 @@ type PlatformSpec struct {
 	// aws specifies AWS-specific configuration for the cluster.
 	// +k8s:openapi-gen=true
 	// +hyperfleet:write-mode=mutable
-	// +hyperfleet:update-action=UpdateCluster
 	// +optional
 	AWS *hypershiftv1beta1.AWSPlatformSpec `json:"aws,omitempty"`
 }
