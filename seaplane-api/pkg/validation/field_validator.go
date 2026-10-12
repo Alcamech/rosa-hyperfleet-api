@@ -253,20 +253,15 @@ func lookupFieldMeta(fieldMetaMap map[string]registry.FieldMeta, fieldPath strin
 }
 
 func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.FieldMeta, op Operation, value any, existingFields map[string]any, fs featuregate.FeatureSet, pointers map[string]bool) *ValidationError {
-	effectiveMode := effectiveWriteMode(meta, fs)
-
-	switch effectiveMode {
+	switch effectiveWriteMode(meta, fs) {
 	case registry.ServiceSet:
-		// Preserve round-trip updates without treating omitted zero values as changes.
-		if op == OperationUpdate && existingFields != nil {
-			oldValue, oldExists := existingFields[fieldPath]
-			if oldExists && (reflect.DeepEqual(oldValue, value) || (isZeroValue(oldValue) && isZeroValue(value))) {
-				return nil
-			}
-			if !oldExists && isZeroValue(value) && !pointers[fieldPath] {
-				return nil
-			}
-		} else if op == OperationCreate && isZeroValue(value) && !pointers[fieldPath] {
+		// A zero value means "not provided": create skips it and update keeps the
+		// stored value (PreserveServiceSet). Update also allows an exact echo.
+		// A non-nil pointer (e.g. *bool) is explicit even when zero, so it must echo.
+		if !pointers[fieldPath] && isZeroValue(value) {
+			return nil
+		}
+		if op == OperationUpdate && existingFields != nil && reflect.DeepEqual(existingFields[fieldPath], value) {
 			return nil
 		}
 		return &ValidationError{

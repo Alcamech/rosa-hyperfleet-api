@@ -589,18 +589,6 @@ func TestValidateUpdate_RejectsServiceSetFieldsWithoutExistingSpec(t *testing.T)
 	}
 }
 
-func TestValidateUpdate_RejectsClearingServiceSetFields(t *testing.T) {
-	v := newTestValidator(map[string]registry.FieldMeta{
-		"spec.creatorARN": {FieldPath: "spec.creatorARN", WriteMode: registry.ServiceSet},
-	})
-
-	existing := map[string]any{"creatorARN": "arn:aws:iam::123456789012:user/platform"}
-	updated := map[string]any{"creatorARN": ""}
-	if errs := v.ValidateUpdate(updated, existing, featuregate.Default); errs == nil {
-		t.Fatal("expected validation error when clearing a non-zero service-set field")
-	}
-}
-
 func TestValidateUpdate_AllowsMatchingServiceSetFields(t *testing.T) {
 	v := newTestValidator(map[string]registry.FieldMeta{
 		"spec.accountId": {FieldPath: "spec.accountId", WriteMode: registry.ServiceSet},
@@ -628,17 +616,16 @@ func TestValidateUpdate_AllowsBothUnsetServiceSetFields(t *testing.T) {
 	}
 }
 
-func TestValidateUpdate_RejectsEmptyServiceSetString(t *testing.T) {
+// A zero service-set value means "not provided"; PreserveServiceSet keeps the stored value.
+func TestValidateUpdate_AcceptsZeroServiceSet(t *testing.T) {
 	v := newTestValidator(map[string]registry.FieldMeta{
-		"spec.accountId": {FieldPath: "spec.accountId", WriteMode: registry.ServiceSet},
+		"spec.accountId":           {FieldPath: "spec.accountId", WriteMode: registry.ServiceSet, Hidden: true},
+		"spec.nodePool.management": {FieldPath: "spec.nodePool.management", WriteMode: registry.ServiceSet},
 	})
-
-	errs := v.ValidateUpdate(map[string]any{"accountId": ""}, map[string]any{"accountId": "acct-1"}, featuregate.Default)
-	if errs == nil {
-		t.Fatal("expected rejection of empty accountId on update")
-	}
-	if errs[0].Field != "spec.accountId" {
-		t.Errorf("field = %q, want spec.accountId", errs[0].Field)
+	updated := map[string]any{"accountId": "", "nodePool": map[string]any{"management": map[string]any{"upgradeType": "", "autoRepair": false}}}
+	existing := map[string]any{"accountId": "acct-1", "nodePool": map[string]any{"management": map[string]any{"upgradeType": "Replace", "autoRepair": true}}}
+	if errs := v.ValidateUpdate(updated, existing, featuregate.Default); errs != nil {
+		t.Fatalf("zero service-set values should pass validation, got %v", errs)
 	}
 }
 

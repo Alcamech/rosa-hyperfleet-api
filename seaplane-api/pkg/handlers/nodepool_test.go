@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -19,7 +20,6 @@ import (
 
 	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/clients/seaplanedb"
-	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 )
 
 func testNodePoolCR(npName string, parent *seaplanev1alpha1.Cluster) *seaplanev1alpha1.NodePool {
@@ -345,28 +345,39 @@ func TestNodePoolHandler_List_InvalidSelector(t *testing.T) {
 	}
 }
 
-// Reject accountId from raw spec even though the public type omits it.
-func TestNodePoolHandler_Update_RejectsAccountID(t *testing.T) {
-	for _, body := range []string{
-		`{"spec":{"accountId":"999999999999","labels":{"changed":"true"}}}`,
-		`{"spec":{"AccountId":"","labels":{"changed":"true"}}}`,
+// Service-set fields cannot change on update. Zero values are accepted as "not
+// provided" (rosa edit machinepool zeroes management) and stored values are kept.
+func TestNodePoolHandler_Update_ProtectsServiceSet(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		want int
+	}{
+		{`{"spec":{"accountId":"999999999999","labels":{"changed":"true"}}}`, http.StatusUnprocessableEntity},
+		{`{"spec":{"AccountId":"","labels":{"changed":"true"}}}`, http.StatusOK},
+		{`{"spec":{"nodePool":{"replicas":3,"management":{"upgradeType":"","autoRepair":false}}}}`, http.StatusOK},
+		{`{"spec":{"nodePool":{"management":{"upgradeType":"InPlace","autoRepair":true}}}}`, http.StatusUnprocessableEntity},
 	} {
-		t.Run(body, func(t *testing.T) {
+		t.Run(tc.body, func(t *testing.T) {
 			parent := testClusterCR("parent-uid", "owned", testAccountID)
 			np := testNodePoolCR("owned.workers", parent)
+			replicas := int32(2)
+			np.Spec.NodePool.Replicas = &replicas
+			np.Spec.NodePool.Management = hypershiftv1beta1.NodePoolManagement{UpgradeType: hypershiftv1beta1.UpgradeTypeReplace, AutoRepair: true}
 			fc := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(parent, np).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 			handler := NewNodePoolHandler(seaplanedb.NewClientFrom(fc, logger), clusterAuthorizer(t, lifecyclePermit), logger)
-			assertHandlerStatus(t, http.StatusUnprocessableEntity, http.MethodPut,
-				"/api/v0/nodepools/"+np.Name, body,
+			assertHandlerStatus(t, tc.want, http.MethodPut,
+				"/api/v0/nodepools/"+np.Name, tc.body,
 				map[string]string{"id": np.Name}, testAccountID, handler.Update)
-
 			var stored seaplanev1alpha1.NodePool
 			if err := fc.Get(context.Background(), client.ObjectKeyFromObject(np), &stored); err != nil {
 				t.Fatal(err)
 			}
-			if stored.Spec.AccountID != testAccountID {
-				t.Errorf("stored account ID = %q, want %q", stored.Spec.AccountID, testAccountID)
+			if stored.Spec.AccountID != testAccountID || stored.Spec.NodePool.Management != np.Spec.NodePool.Management {
+				t.Errorf("service-set values changed: accountId=%q management=%+v", stored.Spec.AccountID, stored.Spec.NodePool.Management)
+			}
+			if strings.Contains(tc.body, `"replicas":3`) && *stored.Spec.NodePool.Replicas != 3 {
+				t.Errorf("replicas = %d, want 3", *stored.Spec.NodePool.Replicas)
 			}
 		})
 	}
