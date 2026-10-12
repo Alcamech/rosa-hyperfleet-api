@@ -715,7 +715,7 @@ func authzAssertFailureLog(t *testing.T, log []byte, operation, revision string)
 			Stage      string `json:"stage"`
 			Cause      string `json:"cause"`
 			Provenance []struct {
-				DiagnosticID, PolicyID, PolicyRevision, AttachmentID, AttachmentRevision, PrincipalARN string
+				DiagnosticID, PolicyID, PolicyRevision, AttachmentID string
 			}
 			Diagnostics []struct {
 				Policy   string `json:"policy"`
@@ -728,7 +728,7 @@ func authzAssertFailureLog(t *testing.T, log []byte, operation, revision string)
 		if err := decoder.Decode(&entry); err != nil {
 			t.Fatal("invalid request log JSON: ", err)
 		}
-		if entry.Message != "cluster authorization failed" {
+		if entry.Message != "request authorization failed" {
 			continue
 		}
 		failures++
@@ -737,7 +737,7 @@ func authzAssertFailureLog(t *testing.T, log []byte, operation, revision string)
 		}
 		provenance := entry.Provenance[0]
 		diagnostic := entry.Diagnostics[0]
-		if provenance.DiagnosticID != "attachment/error-forbid" || provenance.PolicyID != "runtime-fault" || provenance.AttachmentID != "error-forbid" || provenance.PolicyRevision != revision || provenance.AttachmentRevision != revision || provenance.PrincipalARN != authzUser("error-fixture") || diagnostic.Policy != provenance.DiagnosticID || !strings.Contains(diagnostic.Message, "integer overflow") || diagnostic.Position.Line < 1 {
+		if provenance.DiagnosticID != "attachment/error-forbid" || provenance.PolicyID != "runtime-fault" || provenance.AttachmentID != "error-forbid" || provenance.PolicyRevision != revision || diagnostic.Policy != provenance.DiagnosticID || !strings.Contains(diagnostic.Message, "integer overflow") || diagnostic.Position.Line < 1 {
 			t.Fatalf("failure log lost actual attachment revision or native overflow diagnostic: %s", log)
 		}
 	}

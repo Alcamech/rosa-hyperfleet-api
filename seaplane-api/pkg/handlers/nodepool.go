@@ -74,7 +74,7 @@ func validateNodePoolEC2InstanceMetadataHttpTokens(value public.EC2InstanceMetad
 func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
-	prepared, attempt := authorizeCollection(w, r, h.authorizer, authz.DefaultMetrics, h.logger, authz.ListNodePools, authz.Resource{Kind: authz.Collection, CollectionKind: authz.NodePool, AccountID: accountID})
+	prepared, attempt := authorizeCollection(w, r, h.authorizer, h.logger, authz.ListNodePools, authz.Resource{Kind: authz.Collection, CollectionKind: authz.NodePool, AccountID: accountID})
 	if prepared == nil {
 		return
 	}
@@ -140,7 +140,7 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 	list, err := h.db.ListNodePools(ctx, clusterUID)
 	if err != nil {
 		h.logger.Error("failed to list nodepools", "error", err, "account_id", accountID)
-		_ = attempt.Finish(authz.OutcomeError, authz.StageResourceLoading)
+		attempt.Finish(authz.OutcomeError, authz.StageResourceLoading)
 		writeAPIError(w, ErrNodePoolList, h.logger)
 		return
 	}
@@ -161,7 +161,7 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 			nodepools = append(nodepools, seaplanedb.InternalToPublicNodePool(&list.Items[i]))
 		}
 	}
-	_ = attempt.Finish(authz.OutcomeAllow, authz.StageNone)
+	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 
 	total := len(nodepools)
 
@@ -360,23 +360,21 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	errs := h.validator.ValidateUpdate(rawSpec, &cr.Spec, featuregate.Default)
+	errs = append(errs, validateNodePoolReplicas(&req.Spec)...)
+	if len(errs) > 0 {
+		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
+		return
+	}
 	candidate := cr.DeepCopy()
 	if err := seaplanedb.MergeSpecJSON(&candidate.Spec, envelope.Spec); err != nil {
 		h.logger.Error("failed to merge nodepool spec", "error", err)
 		writeAPIError(w, ErrNodePoolUpdateInvalidSpec, h.logger)
 		return
 	}
-	// Account ownership comes from the caller, not request JSON.
-	candidate.Spec.AccountID = accountID
 
 	// Authorize the stored snapshot and every changed-field action before its CAS write.
-	actions, errs := h.validator.AnalyzeUpdate(envelope.Spec, &cr.Spec, &candidate.Spec, featuregate.Default)
-	errs = append(errs, validateNodePoolReplicas(&seaplanedb.InternalToPublicNodePool(candidate).Spec)...)
-	if len(errs) > 0 {
-		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
-		return
-	}
-	if !h.authorizeNodePool(w, r, authz.UpdateNodePool, cr, actions...) {
+	if !h.authorizeNodePool(w, r, authz.UpdateNodePool, cr, nodePoolUpdateActions(&cr.Spec, &candidate.Spec)...) {
 		return
 	}
 	if err := h.db.UpdateNodePool(ctx, candidate); err != nil {

@@ -17,7 +17,6 @@ import (
 var (
 	// Marker patterns
 	openapiGenPattern                = regexp.MustCompile(`\+k8s:openapi-gen=false`)
-	updateActionPattern              = regexp.MustCompile(`\+seaplane:update-action=([^\s]+)`)
 	writeModePattern                 = regexp.MustCompile(`\+seaplane:write-mode=(mutable|immutable|service-set)`)
 	resettablePattern                = regexp.MustCompile(`\+seaplane:resettable=(true|false)`)
 	featureGatePattern               = regexp.MustCompile(`\+openshift:enable:FeatureGate=(\w+)`)
@@ -114,9 +113,6 @@ func (s *MarkerScanner) Scan() error {
 		if err := s.scanDir(dir); err != nil {
 			return fmt.Errorf("scanning directory %s: %w", dir, err)
 		}
-	}
-	if s.declarationError != nil {
-		return s.declarationError
 	}
 	// Count total fields across all owner types
 	totalFields := 0
@@ -284,11 +280,13 @@ func (s *MarkerScanner) processField(field *ast.Field, parentPath string, visite
 	// Check if this field's type is an upstream-reduced type
 	// If so, mark it for synthetic path generation
 	fieldTypeName := s.extractTypeName(field.Type)
+	isUpstreamReduced := false
 	var localType string
 
 	if fieldTypeName != "" {
 		localType = s.getLocalTypeForUpstream(fieldTypeName)
 		if localType != "" {
+			isUpstreamReduced = true
 			// Store the embedding info for synthetic path generation (with deduplication via map key)
 			key := ownerKind + "." + fieldPath + "." + localType
 			if _, exists := s.embeddedUpstreamTypes[key]; !exists {
@@ -306,21 +304,24 @@ func (s *MarkerScanner) processField(field *ast.Field, parentPath string, visite
 
 	// Extract markers for the field
 	meta := s.extractMarkers(field, fieldPath)
-	if meta != nil {
-		// Retain container restrictions as well as the later synthetic descendants.
+	if meta != nil && !isUpstreamReduced {
+		// Only add non-upstream-reduced fields to registry
+		// Upstream-reduced fields will be synth added via synthetic paths
 		meta.OwnerType = ownerKind
 		meta.OwnerGVK = ownerGVK
-		meta.IsReducedContainer = localType != ""
 		s.logf("    field: %s  owner=%s  write-mode=%s  hidden=%v  resettable=%v  gate=%s", fieldPath, ownerKind, meta.WriteMode, meta.Hidden, meta.Resettable, meta.FeatureGate)
 
 		// Add to typed registry
 		if s.TypedRegistry[ownerKind] == nil {
 			s.TypedRegistry[ownerKind] = make(map[string]FieldMeta)
 		}
-		if old, ok := s.TypedRegistry[ownerKind][fieldPath]; ok && old.UpdateAction != "" && meta.UpdateAction != "" && old.UpdateAction != meta.UpdateAction {
-			s.declarationError = fmt.Errorf("conflicting update actions for %s.%s: %s and %s", ownerKind, fieldPath, old.UpdateAction, meta.UpdateAction)
-		}
 		s.TypedRegistry[ownerKind][fieldPath] = *meta
+	} else if meta != nil && isUpstreamReduced {
+		// For upstream-reduced container fields, just log the markers but don't add to registry
+		meta.OwnerType = ownerKind
+		meta.OwnerGVK = ownerGVK
+		s.logf("    field: %s (container for upstream-reduced type) owner=%s write-mode=%s", fieldPath, ownerKind, meta.WriteMode)
+		// Container field markers will be reflected in synthetic paths
 	}
 
 	// Recursively process nested structs (including upstream-reduced types for deeper embeddings)
@@ -384,13 +385,6 @@ func (s *MarkerScanner) extractMarkers(field *ast.Field, fieldPath string) *Fiel
 		meta.Hidden = true
 	}
 
-	for _, matches := range updateActionPattern.FindAllStringSubmatch(comments, -1) {
-		if meta.UpdateAction != "" && meta.UpdateAction != matches[1] {
-			s.declarationError = fmt.Errorf("conflicting update action markers for %s", fieldPath)
-		}
-		meta.UpdateAction = matches[1]
-	}
-
 	// Extract write mode
 	if matches := writeModePattern.FindStringSubmatch(comments); len(matches) > 1 {
 		meta.WriteMode = WriteMode(matches[1])
@@ -422,7 +416,7 @@ func (s *MarkerScanner) extractMarkers(field *ast.Field, fieldPath string) *Fiel
 	}
 
 	// Only include in registry if at least one marker was found
-	if meta.Hidden || meta.WriteMode != "" || meta.Resettable || meta.FeatureGate != "" || meta.UpdateAction != "" || len(meta.FeatureGateAwareWriteModes) > 0 {
+	if meta.Hidden || meta.WriteMode != "" || meta.Resettable || meta.FeatureGate != "" || len(meta.FeatureGateAwareWriteModes) > 0 {
 		return meta
 	}
 
@@ -473,16 +467,8 @@ func (t TypedFieldRegistry) Validate() error {
 
 	for owner, fields := range t {
 		for path, meta := range fields {
-			if meta.UpdateAction != "" {
-				kind := updateActionKind(meta.UpdateAction)
-				if kind == "" {
-					errors = append(errors, fmt.Sprintf("%s.%s has unknown update action %q", owner, path, meta.UpdateAction))
-				} else if (owner == "Cluster" || owner == "NodePool") && kind != owner {
-					errors = append(errors, fmt.Sprintf("%s.%s has incompatible update action %q", owner, path, meta.UpdateAction))
-				}
-			}
 			// All visible fields must have a write mode
-			if !meta.Hidden && meta.WriteMode == "" && meta.UpdateAction == "" {
+			if !meta.Hidden && meta.WriteMode == "" {
 				errors = append(errors, fmt.Sprintf("%s.%s is missing +seaplane:write-mode marker", owner, path))
 			}
 		}
@@ -603,12 +589,10 @@ func (s *MarkerScanner) updateRegistryWithSyntheticPaths(byOwner map[string][]te
 				}
 
 				meta := FieldMeta{
-					UpdateAction:               tfield.UpdateAction,
 					FieldPath:                  tfield.FieldPath,
 					WriteMode:                  writeMode,
 					FeatureGate:                tfield.FeatureGate,
 					Hidden:                     tfield.Hidden,
-					IsReducedContainer:         tfield.IsReducedContainer,
 					FeatureGateAwareWriteModes: gatedModes,
 					OwnerType:                  tfield.OwnerType,
 					OwnerGVK:                   tfield.OwnerGVK,

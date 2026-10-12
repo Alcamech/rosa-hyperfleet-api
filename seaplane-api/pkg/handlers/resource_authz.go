@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"reflect"
 	"strings"
 
 	v1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
@@ -34,10 +35,10 @@ func (h *NodePoolHandler) nodePoolResource(ctx context.Context, np *v1.NodePool)
 	return authz.Resource{Kind: authz.NodePool, ID: string(np.UID), AccountID: np.Labels["seaplane.io/account-id"], Labels: maps.Clone(np.Labels),
 		ParentCluster: &authz.ParentCluster{ID: string(parent.UID), AccountID: parent.Labels["seaplane.io/account-id"], Labels: maps.Clone(parent.Labels)}}, nil
 }
-func (h *NodePoolHandler) authorizeNodePool(w http.ResponseWriter, r *http.Request, operation authz.Action, np *v1.NodePool, additional ...string) bool {
+func (h *NodePoolHandler) authorizeNodePool(w http.ResponseWriter, r *http.Request, operation authz.Action, np *v1.NodePool, additional ...authz.Action) bool {
 	resource, err := h.nodePoolResource(r.Context(), np)
 	if err != nil {
-		attempt, _ := authz.DefaultMetrics.Start(operation)
+		attempt := authz.DefaultMetrics.Start(operation)
 		writeResourceAuthzError(w, r, attempt, operation, err, h.logger)
 		return false
 	}
@@ -60,4 +61,32 @@ func (h *ManagementClusterHandler) managementClusterResource(mc *v1.ManagementCl
 		id = ""
 	}
 	return authz.Resource{Kind: authz.ManagementCluster, ID: id, AccountID: mc.Spec.AccountID, RegistrationRegion: mc.Spec.Region, Labels: maps.Clone(mc.Labels)}
+}
+
+// clusterUpdateActions returns the specialized actions an update needs beyond
+// UpdateCluster. It compares the stored spec with the exact candidate to be written.
+func clusterUpdateActions(old, candidate *v1.ClusterSpec) []authz.Action {
+	var actions []authz.Action
+	if !reflect.DeepEqual(old.HostedCluster.Configuration, candidate.HostedCluster.Configuration) {
+		actions = append(actions, authz.UpdateClusterConfig)
+	}
+	if !reflect.DeepEqual(old.HostedCluster.Release, candidate.HostedCluster.Release) ||
+		!reflect.DeepEqual(old.ControlPlaneUpgradePolicy, candidate.ControlPlaneUpgradePolicy) {
+		actions = append(actions, authz.UpdateClusterVersion)
+	}
+	return actions
+}
+
+// nodePoolUpdateActions returns the specialized actions an update needs beyond
+// UpdateNodePool. It compares the stored spec with the exact candidate to be written.
+func nodePoolUpdateActions(old, candidate *v1.NodePoolSpec) []authz.Action {
+	var actions []authz.Action
+	if !reflect.DeepEqual(old.NodePool.Replicas, candidate.NodePool.Replicas) ||
+		!reflect.DeepEqual(old.NodePool.AutoScaling, candidate.NodePool.AutoScaling) {
+		actions = append(actions, authz.ScaleNodePool)
+	}
+	if !reflect.DeepEqual(old.NodePool.Release, candidate.NodePool.Release) {
+		actions = append(actions, authz.UpdateNodePoolVersion)
+	}
+	return actions
 }

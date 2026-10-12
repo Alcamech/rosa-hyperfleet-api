@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
-	"slices"
 	"time"
 
 	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
@@ -15,8 +14,8 @@ import (
 )
 
 var (
-	errClusterAuthzDenied = api.APIError{Code: "AUTHZ-DENIED-001", HTTPStatus: http.StatusForbidden, Message: "Access denied"}
-	errClusterAuthzFailed = api.APIError{Code: "AUTHZ-FAILED-001", HTTPStatus: http.StatusInternalServerError, Message: "Authorization failed"}
+	errAuthzDenied = api.APIError{Code: "AUTHZ-DENIED-001", HTTPStatus: http.StatusForbidden, Message: "Access denied"}
+	errAuthzFailed = api.APIError{Code: "AUTHZ-FAILED-001", HTTPStatus: http.StatusInternalServerError, Message: "Authorization failed"}
 )
 
 func (h *ClusterHandler) clusterResource(cr *seaplanev1alpha1.Cluster) authz.Resource {
@@ -41,12 +40,12 @@ func writeResourceAuthzError(w http.ResponseWriter, r *http.Request, attempt *au
 	var failure *authz.Failure
 	if errors.As(err, &failure) {
 		stage = failure.Stage
-		attrs = append(attrs, "cause", failure.Err, "provenance", failure.Provenance, "diagnostics", failure.Diagnostics)
+		attrs = append(attrs, "action", failure.Action, "cause", failure.Err, "provenance", failure.Provenance, "diagnostics", failure.Diagnostics)
 	}
 	attrs = append(attrs, "stage", stage)
-	logger.Error("cluster authorization failed", attrs...)
-	_ = attempt.Finish(authz.OutcomeError, stage)
-	writeAPIError(w, errClusterAuthzFailed, logger)
+	logger.Error("request authorization failed", attrs...)
+	attempt.Finish(authz.OutcomeError, stage)
+	writeAPIError(w, errAuthzFailed, logger)
 }
 
 func prepareResourceAuthz(r *http.Request, authorizer *authz.Authorizer) (*authz.Prepared, error) {
@@ -56,8 +55,8 @@ func prepareResourceAuthz(r *http.Request, authorizer *authz.Authorizer) (*authz
 }
 
 // authorizeCollection prepares one frozen policy/context snapshot for all item checks.
-func authorizeCollection(w http.ResponseWriter, r *http.Request, authorizer *authz.Authorizer, metrics *authz.Metrics, logger *slog.Logger, operation authz.Action, resource authz.Resource) (*authz.Prepared, *authz.Attempt) {
-	attempt, _ := metrics.Start(operation)
+func authorizeCollection(w http.ResponseWriter, r *http.Request, authorizer *authz.Authorizer, logger *slog.Logger, operation authz.Action, resource authz.Resource) (*authz.Prepared, *authz.Attempt) {
+	attempt := authz.DefaultMetrics.Start(operation)
 	prepared, err := prepareResourceAuthz(r, authorizer)
 	if err != nil {
 		writeResourceAuthzError(w, r, attempt, operation, err, logger)
@@ -69,37 +68,33 @@ func authorizeCollection(w http.ResponseWriter, r *http.Request, authorizer *aut
 		return nil, nil
 	}
 	if !decision.Allowed {
-		_ = attempt.Finish(authz.OutcomeDeny, authz.StageNone)
-		writeAPIError(w, errClusterAuthzDenied, logger)
+		attempt.Finish(authz.OutcomeDeny, authz.StageNone)
+		writeAPIError(w, errAuthzDenied, logger)
 		return nil, nil
 	}
 	return prepared, attempt
 }
 
 // authorizeResource checks the base operation and every effective changed-field action before a write.
-func authorizeResource(w http.ResponseWriter, r *http.Request, authorizer *authz.Authorizer, logger *slog.Logger, operation authz.Action, resource authz.Resource, additional ...string) bool {
-	attempt, _ := authz.DefaultMetrics.Start(operation)
+func authorizeResource(w http.ResponseWriter, r *http.Request, authorizer *authz.Authorizer, logger *slog.Logger, operation authz.Action, resource authz.Resource, additional ...authz.Action) bool {
+	attempt := authz.DefaultMetrics.Start(operation)
 	prepared, err := prepareResourceAuthz(r, authorizer)
 	if err != nil {
 		writeResourceAuthzError(w, r, attempt, operation, err, logger)
 		return false
 	}
-	actions := []string{string(operation)}
-	actions = append(actions, additional...)
-	slices.Sort(actions)
-	actions = slices.Compact(actions)
-	for _, action := range actions {
-		decision, err := prepared.Check(r.Context(), authz.Action(action), resource)
+	for _, action := range append([]authz.Action{operation}, additional...) {
+		decision, err := prepared.Check(r.Context(), action, resource)
 		if err != nil {
 			writeResourceAuthzError(w, r, attempt, operation, err, logger)
 			return false
 		}
 		if !decision.Allowed {
-			_ = attempt.Finish(authz.OutcomeDeny, authz.StageNone)
-			writeAPIError(w, errClusterAuthzDenied, logger)
+			attempt.Finish(authz.OutcomeDeny, authz.StageNone)
+			writeAPIError(w, errAuthzDenied, logger)
 			return false
 		}
 	}
-	_ = attempt.Finish(authz.OutcomeAllow, authz.StageNone)
+	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 	return true
 }

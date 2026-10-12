@@ -22,10 +22,10 @@ Identity, resource, and parent inputs do not repeat service region. The authoriz
 supplies the region in Cedar context, entity attributes, and regional UIDs.
 Attachment region and ManagementCluster `registrationRegion` remain distinct.
 
-The private policy source selects applicable, validated attachments. Policy text
+The authorizer selects applicable, validated attachments per request. Policy text
 is parsed and strictly validated during configuration loading, not during request
 preparation. Compiled policies are shared read-only; policy sets, entities, and
-provenance maps are request-local. Source errors discard partial material.
+provenance maps are request-local.
 
 The planned DynamoDB source retains per-request reads and validates newly read
 material before preparation. It does not expose policy text to handlers or promise
@@ -71,9 +71,10 @@ its existing `kind/items/total` envelope without pagination.
 ### Changed fields and concurrency
 
 Updates merge only the raw submitted spec into a DeepCopy. Omitted fields remain
-unchanged. Duplicate keys and case aliases are rejected; exact typed old/new
-comparisons avoid numeric precision loss. Existing immutable, service-set,
-write-mode and feature-gate validation always applies, even if an action allows.
+unchanged. Specialized actions come from comparing the stored spec with the merged
+candidate that will be written. Existing immutable, service-set (including hidden
+fields), write-mode and feature-gate validation always applies, even if an action
+allows.
 
 - Cluster release and controlPlaneUpgradePolicy: **UpdateClusterVersion**.
 - Accepted Cluster configuration changes: **UpdateClusterConfig**.

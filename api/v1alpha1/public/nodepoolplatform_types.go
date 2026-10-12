@@ -19,7 +19,6 @@ type NodePoolPlatform struct {
 	// aws specifies the platform-specific AWS configuration for this NodePool.
 	// +k8s:openapi-gen=true
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=UpdateNodePool
 	// +optional
 	AWS *AWSNodePoolPlatform `json:"aws,omitempty"`
 }

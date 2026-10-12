@@ -2,14 +2,12 @@ package authz
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
 
 	cedar "github.com/cedar-policy/cedar-go"
-	"github.com/cedar-policy/cedar-go/x/exp/schema/validate"
 	"gopkg.in/yaml.v3"
 )
 
@@ -40,23 +38,8 @@ type policyAttachment struct {
 	Provenance
 	policy    *cedar.Policy
 	principal principalARN
-}
-
-type resolvedPolicies struct {
-	customer        []policyAttachment
-	serviceOperator []policyAttachment
-}
-
-// policySource returns the complete applicable set or an error.
-type policySource interface {
-	resolve(context.Context, principalARN) (resolvedPolicies, error)
-}
-
-type configSource struct {
-	region          string
-	accounts        map[string]struct{}
-	bindings        []policyAttachment
-	serviceBindings []policyAttachment
+	scope     string
+	region    string
 }
 
 // LoadConfig validates a startup snapshot for a fixed service region.
@@ -78,35 +61,34 @@ func LoadConfig(path, serviceRegion string) (*Authorizer, error) {
 	if err != nil {
 		return nil, newFailure(StageParsing, err)
 	}
-	source, err := newConfigSource(bundle, revision, serviceRegion, v)
-	if err != nil {
+	authorizer := &Authorizer{region: serviceRegion, accounts: make(map[string]struct{}), model: model, validator: v, evaluate: nativeEvaluate}
+	if err := authorizer.addBundle(bundle, revision); err != nil {
 		return nil, err
 	}
-	return &Authorizer{source: source, region: serviceRegion, accounts: source.accounts, model: model, validator: v, evaluate: nativeEvaluate}, nil
+	return authorizer, nil
 }
 
-// newConfigSource validates all records, including off-region and unattached material.
+// addBundle validates all records, including off-region and unattached material.
 // Customer and service-operator policies and attachments stay separate.
-func newConfigSource(bundle configBundle, revision, region string, v *validate.Validator) (*configSource, error) {
-	resolver := &configSource{region: region, accounts: make(map[string]struct{})}
+func (a *Authorizer) addBundle(bundle configBundle, revision string) error {
 	for _, account := range bundle.RegisteredAccounts {
 		if !accountPattern.MatchString(account) {
-			return nil, newFailure(StageParsing, fmt.Errorf("invalid registered account %q", account))
+			return newFailure(StageParsing, fmt.Errorf("invalid registered account %q", account))
 		}
-		if _, exists := resolver.accounts[account]; exists {
-			return nil, newFailure(StageParsing, fmt.Errorf("duplicate registered account %q", account))
+		if _, exists := a.accounts[account]; exists {
+			return newFailure(StageParsing, fmt.Errorf("duplicate registered account %q", account))
 		}
-		resolver.accounts[account] = struct{}{}
+		a.accounts[account] = struct{}{}
 	}
 	roleAliases := make(map[string]string)
 	for _, domain := range []struct {
 		policies    []policyRecord
 		attachments []attachmentRecord
 		prefix      string
-		service     bool
+		bindings    *[]policyAttachment
 	}{
-		{bundle.Policies, bundle.Attachments, "attachment/", false},
-		{bundle.ServiceOperatorPolicies, bundle.ServiceOperatorAttachments, "service-operator/attachment/", true},
+		{bundle.Policies, bundle.Attachments, "attachment/", &a.customer},
+		{bundle.ServiceOperatorPolicies, bundle.ServiceOperatorAttachments, "service-operator/attachment/", &a.service},
 	} {
 		type compiledPolicy struct {
 			owner  string
@@ -116,72 +98,50 @@ func newConfigSource(bundle configBundle, revision, region string, v *validate.V
 		for _, policy := range domain.policies {
 			provenance := Provenance{PolicyID: policy.ID, PolicyRevision: revision}
 			if !idPattern.MatchString(policy.ID) || !accountPattern.MatchString(policy.OwnerAccountID) {
-				return nil, newFailure(StageParsing, fmt.Errorf("invalid policy ID or owner"), provenance)
+				return newFailure(StageParsing, fmt.Errorf("invalid policy ID or owner"), provenance)
 			}
 			if _, exists := policies[policy.ID]; exists {
-				return nil, newFailure(StageParsing, fmt.Errorf("duplicate policy ID %q", policy.ID), provenance)
+				return newFailure(StageParsing, fmt.Errorf("duplicate policy ID %q", policy.ID), provenance)
 			}
-			compiled, err := checkedPolicy(policy.Content, policy.ID, v)
+			compiled, err := checkedPolicy(policy.Content, policy.ID, a.validator)
 			if err != nil {
-				return nil, newFailure(StageParsing, err, provenance)
+				return newFailure(StageParsing, err, provenance)
 			}
 			policies[policy.ID] = compiledPolicy{owner: policy.OwnerAccountID, policy: compiled}
 		}
 		ids := make(map[string]struct{}, len(domain.attachments))
 		for _, attachment := range domain.attachments {
-			provenance := Provenance{DiagnosticID: domain.prefix + attachment.ID, PolicyID: attachment.PolicyID, PolicyRevision: revision, AttachmentID: attachment.ID, AttachmentRevision: revision, PrincipalARN: attachment.PrincipalARN, Scope: attachment.Scope, Region: attachment.Region}
+			provenance := Provenance{DiagnosticID: domain.prefix + attachment.ID, PolicyID: attachment.PolicyID, PolicyRevision: revision, AttachmentID: attachment.ID}
 			if !idPattern.MatchString(attachment.ID) {
-				return nil, newFailure(StageBinding, fmt.Errorf("invalid attachment ID"), provenance)
+				return newFailure(StageBinding, fmt.Errorf("invalid attachment ID"), provenance)
 			}
 			if _, exists := ids[attachment.ID]; exists {
-				return nil, newFailure(StageBinding, fmt.Errorf("duplicate attachment ID"), provenance)
+				return newFailure(StageBinding, fmt.Errorf("duplicate attachment ID"), provenance)
 			}
 			ids[attachment.ID] = struct{}{}
 			policy, exists := policies[attachment.PolicyID]
 			if !exists {
-				return nil, newFailure(StageBinding, fmt.Errorf("dangling policy reference"), provenance)
+				return newFailure(StageBinding, fmt.Errorf("dangling policy reference"), provenance)
 			}
 			principal, err := parsePrincipal(attachment.PrincipalARN)
 			if err != nil {
-				return nil, newFailure(StageBinding, err, provenance)
+				return newFailure(StageBinding, err, provenance)
 			}
 			if principal.account != policy.owner {
-				return nil, newFailure(StageBinding, fmt.Errorf("cross-account attachment"), provenance)
+				return newFailure(StageBinding, fmt.Errorf("cross-account attachment"), provenance)
 			}
 			if err := checkedScope(attachment.Scope, attachment.Region); err != nil {
-				return nil, newFailure(StageBinding, err, provenance)
+				return newFailure(StageBinding, err, provenance)
 			}
 			if principal.kind == "role" {
 				if err := addRoleAlias(roleAliases, principal.roleAlias(), principal.original); err != nil {
-					return nil, newFailure(StageBinding, err, provenance)
+					return newFailure(StageBinding, err, provenance)
 				}
 			}
-			binding := policyAttachment{Provenance: provenance, policy: policy.policy, principal: principal}
-			if domain.service {
-				resolver.serviceBindings = append(resolver.serviceBindings, binding)
-			} else {
-				resolver.bindings = append(resolver.bindings, binding)
-			}
+			*domain.bindings = append(*domain.bindings, policyAttachment{Provenance: provenance, policy: policy.policy, principal: principal, scope: attachment.Scope, region: attachment.Region})
 		}
 	}
-	return resolver, nil
-}
-
-// resolve selects validated customer and service-operator attachments matching the caller and fixed service region.
-func (r *configSource) resolve(ctx context.Context, caller principalARN) (resolvedPolicies, error) {
-	if err := ctx.Err(); err != nil {
-		return resolvedPolicies{}, newFailure(StageResolution, err)
-	}
-	applicable := func(configured []policyAttachment) []policyAttachment {
-		bindings := make([]policyAttachment, 0)
-		for _, binding := range configured {
-			if matchesPrincipal(binding.principal, caller) && appliesInRegion(binding.Scope, binding.Region, r.region) {
-				bindings = append(bindings, binding)
-			}
-		}
-		return bindings
-	}
-	return resolvedPolicies{customer: applicable(r.bindings), serviceOperator: applicable(r.serviceBindings)}, nil
+	return nil
 }
 
 // readBundleNode requires one YAML document whose root is an object.

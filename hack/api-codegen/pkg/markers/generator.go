@@ -39,9 +39,6 @@ var FieldRegistry = TypedFieldRegistry{
 		{{- range $field := index $.ByOwner $owner }}
 		"{{ $field.FieldPath }}": {
 			FieldPath: "{{ $field.FieldPath }}",
-			{{- if $field.UpdateAction }}
-			UpdateAction: "{{ $field.UpdateAction }}",
-			{{- end }}
 			{{- if $field.WriteMode }}
 			WriteMode: {{ $field.WriteMode }},
 			{{- end }}
@@ -53,9 +50,6 @@ var FieldRegistry = TypedFieldRegistry{
 			{{- end }}
 			{{- if $field.Resettable }}
 			Resettable: true,
-			{{- end }}
-			{{- if $field.IsReducedContainer }}
-			IsReducedContainer: true,
 			{{- end }}
 			{{- if $field.GatedWriteModes }}
 			FeatureGateAwareWriteModes: []FeatureGateWriteMode{
@@ -79,16 +73,14 @@ type templateData struct {
 }
 
 type templateField struct {
-	Resettable         bool
-	UpdateAction       string
-	FieldPath          string
-	WriteMode          string
-	FeatureGate        string
-	Hidden             bool
-	IsReducedContainer bool
-	GatedWriteModes    []templateGatedWriteMode
-	OwnerType          string
-	OwnerGVK           string
+	FieldPath       string
+	WriteMode       string
+	FeatureGate     string
+	Hidden          bool
+	Resettable      bool
+	GatedWriteModes []templateGatedWriteMode
+	OwnerType       string
+	OwnerGVK        string
 }
 
 type templateGatedWriteMode struct {
@@ -131,14 +123,12 @@ func (s *MarkerScanner) Generate(outputFile string) error {
 		for _, path := range paths {
 			meta := fields[path]
 			field := templateField{
-				Resettable:         meta.Resettable,
-				UpdateAction:       meta.UpdateAction,
-				FieldPath:          meta.FieldPath,
-				FeatureGate:        meta.FeatureGate,
-				Hidden:             meta.Hidden,
-				IsReducedContainer: meta.IsReducedContainer,
-				OwnerType:          meta.OwnerType,
-				OwnerGVK:           meta.OwnerGVK,
+				FieldPath:   meta.FieldPath,
+				FeatureGate: meta.FeatureGate,
+				Hidden:      meta.Hidden,
+				Resettable:  meta.Resettable,
+				OwnerType:   meta.OwnerType,
+				OwnerGVK:    meta.OwnerGVK,
 			}
 
 			// Convert WriteMode to const reference
@@ -178,16 +168,6 @@ func (s *MarkerScanner) Generate(outputFile string) error {
 
 	// Update TypedRegistry with synthetic paths so they're included in JSON output
 	s.updateRegistryWithSyntheticPaths(data.ByOwner)
-
-	// Overlay actions only after discovery and synthetic expansion, preserving restrictions.
-	if err := s.applyUpdateActions(); err != nil {
-		return err
-	}
-	for owner, fields := range data.ByOwner {
-		for i := range fields {
-			fields[i].UpdateAction = s.TypedRegistry[owner][fields[i].FieldPath].UpdateAction
-		}
-	}
 
 	// Set sorted owners for template
 	data.SortedOwners = owners

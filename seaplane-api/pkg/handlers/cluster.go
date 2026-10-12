@@ -42,7 +42,6 @@ type ClusterHandler struct {
 	validator                *validation.FieldValidator
 	logger                   *slog.Logger
 	authorizer               *authz.Authorizer
-	metrics                  *authz.Metrics
 }
 
 // NewClusterHandler creates a new cluster handler
@@ -57,7 +56,6 @@ func NewClusterHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, defaultC
 		validator:                validation.NewFieldValidator("Cluster"),
 		logger:                   logger,
 		authorizer:               authorizer,
-		metrics:                  authz.DefaultMetrics,
 	}
 }
 
@@ -65,7 +63,7 @@ func NewClusterHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, defaultC
 func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
-	prepared, attempt := authorizeCollection(w, r, h.authorizer, h.metrics, h.logger, authz.ListClusters, authz.Resource{
+	prepared, attempt := authorizeCollection(w, r, h.authorizer, h.logger, authz.ListClusters, authz.Resource{
 		Kind: authz.Collection, CollectionKind: authz.Cluster, AccountID: accountID,
 	})
 	if prepared == nil {
@@ -95,7 +93,7 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 	list, err := h.db.ListClusters(ctx)
 	if err != nil {
 		h.logger.Error("failed to list clusters", "error", err, "account_id", accountID)
-		_ = attempt.Finish(authz.OutcomeError, authz.StageResourceLoading)
+		attempt.Finish(authz.OutcomeError, authz.StageResourceLoading)
 		writeAPIError(w, ErrClusterList, h.logger)
 		return
 	}
@@ -113,7 +111,7 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 			visible = append(visible, cr)
 		}
 	}
-	_ = attempt.Finish(authz.OutcomeAllow, authz.StageNone)
+	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 
 	total := len(visible)
 	if offset >= total {
@@ -387,7 +385,7 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("getting cluster", "account_id", accountID, "cluster_name", clusterName)
 
-	attempt, _ := h.metrics.Start(authz.DescribeCluster)
+	attempt := authz.DefaultMetrics.Start(authz.DescribeCluster)
 	prepared, err := prepareResourceAuthz(r, h.authorizer)
 	if err != nil {
 		writeResourceAuthzError(w, r, attempt, authz.DescribeCluster, err, h.logger)
@@ -396,12 +394,12 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 	cr, err := h.db.GetCluster(ctx, clusterName)
 	if err != nil {
 		if seaplanedb.IsNotFound(err) {
-			_ = attempt.Finish(authz.OutcomeDeny, authz.StageNone)
+			attempt.Finish(authz.OutcomeDeny, authz.StageNone)
 			writeAPIError(w, ErrClusterGetNotFound, h.logger)
 			return
 		}
 		h.logger.Error("failed to get cluster", "error", err, "account_id", accountID, "cluster_name", clusterName)
-		_ = attempt.Finish(authz.OutcomeError, authz.StageResourceLoading)
+		attempt.Finish(authz.OutcomeError, authz.StageResourceLoading)
 		writeAPIError(w, ErrClusterGetFailed, h.logger)
 		return
 	}
@@ -412,11 +410,11 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !decision.Allowed {
-		_ = attempt.Finish(authz.OutcomeDeny, authz.StageNone)
-		writeAPIError(w, errClusterAuthzDenied, h.logger)
+		attempt.Finish(authz.OutcomeDeny, authz.StageNone)
+		writeAPIError(w, errAuthzDenied, h.logger)
 		return
 	}
-	_ = attempt.Finish(authz.OutcomeAllow, authz.StageNone)
+	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 
 	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicCluster(cr)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
@@ -465,7 +463,9 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("updating cluster", "account_id", accountID, "cluster_name", clusterName)
 
-	// Decode only to reject semantically empty specs before typed update analysis.
+	// Validate using the raw spec map so only fields the client actually sent
+	// are checked — avoids false positives from zero-valued absent fields when
+	// the body is decoded into a full struct.
 	var rawSpec map[string]any
 	if err := json.Unmarshal(envelope.Spec, &rawSpec); err != nil {
 		writeAPIError(w, ErrClusterUpdateInvalidBody, h.logger)
@@ -486,22 +486,18 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, ErrClusterUpdateFailed, h.logger)
 		return
 	}
-
-	// Authorize the stored snapshot and every changed-field action before its CAS write.
+	if errs := h.validator.ValidateUpdate(rawSpec, &cr.Spec, featuregate.Default); errs != nil {
+		writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
+		return
+	}
 	candidate := cr.DeepCopy()
 	if err := seaplanedb.MergeSpecJSON(&candidate.Spec, envelope.Spec); err != nil {
 		h.logger.Error("failed to merge cluster spec", "error", err)
 		writeAPIError(w, ErrClusterUpdateInvalidSpec, h.logger)
 		return
 	}
-	// Account ownership comes from the caller, not request JSON.
-	candidate.Spec.AccountID = accountID
-	actions, errs := h.validator.AnalyzeUpdate(envelope.Spec, &cr.Spec, &candidate.Spec, featuregate.Default)
-	if errs != nil {
-		writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
-		return
-	}
-	if !authorizeResource(w, r, h.authorizer, h.logger, authz.UpdateCluster, h.clusterResource(cr), actions...) {
+	// Authorize the stored snapshot and every changed-field action before its CAS write.
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.UpdateCluster, h.clusterResource(cr), clusterUpdateActions(&cr.Spec, &candidate.Spec)...) {
 		return
 	}
 

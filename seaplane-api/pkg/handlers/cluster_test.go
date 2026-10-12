@@ -1486,10 +1486,10 @@ func TestClusterHandler_Update_AllowsUnchangedServiceManagedIssuerURL(t *testing
 	}
 }
 
-// Spoofed ownership must not block valid updates or change the stored owner.
-func TestClusterUpdateOwnership(t *testing.T) {
+// Wrong or clearing accountId must not change stored ownership (service-set on update).
+func TestClusterHandler_Update_RejectsAccountID(t *testing.T) {
 	for _, body := range []string{
-		`{"spec":{"accountId":"","properties":{"changed":"true"}}}`,
+		`{"spec":{"accountId":""}}`,
 		`{"spec":{"AccountId":"999999999999","properties":{"changed":"true"}}}`,
 	} {
 		t.Run(body, func(t *testing.T) {
@@ -1497,18 +1497,15 @@ func TestClusterUpdateOwnership(t *testing.T) {
 			fc := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(cr).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 			handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, lifecyclePermit), logger)
-			assertHandlerStatus(t, http.StatusOK, http.MethodPut, "/api/v0/clusters/"+cr.Name,
+			assertHandlerStatus(t, http.StatusUnprocessableEntity, http.MethodPut, "/api/v0/clusters/"+cr.Name,
 				body, map[string]string{"id": cr.Name}, testAccountID, handler.Update)
 
 			var stored seaplanev1alpha1.Cluster
 			if err := fc.Get(context.Background(), client.ObjectKeyFromObject(cr), &stored); err != nil {
 				t.Fatal(err)
 			}
-			if stored.Spec.AccountID != testAccountID || stored.Labels["seaplane.io/account-id"] != testAccountID {
-				t.Errorf("stored ownership = (%q, %q), want caller account %q", stored.Spec.AccountID, stored.Labels["seaplane.io/account-id"], testAccountID)
-			}
-			if stored.Spec.Properties["changed"] != "true" {
-				t.Error("valid property update was not saved")
+			if stored.Spec.AccountID != testAccountID {
+				t.Errorf("stored account ID = %q, want %q", stored.Spec.AccountID, testAccountID)
 			}
 		})
 	}

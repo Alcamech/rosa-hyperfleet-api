@@ -12,24 +12,20 @@ import (
 type ClusterSpec struct {
 	// DeleteProtection prevents accidental deletion when enabled.
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=UpdateCluster
 	// +optional
 	DeleteProtection *bool `json:"deleteProtection,omitempty"`
 	// ExpirationTimestamp marks when this cluster should be automatically deleted.
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=UpdateCluster
 	// +optional
 	ExpirationTimestamp *metav1.Time `json:"expirationTimestamp,omitempty"`
 	// Properties are arbitrary key-value pairs for customer metadata.
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=UpdateCluster
 	// +kubebuilder:validation:MaxProperties=100
 	// +optional
 	Properties map[string]string `json:"properties,omitempty"`
 	// AdditionalTrustBundle is a PEM-encoded CA bundle used by the cluster.
 	// The Platform API accepts this value on writes and redacts it in its responses.
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=UpdateCluster
 	// +seaplane:response-redact
 	// +kubebuilder:validation:MaxLength=1048576
 	// +optional
@@ -62,7 +58,6 @@ type ClusterSpec struct {
 	// +kubebuilder:validation:Required
 	HostedCluster HostedClusterSpecPassthrough `json:"hostedCluster"`
 	// ControlPlaneUpgradePolicy is the control plane upgrade policy defined by the user.
-	// +seaplane:update-action=UpdateClusterVersion
 	// +optional
 	ControlPlaneUpgradePolicy *ControlPlaneUpgradePolicySpec `json:"controlPlaneUpgradePolicy,omitempty"`
 }

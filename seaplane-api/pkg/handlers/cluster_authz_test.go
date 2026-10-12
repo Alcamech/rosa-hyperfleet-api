@@ -74,7 +74,9 @@ func clusterAuthzFixture(t *testing.T, fc client.Client, a *authz.Authorizer) (*
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.metrics = metrics
+	original := authz.DefaultMetrics
+	authz.DefaultMetrics = metrics
+	t.Cleanup(func() { authz.DefaultMetrics = original })
 	return h, registry, &logs
 }
 
@@ -445,8 +447,12 @@ func TestClusterAuthz_LateEvaluationError(t *testing.T) {
 			w := clusterAuthzRequest(h, operation, "?limit=1", "late")
 			assertClusterAuthzStatus(t, w, http.StatusInternalServerError, "AUTHZ-FAILED-001: Authorization failed")
 			assertClusterAuthzMetrics(t, registry, operation, authz.OutcomeError, authz.StageEvaluation)
-			if !bytes.Contains(logs.Bytes(), []byte("attachment/grant-1")) || !bytes.Contains(logs.Bytes(), []byte(`"PolicyRevision":`)) || !bytes.Contains(logs.Bytes(), []byte(`"AttachmentRevision":`)) || !bytes.Contains(logs.Bytes(), []byte("cedar evaluation diagnostics")) || !bytes.Contains(logs.Bytes(), []byte(`"diagnostics":[{`)) {
+			if !bytes.Contains(logs.Bytes(), []byte("attachment/grant-1")) || !bytes.Contains(logs.Bytes(), []byte(`"PolicyRevision":`)) || !bytes.Contains(logs.Bytes(), []byte("cedar evaluation diagnostics")) || !bytes.Contains(logs.Bytes(), []byte(`"diagnostics":[{`)) {
 				t.Fatalf("evaluation failure lost detailed diagnostics/provenance: %s", logs.String())
+			}
+			// A list reports its request operation but names the item check that failed.
+			if !bytes.Contains(logs.Bytes(), []byte(`"msg":"request authorization failed"`)) || !bytes.Contains(logs.Bytes(), []byte(`"operation":"`+string(operation)+`"`)) || !bytes.Contains(logs.Bytes(), []byte(`"action":"DescribeCluster"`)) {
+				t.Fatalf("failure log lacks message, operation, or failing action: %s", logs.String())
 			}
 		})
 	}

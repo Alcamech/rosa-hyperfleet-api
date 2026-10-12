@@ -14,7 +14,6 @@ type HostedClusterSpecPassthrough struct {
 	// release specifies the desired OCP release payload for all the hosted cluster components.
 	// +k8s:openapi-gen=true
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=UpdateClusterVersion
 	// +required
 	Release hypershiftv1beta1.Release `json:"release"`
 	// controlPlaneRelease is like spec.release but only for the components running on the management cluster.
@@ -40,7 +39,6 @@ type HostedClusterSpecPassthrough struct {
 	// channel is an identifier for explicitly requesting that a non-default set of updates be applied to this cluster.
 	// +k8s:openapi-gen=true
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=UpdateCluster
 	// +optional
 	Channel string `json:"channel,omitempty"`
 	// platform specifies the underlying infrastructure provider for the cluster
@@ -81,7 +79,6 @@ type HostedClusterSpecPassthrough struct {
 	// autoNode specifies the configuration for automatic node provisioning and lifecycle management.
 	// +k8s:openapi-gen=true
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=UpdateCluster
 	// +optional
 	AutoNode hypershiftv1beta1.AutoNode `json:"autoNode,omitzero"`
 	// etcd specifies configuration for the control plane etcd cluster. The
@@ -117,7 +114,6 @@ type HostedClusterSpecPassthrough struct {
 	// configuration specifies configuration for individual OCP components in the
 	// +k8s:openapi-gen=false
 	// +seaplane:write-mode=service-set
-	// +seaplane:update-action=UpdateClusterConfig
 	// +optional
 	Configuration *hypershiftv1beta1.ClusterConfiguration `json:"configuration,omitempty"`
 	// operatorConfiguration specifies configuration for individual OCP operators in the cluster.
@@ -133,7 +129,6 @@ type HostedClusterSpecPassthrough struct {
 	// imageContentSources specifies image mirrors that can be used by cluster
 	// +k8s:openapi-gen=true
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=UpdateCluster
 	// +optional
 	ImageContentSources []hypershiftv1beta1.ImageContentSource `json:"imageContentSources,omitempty"`
 	// additionalTrustBundle is a local reference to a ConfigMap that must have a "ca-bundle.crt" key
@@ -188,13 +183,11 @@ type NodePoolSpecPassthrough struct {
 	// clusterName is the name of the HostedCluster this NodePool belongs to.
 	// +k8s:openapi-gen=true
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=UpdateNodePool
 	// +required
 	ClusterName string `json:"clusterName"`
 	// release specifies the OCP release used for this NodePool. It drives the machine ignition configuration (including
 	// +k8s:openapi-gen=true
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=UpdateNodePoolVersion
 	// +required
 	Release hypershiftv1beta1.Release `json:"release"`
 	// platform specifies the underlying infrastructure provider for the NodePool
@@ -205,7 +198,6 @@ type NodePoolSpecPassthrough struct {
 	// replicas is the desired number of nodes the pool should maintain. If unset, the controller default value is 0.
 	// +k8s:openapi-gen=true
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=ScaleNodePool
 	// +optional
 	Replicas *int32 `json:"replicas,omitempty"`
 	// management specifies behavior for managing nodes in the pool, such as
@@ -216,19 +208,16 @@ type NodePoolSpecPassthrough struct {
 	// autoScaling specifies auto-scaling behavior for the NodePool.
 	// +k8s:openapi-gen=true
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=ScaleNodePool
 	// +optional
 	AutoScaling *hypershiftv1beta1.NodePoolAutoScaling `json:"autoScaling,omitempty"`
 	// config is a list of references to ConfigMaps containing serialized
 	// +k8s:openapi-gen=true
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=UpdateNodePool
 	// +optional
 	Config []corev1.LocalObjectReference `json:"config,omitempty"`
 	// nodeDrainTimeout is the maximum amount of time that the controller will spend on retrying to drain a node until it succeeds.
 	// +k8s:openapi-gen=true
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=UpdateNodePool
 	// +optional
 	NodeDrainTimeout *metav1.Duration `json:"nodeDrainTimeout,omitempty"`
 	// nodeVolumeDetachTimeout is the maximum amount of time that the controller will spend on detaching volumes from a node.
@@ -244,7 +233,6 @@ type NodePoolSpecPassthrough struct {
 	// taints if specified, propagates a list of taints to Nodes, only once on creation.
 	// +k8s:openapi-gen=false
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=UpdateNodePool
 	// +optional
 	Taints []hypershiftv1beta1.Taint `json:"taints,omitempty"`
 	// pausedUntil is a field that can be used to pause reconciliation on the NodePool controller. Resulting in any change to the NodePool being ignored.
@@ -255,7 +243,6 @@ type NodePoolSpecPassthrough struct {
 	// tuningConfig is a list of references to ConfigMaps containing serialized
 	// +k8s:openapi-gen=true
 	// +seaplane:write-mode=mutable
-	// +seaplane:update-action=UpdateNodePool
 	// +optional
 	TuningConfig []corev1.LocalObjectReference `json:"tuningConfig,omitempty"`
 	// arch is the preferred processor architecture for the NodePool. Different platforms might have different supported architectures.

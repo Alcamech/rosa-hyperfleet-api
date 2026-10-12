@@ -113,7 +113,7 @@ func (h *ManagementClusterHandler) List(w http.ResponseWriter, r *http.Request) 
 	accountID := middleware.GetAccountID(ctx)
 
 	h.logger.Debug("listing management clusters", "account_id", accountID)
-	prepared, attempt := authorizeCollection(w, r, h.authorizer, authz.DefaultMetrics, h.logger, authz.ListManagementClusters, authz.Resource{Kind: authz.ServiceCollection})
+	prepared, attempt := authorizeCollection(w, r, h.authorizer, h.logger, authz.ListManagementClusters, authz.Resource{Kind: authz.ServiceCollection})
 	if prepared == nil {
 		return
 	}
@@ -121,7 +121,7 @@ func (h *ManagementClusterHandler) List(w http.ResponseWriter, r *http.Request) 
 	list, err := h.db.ListManagementClusters(ctx)
 	if err != nil {
 		h.logger.Error("failed to list management clusters", "error", err)
-		_ = attempt.Finish(authz.OutcomeError, authz.StageResourceLoading)
+		attempt.Finish(authz.OutcomeError, authz.StageResourceLoading)
 		writeAPIError(w, ErrMCListFailed, h.logger)
 		return
 	}
@@ -137,7 +137,7 @@ func (h *ManagementClusterHandler) List(w http.ResponseWriter, r *http.Request) 
 			clusters = append(clusters, mcToResponse(&list.Items[i]))
 		}
 	}
-	_ = attempt.Finish(authz.OutcomeAllow, authz.StageNone)
+	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 
 	h.logger.Debug("management clusters listed", "total", len(clusters), "account_id", accountID)
 

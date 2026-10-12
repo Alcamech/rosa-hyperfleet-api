@@ -1183,7 +1183,7 @@ func (g *Generator) generateServiceSetFields() error {
 	var allFields []ssField
 	for ownerType, fields := range registry.FieldRegistry {
 		for path, meta := range fields {
-			if meta.WriteMode == registry.ServiceSet && !meta.IsReducedContainer {
+			if meta.WriteMode == registry.ServiceSet {
 				goType, resolved := g.inferTypeFromPath(ownerType, path)
 				allFields = append(allFields, ssField{
 					GoName:    g.pathToGoName(path),
