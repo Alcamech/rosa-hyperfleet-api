@@ -117,6 +117,16 @@ resources:
               operations:
                 - create
                 - update
+            - path: spec.hostedCluster.configuration.authentication.oidcProviders
+              goType: array(object)
+              operations:
+                - create
+                - update
+            - path: spec.hostedCluster.configuration.authentication.type
+              goType: string
+              operations:
+                - create
+                - update
             - path: spec.hostedCluster.configuration.ingress.componentRoutes
               goType: array(object)
               operations:

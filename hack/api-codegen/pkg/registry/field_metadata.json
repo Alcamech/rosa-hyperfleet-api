@@ -85,8 +85,19 @@
   },
   {
     "fieldPath": "spec.hostedCluster.configuration.authentication",
-    "writeMode": "service-set",
-    "hidden": true,
+    "writeMode": "mutable",
+    "ownerType": "Cluster",
+    "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
+  },
+  {
+    "fieldPath": "spec.hostedCluster.configuration.authentication.oidcProviders",
+    "writeMode": "mutable",
+    "ownerType": "Cluster",
+    "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
+  },
+  {
+    "fieldPath": "spec.hostedCluster.configuration.authentication.type",
+    "writeMode": "mutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
@@ -643,9 +654,32 @@
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
+    "fieldPath": "oidcProviders",
+    "writeMode": "mutable",
+    "ownerType": "ClusterAuthentication",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "type",
+    "writeMode": "mutable",
+    "ownerType": "ClusterAuthentication",
+    "ownerGVK": ""
+  },
+  {
     "fieldPath": "authentication",
-    "writeMode": "service-set",
-    "hidden": true,
+    "writeMode": "mutable",
+    "ownerType": "ClusterConfiguration",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "authentication.oidcProviders",
+    "writeMode": "mutable",
+    "ownerType": "ClusterConfiguration",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "authentication.type",
+    "writeMode": "mutable",
     "ownerType": "ClusterConfiguration",
     "ownerGVK": ""
   },
