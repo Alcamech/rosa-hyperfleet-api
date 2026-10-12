@@ -96,10 +96,11 @@ func (v *FieldValidator) validate(fields, existingFields map[string]any, op Oper
 			continue
 		}
 
-		// Skip hidden fields and service-set structural containers. The latter
-		// can contain mutable descendants, such as proxy.httpProxy, and must not
-		// reject the whole object before its children are validated.
-		if meta.Hidden || isStructuralContainer(fieldPath, fieldMetaMap) {
+		// Skip service-set structural containers. They can contain mutable
+		// descendants, such as proxy.httpProxy, and must not reject the whole
+		// object before its children are validated. Hidden fields are still
+		// checked: raw update merges can otherwise overwrite them.
+		if isStructuralContainer(fieldPath, fieldMetaMap) {
 			continue
 		}
 

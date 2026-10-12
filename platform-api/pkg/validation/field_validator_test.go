@@ -679,3 +679,18 @@ func TestValidateCreate_FeatureGateAwareWriteMode(t *testing.T) {
 		t.Errorf("expected no errors with gate enabled, got %v", errs)
 	}
 }
+
+func TestValidateUpdate_RejectsHiddenServiceSetChange(t *testing.T) {
+	v := newTestValidator(map[string]registry.FieldMeta{
+		"spec.hostedCluster.pullSecret": {FieldPath: "spec.hostedCluster.pullSecret", WriteMode: registry.ServiceSet, Hidden: true},
+	})
+
+	existing := map[string]any{"hostedCluster": map[string]any{"pullSecret": map[string]any{"name": "platform"}}}
+	updated := map[string]any{"hostedCluster": map[string]any{"pullSecret": map[string]any{"name": "attacker"}}}
+	if errs := v.ValidateUpdate(updated, existing, featuregate.Default); errs == nil {
+		t.Fatal("expected rejection of hidden service-set field change")
+	}
+	if errs := v.ValidateUpdate(existing, existing, featuregate.Default); errs != nil {
+		t.Fatalf("echo of hidden service-set field should pass, got %v", errs)
+	}
+}
