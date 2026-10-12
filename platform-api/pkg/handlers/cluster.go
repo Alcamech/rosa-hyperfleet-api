@@ -449,6 +449,11 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, ErrClusterUpdateInvalidSpec, h.logger)
 		return
 	}
+	if err := h.validator.PreserveServiceSet(&candidate.Spec, &cr.Spec, featuregate.Default); err != nil {
+		h.logger.Error("failed to preserve service-set fields", "error", err, "account_id", accountID, "cluster_name", clusterName)
+		writeAPIError(w, ErrClusterUpdateFailed, h.logger)
+		return
+	}
 	// Authorize the stored snapshot and every changed-field action before its CAS write.
 	if !authorizeResource(w, r, h.authorizer, h.logger, authz.UpdateCluster, h.clusterResource(cr), clusterUpdateActions(&cr.Spec, &candidate.Spec)...) {
 		return

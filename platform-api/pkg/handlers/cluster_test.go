@@ -1319,19 +1319,24 @@ func TestClusterHandler_Update_AllowsUnchangedServiceManagedIssuerURL(t *testing
 }
 
 // Wrong or clearing accountId must not change stored ownership (service-set on update).
-func TestClusterHandler_Update_RejectsAccountID(t *testing.T) {
-	for _, body := range []string{
-		`{"spec":{"accountId":""}}`,
-		`{"spec":{"AccountId":"999999999999","properties":{"changed":"true"}}}`,
+// Service-set accountId cannot change on update: a different value is rejected,
+// and a zero value is accepted as "not provided" while the stored value is kept.
+func TestClusterHandler_Update_ProtectsAccountID(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		want int
+	}{
+		{`{"spec":{"accountId":""}}`, http.StatusOK},
+		{`{"spec":{"accountId":"999999999999"}}`, http.StatusUnprocessableEntity},
+		{`{"spec":{"AccountId":"999999999999","properties":{"changed":"true"}}}`, http.StatusUnprocessableEntity},
 	} {
-		t.Run(body, func(t *testing.T) {
+		t.Run(tc.body, func(t *testing.T) {
 			cr := testClusterCR("uuid-1", "owned", testAccountID)
 			fc := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(cr).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 			handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, lifecyclePermit), logger)
-			assertHandlerStatus(t, http.StatusUnprocessableEntity, http.MethodPut, "/api/v0/clusters/"+cr.Name,
-				body, map[string]string{"id": cr.Name}, testAccountID, handler.Update)
-
+			assertHandlerStatus(t, tc.want, http.MethodPut, "/api/v0/clusters/"+cr.Name,
+				tc.body, map[string]string{"id": cr.Name}, testAccountID, handler.Update)
 			var stored hyperfleetv1alpha1.Cluster
 			if err := fc.Get(context.Background(), client.ObjectKeyFromObject(cr), &stored); err != nil {
 				t.Fatal(err)

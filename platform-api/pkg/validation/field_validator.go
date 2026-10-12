@@ -164,40 +164,31 @@ func lookupFieldMeta(fieldMetaMap map[string]registry.FieldMeta, fieldPath strin
 	return registry.FieldMeta{}, "", false
 }
 
-func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.FieldMeta, op Operation, value any, existingFields map[string]any, fs featuregate.FeatureSet, pointers map[string]bool) *ValidationError {
-	effectiveMode := meta.WriteMode
-
-	if len(meta.FeatureGateAwareWriteModes) > 0 {
-		matched := false
-		for _, override := range meta.FeatureGateAwareWriteModes {
-			if override.FeatureGate != "" && featuregate.IsGateEnabled(override.FeatureGate, fs) {
-				effectiveMode = override.WriteMode
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			for _, override := range meta.FeatureGateAwareWriteModes {
-				if override.FeatureGate == "" {
-					effectiveMode = override.WriteMode
-					break
-				}
-			}
+// effectiveWriteMode applies feature-gate-aware write mode overrides.
+func effectiveWriteMode(meta registry.FieldMeta, fs featuregate.FeatureSet) registry.WriteMode {
+	for _, override := range meta.FeatureGateAwareWriteModes {
+		if override.FeatureGate != "" && featuregate.IsGateEnabled(override.FeatureGate, fs) {
+			return override.WriteMode
 		}
 	}
+	for _, override := range meta.FeatureGateAwareWriteModes {
+		if override.FeatureGate == "" {
+			return override.WriteMode
+		}
+	}
+	return meta.WriteMode
+}
 
-	switch effectiveMode {
+func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.FieldMeta, op Operation, value any, existingFields map[string]any, fs featuregate.FeatureSet, pointers map[string]bool) *ValidationError {
+	switch effectiveWriteMode(meta, fs) {
 	case registry.ServiceSet:
-		// Preserve round-trip updates without treating omitted zero values as changes.
-		if op == OperationUpdate && existingFields != nil {
-			oldValue, oldExists := existingFields[fieldPath]
-			if oldExists && (reflect.DeepEqual(oldValue, value) || (isZeroValue(oldValue) && isZeroValue(value))) {
-				return nil
-			}
-			if !oldExists && isZeroValue(value) && !pointers[fieldPath] {
-				return nil
-			}
-		} else if op == OperationCreate && isZeroValue(value) && !pointers[fieldPath] {
+		// A zero value means "not provided": create skips it and update keeps the
+		// stored value (PreserveServiceSet). Update also allows an exact echo.
+		// A non-nil pointer (e.g. *bool) is explicit even when zero, so it must echo.
+		if !pointers[fieldPath] && isZeroValue(value) {
+			return nil
+		}
+		if op == OperationUpdate && existingFields != nil && reflect.DeepEqual(existingFields[fieldPath], value) {
 			return nil
 		}
 		return &ValidationError{

@@ -373,6 +373,11 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, ErrNodePoolUpdateInvalidSpec, h.logger)
 		return
 	}
+	if err := h.validator.PreserveServiceSet(&candidate.Spec, &cr.Spec, featuregate.Default); err != nil {
+		h.logger.Error("failed to preserve service-set fields", "error", err, "account_id", accountID, "nodepool_name", nodepoolName)
+		writeAPIError(w, ErrNodePoolUpdateFailed, h.logger)
+		return
+	}
 
 	// Authorize the stored snapshot and every changed-field action before its CAS write.
 	if !h.authorizeNodePool(w, r, authz.UpdateNodePool, cr, nodePoolUpdateActions(&cr.Spec, &candidate.Spec)...) {
