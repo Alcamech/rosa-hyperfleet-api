@@ -6,6 +6,7 @@ import (
 	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 )
 
@@ -323,5 +324,144 @@ func TestNodePoolWithoutClusterTags(t *testing.T) {
 	tags := np.Spec.Platform.AWS.ResourceTags
 	if len(tags) != 1 || tags[0].Key != "red-hat-managed" {
 		t.Errorf("resourceTags = %v, want only the red-hat-managed system tag", tags)
+	}
+}
+
+func TestNodePoolUpgradeBudgetUnset(t *testing.T) {
+	resource, err := NodePoolResource(testNodePool(), testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
+	np := resource.Object.(*hypershiftv1beta1.NodePool)
+
+	// Neither field was set, so the rendered spec must stay on HyperShift's
+	// own defaulting rather than pinning a rolling update block of our own.
+	if np.Spec.Management.Replace != nil {
+		t.Errorf("Replace = %+v, want nil", np.Spec.Management.Replace)
+	}
+	if np.Spec.Management.InPlace != nil {
+		t.Errorf("InPlace = %+v, want nil", np.Spec.Management.InPlace)
+	}
+}
+
+func TestNodePoolUpgradeBudgetReplace(t *testing.T) {
+	nodePool := testNodePool()
+	nodePool.Spec.MaxUnavailable = ptr.To(intstr.FromInt32(2))
+	nodePool.Spec.MaxSurge = ptr.To(intstr.FromString("30%"))
+
+	resource, err := NodePoolResource(nodePool, testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
+	np := resource.Object.(*hypershiftv1beta1.NodePool)
+
+	replace := np.Spec.Management.Replace
+	if replace == nil {
+		t.Fatal("Replace = nil, want a rolling update configuration")
+	}
+	if replace.Strategy != hypershiftv1beta1.UpgradeStrategyRollingUpdate {
+		t.Errorf("Strategy = %q, want %q", replace.Strategy, hypershiftv1beta1.UpgradeStrategyRollingUpdate)
+	}
+	if replace.RollingUpdate == nil {
+		t.Fatal("RollingUpdate = nil, want maxUnavailable and maxSurge")
+	}
+	if got := replace.RollingUpdate.MaxUnavailable; got == nil || got.IntValue() != 2 {
+		t.Errorf("MaxUnavailable = %v, want 2", got)
+	}
+	if got := replace.RollingUpdate.MaxSurge; got == nil || got.String() != "30%" {
+		t.Errorf("MaxSurge = %v, want 30%%", got)
+	}
+	if np.Spec.Management.InPlace != nil {
+		t.Errorf("InPlace = %+v, want nil", np.Spec.Management.InPlace)
+	}
+}
+
+// An unset field must not clobber the counterpart HyperShift already defaulted.
+func TestNodePoolUpgradeBudgetPreservesExistingRollingUpdate(t *testing.T) {
+	nodePool := testNodePool()
+	nodePool.Spec.NodePool.Management.Replace = &hypershiftv1beta1.ReplaceUpgrade{
+		Strategy: hypershiftv1beta1.UpgradeStrategyRollingUpdate,
+		RollingUpdate: &hypershiftv1beta1.RollingUpdate{
+			MaxUnavailable: ptr.To(intstr.FromInt32(0)),
+			MaxSurge:       ptr.To(intstr.FromInt32(1)),
+		},
+	}
+	nodePool.Spec.MaxUnavailable = ptr.To(intstr.FromInt32(1))
+
+	resource, err := NodePoolResource(nodePool, testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
+	np := resource.Object.(*hypershiftv1beta1.NodePool)
+
+	rollingUpdate := np.Spec.Management.Replace.RollingUpdate
+	if got := rollingUpdate.MaxUnavailable; got == nil || got.IntValue() != 1 {
+		t.Errorf("MaxUnavailable = %v, want 1", got)
+	}
+	if got := rollingUpdate.MaxSurge; got == nil || got.IntValue() != 1 {
+		t.Errorf("MaxSurge = %v, want the pre-existing 1", got)
+	}
+}
+
+// OnDelete replaces nodes only as they are manually deleted, and upstream
+// rejects a rollingUpdate block alongside it.
+func TestNodePoolUpgradeBudgetSkippedForOnDelete(t *testing.T) {
+	nodePool := testNodePool()
+	nodePool.Spec.NodePool.Management.Replace = &hypershiftv1beta1.ReplaceUpgrade{
+		Strategy: hypershiftv1beta1.UpgradeStrategyOnDelete,
+	}
+	nodePool.Spec.MaxUnavailable = ptr.To(intstr.FromInt32(2))
+
+	resource, err := NodePoolResource(nodePool, testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
+	np := resource.Object.(*hypershiftv1beta1.NodePool)
+
+	if got := np.Spec.Management.Replace.RollingUpdate; got != nil {
+		t.Errorf("RollingUpdate = %+v, want nil", got)
+	}
+}
+
+func TestNodePoolUpgradeBudgetInPlace(t *testing.T) {
+	nodePool := testNodePool()
+	nodePool.Spec.NodePool.Management.UpgradeType = hypershiftv1beta1.UpgradeTypeInPlace
+	nodePool.Spec.MaxUnavailable = ptr.To(intstr.FromString("50%"))
+
+	resource, err := NodePoolResource(nodePool, testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
+	np := resource.Object.(*hypershiftv1beta1.NodePool)
+
+	if np.Spec.Management.InPlace == nil {
+		t.Fatal("InPlace = nil, want maxUnavailable")
+	}
+	if got := np.Spec.Management.InPlace.MaxUnavailable; got == nil || got.String() != "50%" {
+		t.Errorf("MaxUnavailable = %v, want 50%%", got)
+	}
+	if np.Spec.Management.Replace != nil {
+		t.Errorf("Replace = %+v, want nil", np.Spec.Management.Replace)
+	}
+}
+
+// The rendered spec is handed to the client, so it must not alias values owned
+// by the cached NodePool.
+func TestNodePoolUpgradeBudgetDoesNotAliasSource(t *testing.T) {
+	nodePool := testNodePool()
+	nodePool.Spec.MaxUnavailable = ptr.To(intstr.FromInt32(2))
+	nodePool.Spec.MaxSurge = ptr.To(intstr.FromInt32(3))
+
+	resource, err := NodePoolResource(nodePool, testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
+	np := resource.Object.(*hypershiftv1beta1.NodePool)
+
+	if np.Spec.Management.Replace.RollingUpdate.MaxUnavailable == nodePool.Spec.MaxUnavailable {
+		t.Error("MaxUnavailable aliases the source NodePool")
+	}
+	if np.Spec.Management.Replace.RollingUpdate.MaxSurge == nodePool.Spec.MaxSurge {
+		t.Error("MaxSurge aliases the source NodePool")
 	}
 }

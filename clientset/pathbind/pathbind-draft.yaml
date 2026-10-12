@@ -407,6 +407,16 @@ resources:
               operations:
                 - create
                 - update
+            - path: spec.maxSurge
+              goType: string
+              operations:
+                - create
+                - update
+            - path: spec.maxUnavailable
+              goType: string
+              operations:
+                - create
+                - update
             - path: spec.nodePool.autoScaling.max
               goType: integer(int32)
               operations:

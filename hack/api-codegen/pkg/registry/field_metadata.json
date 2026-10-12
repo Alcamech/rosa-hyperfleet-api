@@ -1296,6 +1296,18 @@
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
   {
+    "fieldPath": "spec.maxSurge",
+    "writeMode": "mutable",
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.maxUnavailable",
+    "writeMode": "mutable",
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
     "fieldPath": "spec.nodePool.arch",
     "writeMode": "service-set",
     "hidden": true,

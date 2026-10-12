@@ -5,6 +5,7 @@ import (
 
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 
 	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
@@ -37,6 +38,7 @@ func NodePoolResource(nodePool *hyperfleetv1alpha1.NodePool, cluster *hyperfleet
 	} else {
 		npSpec.Management.AutoRepair = true
 	}
+	applyUpgradeBudget(npSpec, nodePool.Spec.MaxUnavailable, nodePool.Spec.MaxSurge)
 
 	npSpec.NodeLabels = nodePool.Spec.Labels
 
@@ -82,4 +84,56 @@ func NodePoolResource(nodePool *hyperfleetv1alpha1.NodePool, cluster *hyperfleet
 			Spec: *npSpec,
 		},
 	}, nil
+}
+
+// applyUpgradeBudget maps the pool's maxUnavailable/maxSurge onto the
+// HyperShift management block. HyperFleet exposes them as two flat spec fields
+// because that is the only upgrade knob customers get, whereas HyperShift
+// splits them across management.replace.rollingUpdate and management.inPlace
+// depending on the upgrade type, so the destination has to be chosen here.
+//
+// Only the fields the customer actually set are written: HyperShift's own CRD
+// default for management.replace is {strategy: RollingUpdate, rollingUpdate:
+// {maxSurge: 1, maxUnavailable: 0}}, and leaving an unset field alone is what
+// keeps existing node pools on the behavior they had before these fields
+// existed. Values are copied rather than aliased so the rendered object does
+// not share memory with the cached NodePool.
+func applyUpgradeBudget(npSpec *hypershiftv1beta1.NodePoolSpec, maxUnavailable, maxSurge *intstr.IntOrString) {
+	if npSpec.Management.UpgradeType == hypershiftv1beta1.UpgradeTypeInPlace {
+		// InPlace never provisions extra nodes, so maxSurge has no meaning
+		// here; the API rejects it for this upgrade type.
+		if maxUnavailable == nil {
+			return
+		}
+		if npSpec.Management.InPlace == nil {
+			npSpec.Management.InPlace = &hypershiftv1beta1.InPlaceUpgrade{}
+		}
+		npSpec.Management.InPlace.MaxUnavailable = ptr.To(*maxUnavailable)
+		return
+	}
+
+	if maxUnavailable == nil && maxSurge == nil {
+		return
+	}
+	if npSpec.Management.Replace == nil {
+		npSpec.Management.Replace = &hypershiftv1beta1.ReplaceUpgrade{}
+	}
+	if npSpec.Management.Replace.Strategy == "" {
+		npSpec.Management.Replace.Strategy = hypershiftv1beta1.UpgradeStrategyRollingUpdate
+	}
+	// Upstream rejects rollingUpdate on any other strategy, and OnDelete
+	// replaces nodes only as they are manually deleted, so there is no budget
+	// to apply.
+	if npSpec.Management.Replace.Strategy != hypershiftv1beta1.UpgradeStrategyRollingUpdate {
+		return
+	}
+	if npSpec.Management.Replace.RollingUpdate == nil {
+		npSpec.Management.Replace.RollingUpdate = &hypershiftv1beta1.RollingUpdate{}
+	}
+	if maxUnavailable != nil {
+		npSpec.Management.Replace.RollingUpdate.MaxUnavailable = ptr.To(*maxUnavailable)
+	}
+	if maxSurge != nil {
+		npSpec.Management.Replace.RollingUpdate.MaxSurge = ptr.To(*maxSurge)
+	}
 }
