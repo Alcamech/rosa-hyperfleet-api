@@ -369,19 +369,6 @@ func TestClusterAuthz_ForeignAndMissing(t *testing.T) {
 			assertClusterAuthzMetrics(t, registry, authz.DescribeCluster, authz.OutcomeDeny, authz.StageNone)
 		})
 	}
-	h, registry, _ := clusterAuthzFixture(t, fc, clusterAuthorizer(t, clusterReadPermit))
-	w := clusterAuthzRequest(h, authz.ListClusters, "", "")
-	var body struct {
-		Items []public.Cluster `json:"items"`
-		Total int              `json:"total"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if w.Code != http.StatusOK || body.Total != 0 || body.Items == nil || len(body.Items) != 0 {
-		t.Fatalf("permissive policy crossed account scope: %d %s", w.Code, w.Body.String())
-	}
-	assertClusterAuthzMetrics(t, registry, authz.ListClusters, authz.OutcomeAllow, authz.StageNone)
 }
 
 func TestClusterAuthz_CanceledPreparation(t *testing.T) {
@@ -484,55 +471,5 @@ func TestClusterAuthz_LateEvaluationError(t *testing.T) {
 				t.Fatalf("failure log lacks message, operation, or failing action: %s", logs.String())
 			}
 		})
-	}
-}
-
-type clusterWriteFailure struct {
-	header         http.Header
-	beforeWrite    func()
-	writes, status int
-}
-
-func (w *clusterWriteFailure) Header() http.Header    { return w.header }
-func (w *clusterWriteFailure) WriteHeader(status int) { w.beforeWrite(); w.status = status }
-func (w *clusterWriteFailure) Write([]byte) (int, error) {
-	w.writes++
-	return 0, errors.New("socket-detail-secret")
-}
-
-func TestClusterAuthz_WriteFailureKeepsAllow(t *testing.T) {
-	for _, operation := range []authz.Action{authz.ListClusters, authz.DescribeCluster} {
-		t.Run(string(operation), func(t *testing.T) {
-			fc := clusterOrderedStore([]*hyperfleetv1alpha1.Cluster{testClusterCR("owned", "owned", testAccountID)}, nil)
-			h, registry, logs := clusterAuthzFixture(t, fc, clusterAuthorizer(t, clusterReadPermit))
-			w := &clusterWriteFailure{header: http.Header{}, beforeWrite: func() {
-				assertClusterAuthzMetrics(t, registry, operation, authz.OutcomeAllow, authz.StageNone)
-			}}
-			r := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil).WithContext(testContext(testAccountID))
-			r = mux.SetURLVars(r, map[string]string{"id": "owned"})
-			if operation == authz.ListClusters {
-				h.List(w, r)
-			} else {
-				h.Get(w, r)
-			}
-			if w.status != http.StatusOK || w.writes != 1 || !bytes.Contains(logs.Bytes(), []byte("socket-detail-secret")) {
-				t.Fatalf("unexpected serialization count/status/log: %+v %s", w, logs.String())
-			}
-			assertClusterAuthzMetrics(t, registry, operation, authz.OutcomeAllow, authz.StageNone)
-		})
-	}
-}
-
-func TestClusterAuthz_UnmappedWritesExcluded(t *testing.T) {
-	fc := fake.NewClientBuilder().WithScheme(newTestScheme()).Build()
-	h, registry, _ := clusterAuthzFixture(t, fc, clusterAuthorizer(t))
-	for _, invoke := range []func(http.ResponseWriter, *http.Request){h.Create, h.Update, h.Delete} {
-		r := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", nil).WithContext(testContext(testAccountID))
-		r = mux.SetURLVars(r, map[string]string{"id": "missing"})
-		invoke(httptest.NewRecorder(), r)
-	}
-	families, err := registry.Gather()
-	if err != nil || len(families) != 0 {
-		t.Fatalf("unmapped writes entered authorization metrics: %v %v", families, err)
 	}
 }

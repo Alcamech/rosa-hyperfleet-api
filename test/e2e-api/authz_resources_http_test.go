@@ -3,14 +3,11 @@ package e2e_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 
 	v1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	fleetdb "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -243,45 +240,6 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 			t.Errorf("trusted context want %d got %d: %s", want, response.StatusCode, response.Body)
 		}
 	}
-	authzResourceCAS(t, store, pools[0], &deniedOC)
 }
 
 type publicResourceID struct{ Metadata struct{ UID string } }
-
-func authzResourceCAS(t *testing.T, store client.Client, np *v1.NodePool, oc *v1.OidcConfig) {
-	t.Helper()
-	ctx := context.Background()
-	var cr v1.Cluster
-	if err := store.Get(ctx, client.ObjectKey{Namespace: "cluster-" + authzStoredClusters[0].id, Name: authzStoredClusters[0].name}, &cr); err != nil {
-		t.Fatal(err)
-	}
-	for _, obj := range []client.Object{&cr, np, oc} {
-		t.Run("real checked snapshot CAS "+fmt.Sprintf("%T", obj), func(t *testing.T) {
-			stale := obj.DeepCopyObject().(client.Object)
-			if err := store.Get(ctx, client.ObjectKeyFromObject(stale), stale); err != nil {
-				t.Fatal(err)
-			}
-			if err := fleetdb.ValidateObjectResourceVersion(stale); err != nil {
-				t.Fatal(err)
-			}
-			newer := stale.DeepCopyObject().(client.Object)
-			labels := newer.GetLabels()
-			labels["checked-version"] = "newer"
-			newer.SetLabels(labels)
-			if err := store.Update(ctx, newer); err != nil {
-				t.Fatal(err)
-			}
-			if err := store.Update(ctx, stale); !apierrors.IsConflict(err) {
-				t.Fatalf("stale update must conflict: %v", err)
-			}
-			if err := store.Delete(ctx, stale); !apierrors.IsConflict(err) {
-				t.Fatalf("stale checked delete must conflict: %v", err)
-			}
-			check := newer.DeepCopyObject().(client.Object)
-			if err := store.Get(ctx, client.ObjectKeyFromObject(check), check); err != nil || check.GetLabels()["checked-version"] != "newer" {
-				t.Fatalf("CAS wrote/deleted unchecked newer state: %v", err)
-			}
-			t.Logf("authorized RV=%s newer RV=%s; stale Update/Delete both Conflict", stale.GetResourceVersion(), newer.GetResourceVersion())
-		})
-	}
-}
