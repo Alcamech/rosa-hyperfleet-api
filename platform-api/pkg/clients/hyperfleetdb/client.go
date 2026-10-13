@@ -91,14 +91,11 @@ func (c *Client) ListClusters(ctx context.Context) (*hyperfleetv1alpha1.ClusterL
 	return &list, nil
 }
 
-// UpdateCluster CAS-updates a cluster and re-pins account ownership from ctx.
+// UpdateCluster CAS-updates a cluster the caller owns; it never moves ownership.
 func (c *Client) UpdateCluster(ctx context.Context, cluster *hyperfleetv1alpha1.Cluster) error {
-	if err := hyperfleetdb.ValidateObjectResourceVersion(cluster); err != nil {
+	if err := validateOwnedSnapshot(ctx, cluster); err != nil {
 		return err
 	}
-	accountID := middleware.GetAccountID(ctx)
-	setAccountLabel(cluster, accountID)
-	cluster.Spec.AccountID = accountID
 	return c.client.Update(ctx, cluster)
 }
 
@@ -209,14 +206,11 @@ func (c *Client) ListNodePools(ctx context.Context, clusterUID string) (*hyperfl
 	return &list, nil
 }
 
-// UpdateNodePool CAS-updates a node pool and re-pins account ownership from ctx.
+// UpdateNodePool CAS-updates a node pool the caller owns; it never moves ownership.
 func (c *Client) UpdateNodePool(ctx context.Context, np *hyperfleetv1alpha1.NodePool) error {
-	if err := hyperfleetdb.ValidateObjectResourceVersion(np); err != nil {
+	if err := validateOwnedSnapshot(ctx, np); err != nil {
 		return err
 	}
-	accountID := middleware.GetAccountID(ctx)
-	setAccountLabel(np, accountID)
-	np.Spec.AccountID = accountID
 	return c.client.Update(ctx, np)
 }
 
