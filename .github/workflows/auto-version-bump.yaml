@@ -160,6 +160,7 @@ jobs:
             git commit -m "chore(${MODULE}): bump version to ${VERSION}"
             git push --force-with-lease="${BRANCH}:origin/${BRANCH}" origin "${BRANCH}"
             echo "Updated existing PR #${EXISTING_PR}"
+            gh pr edit "${EXISTING_PR}" --add-label "ok-to-test"
           else
             echo "No existing PR found, creating new one"
 
@@ -188,5 +189,6 @@ jobs:
           ### Review
           Once merged, the auto-tag-and-release workflow will create the git tag and GitHub release." \
               --base main \
-              --head "${BRANCH}"
+              --head "${BRANCH}" \
+              --label "ok-to-test"
           fi
