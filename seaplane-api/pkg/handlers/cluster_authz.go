@@ -49,6 +49,20 @@ func writeResourceAuthzError(w http.ResponseWriter, r *http.Request, attempt *au
 	writeAPIError(w, errAuthzFailed, logger)
 }
 
+// writeAuthzDenied logs an ordinary denial so a 403 can be explained. Provenance
+// carries policy and attachment IDs only, never policy content.
+func writeAuthzDenied(w http.ResponseWriter, r *http.Request, attempt *authz.Attempt, operation, action authz.Action, decision authz.Decision, logger *slog.Logger) {
+	logger.Info("request authorization denied",
+		"operation", operation,
+		"action", action,
+		"account_id", middleware.GetAccountID(r.Context()),
+		"caller_arn", middleware.GetCallerARN(r.Context()),
+		"provenance", decision.Provenance,
+	)
+	attempt.Finish(authz.OutcomeDeny, authz.StageNone)
+	writeAPIError(w, errAuthzDenied, logger)
+}
+
 func prepareResourceAuthz(r *http.Request, authorizer *authz.Authorizer) (*authz.Prepared, error) {
 	return authorizer.Prepare(r.Context(), authz.Identity{
 		AccountID: middleware.GetAccountID(r.Context()), CallerARN: middleware.GetCallerARN(r.Context()),
@@ -69,8 +83,7 @@ func authorizeCollection(w http.ResponseWriter, r *http.Request, authorizer *aut
 		return nil, nil
 	}
 	if !decision.Allowed {
-		attempt.Finish(authz.OutcomeDeny, authz.StageNone)
-		writeAPIError(w, errAuthzDenied, logger)
+		writeAuthzDenied(w, r, attempt, operation, operation, decision, logger)
 		return nil, nil
 	}
 	return prepared, attempt
@@ -91,8 +104,7 @@ func authorizeResource(w http.ResponseWriter, r *http.Request, authorizer *authz
 			return false
 		}
 		if !decision.Allowed {
-			attempt.Finish(authz.OutcomeDeny, authz.StageNone)
-			writeAPIError(w, errAuthzDenied, logger)
+			writeAuthzDenied(w, r, attempt, operation, action, decision, logger)
 			return false
 		}
 	}
