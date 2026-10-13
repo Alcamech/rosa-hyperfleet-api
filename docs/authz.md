@@ -1,148 +1,162 @@
-# Platform API Cedar authorization
+# Platform API authorization
 
-The API evaluates Cedar in-process using the pinned `cedar-go v1.8.0` library.
-Gateway IAM/SigV4 authentication and account enrollment are admission checks,
-not permission grants. Every implemented non-label resource operation requires
-an explicit grant. There is no account-wide privileged-principal bypass.
+The API evaluates Cedar in-process (`cedar-go v1.8.0`) against a configuration
+bundle loaded at startup. Every implemented resource operation requires an
+explicit grant. Enrollment and gateway authentication grant nothing.
 
-Account linking, policy/attachment management, Red Hat policy administrators,
-AccessEntry, labels, and `/authz/check` are future APIs, not implemented routes.
-Bootstrap or future policy-admin status does not authorize ManagementClusters.
+Not implemented: label APIs, policy/attachment management, account linking,
+AccessEntry, `/authz/check`. Chart delivery and provisioning grants:
+`rosa-seaplane/docs/platform-api-authorization.md`.
 
-## Authorizer ownership
+## Startup
 
-`LoadConfig(path, serviceRegion)` returns an authorizer with a validated, immutable
-startup snapshot. Startup resolves service region before constructing the
-authorizer and before opening database connections or listeners. Service region
-identifies the API deployment handling the request, not the caller's location.
+| Input                                       | Behavior                                              |
+| ------------------------------------------- | ----------------------------------------------------- |
+| `--authz-config-file` / `AUTHZ_CONFIG_FILE` | Required bundle path. The flag wins, even when empty. |
+| AWS SDK region (`AWS_REGION`)               | Fixed service region. Required.                       |
+| `--dynamodb-region`                         | Deprecated region fallback.                           |
+| `--allowed-accounts`, `--dynamodb-prefix`   | Deprecated, ignored.                                  |
 
-Handlers call `Prepare` once with trusted account/caller identity and request
-metadata, then use `Prepared.Check` for every required action and resource.
-Identity, resource, and parent inputs do not repeat service region. The authorizer
-supplies the region in Cedar context, entity attributes, and regional UIDs.
-Attachment region and ManagementCluster `registrationRegion` remain distinct.
+Startup validates the whole bundle before opening the database or listeners. On
+failure it logs `authorization startup failed` and exits nonzero.
 
-The authorizer selects applicable, validated attachments per request. Policy text
-is parsed and strictly validated during configuration loading, not during request
-preparation. Compiled policies are shared read-only; policy sets, entities, and
-provenance maps are request-local.
+The bundle is an immutable snapshot. Changes require a restart and rollout;
+old replicas keep old permissions until replaced.
 
-The planned DynamoDB source retains per-request reads and validates newly read
-material before preparation. It does not expose policy text to handlers or promise
-an atomic snapshot across records. `IsAccountRegistered` remains a separate
-admission lookup on the authorizer and grants no action permissions.
+## Bundle
 
-## Implemented operation contract
+One YAML document, version 1:
 
-Authorization runs in handlers, never by inferring an action from a URL.
+```yaml
+formatVersion: 1
+registeredAccounts: ["123456789012"]
+policies:
+  - id: read
+    ownerAccountID: "123456789012"
+    content: permit(principal, action in Seaplane::Action::"ReadOnly", resource);
+attachments:
+  - id: readers
+    policyID: read
+    principalARN: arn:aws:iam::123456789012:role/platform/readers
+    scope: regional # or global, with no region
+    region: us-east-1
+serviceOperatorPolicies: [] # optional; must appear with serviceOperatorAttachments
+serviceOperatorAttachments: []
+```
 
-| Resource          | HTTP operation | Required action(s)                                                   | Trusted input                                                           |
-| ----------------- | -------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Cluster           | GET collection | ListClusters, then DescribeCluster per candidate                     | Account collection, then stored objects                                 |
-| Cluster           | GET item       | DescribeCluster                                                      | Stored account-scoped snapshot                                          |
-| Cluster           | POST           | CreateCluster                                                        | Validated, server-enriched candidate, before OIDC claim                 |
-| Cluster           | PUT / PATCH    | UpdateCluster plus every changed protected field action              | Stored labels/identity; raw submitted spec and locally merged candidate |
-| Cluster           | DELETE         | DeleteCluster                                                        | Same checked stored version passed to delete                            |
-| NodePool          | GET collection | ListNodePools, then DescribeNodePool per candidate                   | Account collection and each stored parent                               |
-| NodePool          | GET item       | DescribeNodePool                                                     | Selected stored pool and its stored parent                              |
-| NodePool          | POST           | CreateNodePool                                                       | Validated candidate and account-scoped parent                           |
-| NodePool          | PUT            | UpdateNodePool plus every changed protected field action             | Stored labels/parent; raw spec and candidate                            |
-| NodePool          | DELETE         | DeleteNodePool                                                       | Same checked stored pool version                                        |
-| OIDCConfig        | GET collection | ListOIDCConfigs, then DescribeOIDCConfig per candidate               | Account collection and account-namespace objects                        |
-| OIDCConfig        | GET item       | DescribeOIDCConfig                                                   | Stored account-namespace object                                         |
-| OIDCConfig        | POST           | CreateOIDCConfig                                                     | Normalized, server-enriched candidate; customer claim label stripped    |
-| OIDCConfig        | DELETE         | DeleteOIDCConfig                                                     | Stored snapshot, before in-use check; exact checked version             |
-| ManagementCluster | GET collection | ListManagementClusters, then DescribeManagementCluster per candidate | Service collection and global stored registrations                      |
-| ManagementCluster | GET item       | DescribeManagementCluster                                            | Global stored registration                                              |
-| ManagementCluster | POST           | CreateManagementCluster                                              | Validated global `{id, region, accountId}` candidate                    |
+- `registeredAccounts`: accounts admitted to the API. Admission only.
+- Each policy holds one Cedar statement, strictly validated against the schema.
+- An attachment's principal account must equal its policy's `ownerAccountID`.
+- `regional` attachments apply only in their region; `global` applies everywhere.
+- Service-operator records authorize ManagementClusters only. Customer and service
+  records are separate domains: IDs, references, and policies never cross.
+- Startup fails on any invalid record, including unattached policies and
+  off-region attachments, and on unknown fields, duplicate keys or IDs, YAML
+  aliases, dangling references, and ambiguous role aliases.
 
-Unsupported methods remain typed HTTP 405. Health/info stay public. Errors retain
-`api.APIError` / Kubernetes `metav1.Status` envelopes. Authorization denials and
-failures expose no policy contents, labels, bindings, or evaluator diagnostics.
-Bounded request-level authorization metrics retain one terminal outcome per
-request, including all required list evaluations.
+## Principal matching
 
-Collections have **no object labels**. A List grant alone returns an empty list;
-Describe alone cannot list. All candidates, including off-page candidates, are
-checked before totals/pagination. Any evaluation or parent-loading error aborts
-with a typed failure, never a partial-success response. ManagementCluster retains
-its existing `kind/items/total` envelope without pagination.
+| Attachment ARN        | Matches                                                     |
+| --------------------- | ----------------------------------------------------------- |
+| IAM user, STS session | That exact caller only.                                     |
+| IAM role              | Its assumed-role sessions; the role becomes a Cedar parent. |
 
-### Changed fields and concurrency
+STS ARNs omit role paths, so roles match on account and final role name. Two
+configured roles differing only by path fail startup. Only the `aws` partition
+is supported.
 
-Updates merge only the raw submitted spec into a DeepCopy. Omitted fields remain
-unchanged. Specialized actions come from comparing the stored spec with the merged
-candidate that will be written. Existing immutable, service-set (including hidden
-fields), write-mode and feature-gate validation always applies, even if an action
-allows.
+Policies are evaluated unchanged: `principal == Seaplane::Role::"..."` does not
+match a session; `principal in` does. Forbid beats permit. Any evaluation error
+fails the request, even when Cedar would allow.
 
-- Cluster release and controlPlaneUpgradePolicy: **UpdateClusterVersion**.
-- Accepted Cluster configuration changes: **UpdateClusterConfig**.
-- NodePool replicas and autoScaling, including resets: **ScaleNodePool**.
-- NodePool release: **UpdateNodePoolVersion**.
-- Other accepted changes: the mandatory UpdateCluster / UpdateNodePool base.
+## Operations
 
-Every required action must allow before the first write. Echoes and omissions do
-not require specialized actions, but still require the base operation. Caller
-metadata/resourceVersion cannot replace the loaded snapshot. Updates and deletes
-require a positive supported object resourceVersion, including FleetDB composite
-versions; empty, zero, negative and malformed versions cannot become unconditional
-writes. `ValidateObjectResourceVersion` reuses FleetDB's authoritative parser.
-Conflicts return HTTP 409 without automatic retries or unchecked reloads. A caller
-retry performs fresh loading, validation, changed-field analysis and authorization.
+| Resource          | Operation             | Required actions                                                |
+| ----------------- | --------------------- | --------------------------------------------------------------- |
+| Cluster           | List                  | ListClusters; DescribeCluster per item for details              |
+| Cluster           | Get                   | DescribeCluster                                                 |
+| Cluster           | Create                | CreateCluster                                                   |
+| Cluster           | PUT / PATCH           | UpdateCluster + changed-field actions                           |
+| Cluster           | Delete                | DeleteCluster                                                   |
+| NodePool          | List                  | ListNodePools; DescribeNodePool per item for details            |
+| NodePool          | Get                   | DescribeNodePool                                                |
+| NodePool          | Create                | CreateNodePool                                                  |
+| NodePool          | PUT                   | UpdateNodePool + changed-field actions                          |
+| NodePool          | Delete                | DeleteNodePool                                                  |
+| OIDCConfig        | List                  | ListOIDCConfigs; DescribeOIDCConfig per item for details        |
+| OIDCConfig        | Get / Create / Delete | DescribeOIDCConfig / CreateOIDCConfig / DeleteOIDCConfig        |
+| ManagementCluster | List                  | ListManagementClusters; DescribeManagementCluster for details   |
+| ManagementCluster | Get / Create          | DescribeManagementCluster / CreateManagementCluster             |
 
-A NodePool's parent Cluster and child are separate reads. Child CAS does **not**
-atomically freeze parent labels. This is trusted-snapshot authorization, not a
-cross-object transaction. List checks likewise share a policy/context snapshot,
-not one database-wide resource snapshot.
+Changed-field actions, required in addition to the base update:
 
-## Entities, ownership, and NodePool lookup
+| Changed field                                                | Action                |
+| ------------------------------------------------------------ | --------------------- |
+| Cluster `hostedCluster.release`, `controlPlaneUpgradePolicy` | UpdateClusterVersion  |
+| Cluster `hostedCluster.configuration`                        | UpdateClusterConfig   |
+| NodePool `nodePool.replicas`, `nodePool.autoScaling`         | ScaleNodePool         |
+| NodePool `nodePool.release`                                  | UpdateNodePoolVersion |
 
-All entities use namespace **Seaplane**. Principal IDs are full caller ARNs;
-assumed-role principals have applicable IAM Role parents and an `account` attribute.
+Rules:
 
-| Entity            | UID                                                                  | Attributes / parents                                                                |
-| ----------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Collection        | `<account>/<service-region>/clusters`, `/nodepools`, `/oidc_configs` | account, region; no tags                                                            |
-| Cluster           | `<account>/<service-region>/<cluster-uid>`                            | account, region; clusters Collection; stored metadata label tags                    |
-| NodePool          | `<account>/<service-region>/<parent-cluster-uid>/<pool-uid>`          | account, region; actual Cluster and nodepools Collection; stored tags               |
-| OIDCConfig        | `<account>/<service-region>/<config-uid>`                             | account, region; oidc_configs Collection; stored tags                               |
-| ServiceCollection | `<service-region>/management_clusters`                               | region only; no customer account/tags                                               |
-| ManagementCluster | `<service-region>/<mc-name>`                                         | hosting account, service region, registrationRegion; ServiceCollection; stored tags |
+- Lists return every item and count it in `total` (EKS style). Items without
+  Describe show only `metadata.name`, `namespace`, `uid`, and `status.phase`
+  (ManagementCluster: `id`); other fields are zero values. Any Describe error
+  fails the whole list.
+- Updates compare the stored spec with the merged object to be written. All
+  required actions must allow before any write.
+- Service-set fields never change on update. An exact echo or a zero value is
+  accepted and the stored value kept; any other value returns 422.
+- Updates and deletes write the checked `resourceVersion`. A conflict returns 409
+  with no retry.
+- Denials return 403 `AUTHZ-DENIED-001`; authorization failures return 500
+  `AUTHZ-FAILED-001`. Responses never include policy details.
 
-Create checks use the validated candidate name in place of the resource UID,
-before any write. FleetDB assigns the permanent UID when saving. Later checks use
-that stored UID, not the name or caller-supplied metadata.uid. NodePool checks
-always include the actual parent's stored UID.
+## Entities
 
-Storage account scoping precedes inspection. Cluster/NodePool account labels and
-stored namespace establish ownership; caller-supplied spec identities do not.
-Updates keep account ownership pinned to the authenticated caller.
-OIDCConfig's account namespace is authoritative. Claim labels are lifecycle state,
-not a customer Cluster parent. ManagementClusters stay unscoped, namespace-empty;
-their hosting account may differ from the operator caller account.
+Namespace `Seaplane`. The schema is embedded from
+`seaplane-api/pkg/authz/testdata/seaplane.cedarschema`.
 
-NodePool routes stay flat and use qualified names, `<cluster-name>.<child-name>`.
-The optional `clusterId` filters lists by parent UID and adds no ListClusters
-requirement. It cannot redirect item lookup to another parent. Customer resources
-use the authenticated account's `account-<accountID>` namespace. Create resolves
-the parent from the qualified name and pins its controller reference and UID label.
-Later checks resolve that stored binding within the caller's account and verify
-that the parent UID still matches.
+| Entity            | UID                                                    | Parents                        |
+| ----------------- | ------------------------------------------------------ | ------------------------------ |
+| Principal         | caller ARN                                             | matching Roles                 |
+| Collection        | `<account>/<region>/{clusters,nodepools,oidc_configs}` | none                           |
+| Cluster           | `<account>/<region>/<cluster-uid>`                     | Collection                     |
+| NodePool          | `<account>/<region>/<cluster-uid>/<pool-uid>`          | its stored Cluster, Collection |
+| OIDCConfig        | `<account>/<region>/<config-uid>`                      | Collection                     |
+| ServiceCollection | `<region>/management_clusters`                         | none                           |
+| ManagementCluster | `<region>/<mc-id>`                                     | ServiceCollection              |
 
-## Groups and example policies
+- Resources carry `account` and `region` attributes (ServiceCollection: `region`
+  only; ManagementCluster adds `registrationRegion`). `region` is always the
+  service region.
+- Stored `metadata.labels` are entity tags. Use `hasTag` before `getTag`.
+  Collections have no tags.
+- UIDs are FleetDB object UIDs. Create checks use the validated candidate name in
+  place of the UID, before any write.
+- Ownership comes from storage (`account-<accountID>` namespace, account label),
+  never from the request. A NodePool's parent is its stored controller reference
+  and `seaplane.io/cluster-uid` label, re-checked against the parent's current
+  UID; `clusterId` only filters lists.
 
-ReadOnly contains customer List/Describe actions only. ClusterAdmin contains
-Create/Update/Config/Version/DeleteCluster. NodePoolAdmin contains
-Create/Update/Scale/Version/DeleteNodePool. OIDCConfigAdmin contains Create/Delete.
-AllActions includes those four customer groups, **not** ServiceOperator.
-ServiceOperator contains only Create/List/DescribeManagementCluster.
+## Context
 
-Policy records each contain one statement. Attachments select policies for the
-fixed caller of one request; policies are evaluated unchanged. Exact user/session
-ARNs match themselves, while role attachments supply explicit role-parent edges.
-The unsupported bare `?principal` shorthand is not used. These examples are parsed
-and strictly validated against the runtime schema in tests.
+Frozen once per request: `region`, `accountId`, `principalArn`, `sourceIp`,
+`userAgent`, and `requestTime {unixSeconds, dayOfWeek (Mon=1), hour}` in UTC.
+`sourceIp` comes from the gateway. `userAgent` is caller-controlled; do not trust it.
+
+## Groups and examples
+
+| Group           | Actions                                                                   |
+| --------------- | ------------------------------------------------------------------------- |
+| ReadOnly        | Customer List and Describe actions                                        |
+| ClusterAdmin    | Create, Update, UpdateClusterConfig, UpdateClusterVersion, Delete Cluster |
+| NodePoolAdmin   | Create, Update, ScaleNodePool, UpdateNodePoolVersion, Delete NodePool     |
+| OIDCConfigAdmin | Create, Delete OIDCConfig                                                 |
+| AllActions      | The four customer groups. Not ServiceOperator.                            |
+| ServiceOperator | Create, List, Describe ManagementCluster                                  |
+
+These examples are validated against the schema in tests.
 
 ```cedar
 permit(principal, action in Seaplane::Action::"ReadOnly", resource);
@@ -157,16 +171,14 @@ forbid(principal, action == Seaplane::Action::"DeleteCluster", resource)
 when { resource.hasTag("Environment") && resource.getTag("Environment") == "production" };
 ```
 
-A team-scoped object grant needs a separate collection List grant:
+Team-scoped admin (also needs a List grant to discover clusters):
 
 ```cedar
 permit(principal, action in Seaplane::Action::"ClusterAdmin", resource)
 when { resource.hasTag("Team") && resource.getTag("Team") == "platform-engineering" };
 ```
 
-NodePool scaling requires the base update as well as ScaleNodePool. Include Describe
-and List for discovery without granting creation/deletion. The base update also
-permits ordinary mutable fields; this is not a scaling-field-only role:
+Scaling needs the base update too:
 
 ```cedar
 permit(principal, action in [Seaplane::Action::"UpdateNodePool", Seaplane::Action::"ScaleNodePool", Seaplane::Action::"DescribeNodePool", Seaplane::Action::"ListNodePools"], resource);
@@ -187,73 +199,43 @@ forbid(principal, action, resource)
 unless { ["us-east-1", "us-west-2"].contains(context.region) };
 ```
 
-This policy grants service access **only when placed in the service domain**:
+Valid only in `serviceOperatorPolicies`:
 
 ```cedar
 permit(principal, action in Seaplane::Action::"ServiceOperator", resource);
 ```
 
-## Frozen request context
+## Logs and metrics
 
-Each admitted request captures one context for all item/multi-action checks:
-`region`, `accountId`, `principalArn`, `sourceIp`, `userAgent`, and
-`requestTime: {unixSeconds, dayOfWeek, hour}`. Time is server-clock UTC; weekdays
-are ISO Monday=1 through Sunday=7. SourceIP comes only from trusted gateway
-middleware context, not X-Forwarded-For, query, or body. UserAgent is descriptive
-caller-controlled text, never identity proof. Missing IP/agent are empty strings.
-Validated create labels are candidate entity tags, not a requestLabels map.
+Failures log `request authorization failed` with `operation` (the request),
+`action` (the failing check), caller, `stage`, `cause`, `provenance` (policy,
+attachment, `PolicyRevision` = SHA-256 of the bundle file), and Cedar
+`diagnostics`. Denials log `request authorization denied` at INFO with
+`operation`, `action`, caller, and `provenance` (empty when no policy permits;
+forbid IDs when one matches). Logs never include policy content.
 
-## Startup configuration and service-operator authority
+| Metric                   | Labels                 |
+| ------------------------ | ---------------------- |
+| `authz_requests_total`   | `operation`, `outcome` |
+| `authz_duration_seconds` | `operation`, `outcome` |
+| `authz_failures_total`   | `operation`, `stage`   |
 
-Format version 1 requires `formatVersion`, `registeredAccounts`, `policies`, and
-`attachments`. It optionally accepts paired **serviceOperatorPolicies** and
-**serviceOperatorAttachments** arrays, using the same policy/attachment shapes:
+- One sample per request; `operation` is the request action.
+- `outcome`: `allow`, `deny`, `error`. `stage`: `resolution`, `parsing`,
+  `binding`, `entity_validation`, `evaluation`, `resource_loading`.
+- Unauthenticated, unenrolled, rate-limited, and public requests record nothing.
 
-```yaml
-serviceOperatorPolicies:
-  - id: operator
-    ownerAccountID: "123456789012"
-    content: 'permit(principal, action in Seaplane::Action::"ServiceOperator", resource);'
-serviceOperatorAttachments:
-  - id: operator-role
-    policyID: operator
-    principalARN: arn:aws:iam::123456789012:role/platform/Operator
-    scope: regional
-    region: us-east-1
-```
+## Verify locally
 
-Both optional arrays absent means **no service grant**. One absent, null/scalar
-lists, aliases, unknown fields, duplicate IDs within a domain, bad references or
-invalid unattached/off-region records fail startup. References are domain-local.
-Customer wildcard permits/AllActions/forbids cannot enter ManagementCluster
-evaluation; service policies cannot enter customer evaluation. Provenance uses
-`attachment/<id>` versus `service-operator/attachment/<id>`.
+| Command               | Covers                                                                                             |
+| --------------------- | -------------------------------------------------------------------------------------------------- |
+| `make test-api`       | Unit tests, including `seaplane-api/pkg/authz`.                                                    |
+| `make test-api-int`   | Handler and server integration tests.                                                              |
+| `make test-e2e-authz` | Real binary over HTTP with disposable PostgreSQL (Podman). Results in `test-results/authz-http-*`. |
 
-The mounted file is one complete version-1 bundle. Version-2 wrappers are rejected;
-the API does not merge configuration fragments or infer enrollment or grants.
-Unknown fields, duplicate keys, aliases, coercions, extra documents, duplicate
-accounts or domain-local IDs, dangling references, and ambiguous role aliases
-fail startup. Multiple distinct attachments may grant or forbid operations for
-the same principal.
+## Limits
 
-Enrollment admits operator accounts but does not authorize them. The sibling
-`rosa-seaplane/docs/platform-api-authorization.md` defines explicit provisioning
-grants, deployment identity substitution, registration credentials, and the
-ROSAENG-67493 trust and rollout prerequisites.
-
-## Principal matching and deployment limits
-
-Exact IAM user and STS session ARNs match only themselves. IAM role attachments
-match assumed-role parents by commercial AWS partition, account and final role
-name. STS omits IAM role paths; paths are **not isolation boundaries**. Ambiguous
-configured paths sharing the same STS role alias fail startup across both domains.
-An exact-session forbid overrides its role permit within the same authority set.
-Only the currently supported commercial `aws` partition is accepted.
-
-Bundles are immutable startup snapshots; changes require restart/replica rollout,
-not instantaneous revocation. The listener must be reachable only through trusted
-Gateway networking: direct callers could otherwise spoof forwarded gateway
-identity headers. Local injected-header HTTP tests do not prove SigV4/network
-isolation or deployment. No remote mutation is needed for local verification:
-run the existing local HTTP/Postgres harness described in
-[`test/e2e-api/README.md`](../test/e2e-api/README.md).
+- The API trusts gateway identity headers. The listener must be reachable only
+  through the gateway.
+- The schema validator uses `cedar-go` experimental packages. Upgrades must keep
+  all authz tests passing without weakening validation.
