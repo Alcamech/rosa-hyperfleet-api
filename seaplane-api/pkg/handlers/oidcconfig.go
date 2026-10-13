@@ -125,9 +125,11 @@ func (h *OidcConfigHandler) List(w http.ResponseWriter, r *http.Request) {
 			writeResourceAuthzError(w, r, attempt, authz.ListOIDCConfigs, err, h.logger)
 			return
 		}
-		if decision.Allowed {
-			configs = append(configs, seaplanedb.InternalToPublicOidcConfig(&list.Items[i]))
+		oc := seaplanedb.InternalToPublicOidcConfig(&list.Items[i])
+		if !decision.Allowed {
+			oc = &public.OidcConfig{ObjectMeta: listMeta(oc.ObjectMeta), Status: public.OidcConfigStatus{Phase: oc.Status.Phase}}
 		}
+		configs = append(configs, oc)
 	}
 	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 

@@ -157,9 +157,11 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 			writeResourceAuthzError(w, r, attempt, authz.ListNodePools, err, h.logger)
 			return
 		}
-		if decision.Allowed {
-			nodepools = append(nodepools, seaplanedb.InternalToPublicNodePool(&list.Items[i]))
+		np := seaplanedb.InternalToPublicNodePool(&list.Items[i])
+		if !decision.Allowed {
+			np = &public.NodePool{ObjectMeta: listMeta(np.ObjectMeta), Status: public.NodePoolStatus{Phase: np.Status.Phase}}
 		}
+		nodepools = append(nodepools, np)
 	}
 	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 
