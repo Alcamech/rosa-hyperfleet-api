@@ -182,19 +182,22 @@ func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.Field
 		} else if isZeroValue(fields[fieldPath]) {
 			return nil
 		}
+		// Current Terraform will send the full object for resource update
+		// Skip validation if the field is not changed.
+		if op == OperationUpdate && existingFields != nil && !fieldChanged(fields, existingFields, fieldPath) {
+			return nil
+		}
 		return &ValidationError{
 			Field:  fieldPath,
 			Reason: "field is platform-managed and cannot be set by customers",
 		}
 	case registry.Immutable:
-		if op == OperationUpdate && existingFields != nil {
+		if op == OperationUpdate && fieldChanged(fields, existingFields, fieldPath) {
 			// A field absent from a flattened spec (e.g. an omitempty zero value) is
 			// treated as nil so that "unset" and "explicitly zero" compare as equal.
-			if oldVal, newVal := existingFields[fieldPath], fields[fieldPath]; !reflect.DeepEqual(oldVal, newVal) {
-				return &ValidationError{
-					Field:  fieldPath,
-					Reason: "field is immutable and cannot be changed after creation",
-				}
+			return &ValidationError{
+				Field:  fieldPath,
+				Reason: "field is immutable and cannot be changed after creation",
 			}
 		}
 		return nil
@@ -312,4 +315,12 @@ func flattenMap(prefix string, m map[string]any, result map[string]any) {
 			flattenMap(path, nested, result)
 		}
 	}
+}
+
+func fieldChanged(fields, existingFields map[string]any, fieldPath string) bool {
+	if existingFields != nil {
+		oldVal, newVal := existingFields[fieldPath], fields[fieldPath]
+		return !reflect.DeepEqual(oldVal, newVal)
+	}
+	return false
 }
