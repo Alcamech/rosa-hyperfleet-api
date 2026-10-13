@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -200,10 +201,11 @@ func TestClusterAuthz_NoGrants(t *testing.T) {
 				reads++
 				return nil
 			})
-			h, registry, _ := clusterAuthzFixture(t, fc, clusterAuthorizer(t))
+			h, registry, logs := clusterAuthzFixture(t, fc, clusterAuthorizer(t))
 			w := clusterAuthzRequest(h, operation, "", "owned")
 			assertClusterAuthzStatus(t, w, http.StatusForbidden, "AUTHZ-DENIED-001: Access denied")
 			assertClusterAuthzMetrics(t, registry, operation, authz.OutcomeDeny, authz.StageNone)
+			assertDenialLog(t, logs, operation, operation)
 			wantReads := 0
 			if operation == authz.DescribeCluster {
 				wantReads = 1
@@ -212,6 +214,33 @@ func TestClusterAuthz_NoGrants(t *testing.T) {
 				t.Fatalf("storage reads = %d, want %d", reads, wantReads)
 			}
 		})
+	}
+}
+
+// assertDenialLog checks a 403 is explained at INFO: request operation, failing action, caller.
+func assertDenialLog(t *testing.T, logs *bytes.Buffer, operation, action authz.Action) {
+	t.Helper()
+	for _, want := range []string{`"level":"INFO"`, `"msg":"request authorization denied"`, `"operation":"` + string(operation) + `"`, `"action":"` + string(action) + `"`, `"caller_arn":"arn:aws:iam::` + testAccountID + `:user/test"`, `"provenance":`} {
+		if !strings.Contains(logs.String(), want) {
+			t.Fatalf("denial log lacks %s: %s", want, logs.String())
+		}
+	}
+}
+
+// A denied changed-field action names itself, and a forbid names its policy and attachment.
+func TestClusterAuthz_DeniedActionLogged(t *testing.T) {
+	a := clusterAuthorizer(t, `permit(principal, action == HyperFleet::Action::"UpdateCluster", resource);`, `forbid(principal, action == HyperFleet::Action::"UpdateClusterVersion", resource);`)
+	h, registry, logs := clusterAuthzFixture(t, fake.NewClientBuilder().WithScheme(newTestScheme()).Build(), a)
+	r := httptest.NewRequest(http.MethodPut, "/api/v0/clusters/owned-id", nil).WithContext(testContext(testAccountID))
+	w := httptest.NewRecorder()
+	if authorizeResource(w, r, h.authorizer, h.logger, authz.UpdateCluster, h.clusterResource(testClusterCR("owned-id", "owned", testAccountID)), authz.UpdateClusterVersion) {
+		t.Fatal("forbidden changed-field action allowed")
+	}
+	assertClusterAuthzStatus(t, w, http.StatusForbidden, "AUTHZ-DENIED-001: Access denied")
+	assertClusterAuthzMetrics(t, registry, authz.UpdateCluster, authz.OutcomeDeny, authz.StageNone)
+	assertDenialLog(t, logs, authz.UpdateCluster, authz.UpdateClusterVersion)
+	if !strings.Contains(logs.String(), "grant-1") || strings.Contains(logs.String(), "forbid(") {
+		t.Fatalf("denial log must name the forbid by ID, never its content: %s", logs.String())
 	}
 }
 

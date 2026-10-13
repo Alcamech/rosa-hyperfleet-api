@@ -361,8 +361,7 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !decision.Allowed {
-		attempt.Finish(authz.OutcomeDeny, authz.StageNone)
-		writeAPIError(w, errAuthzDenied, h.logger)
+		writeAuthzDenied(w, r, attempt, authz.DescribeCluster, authz.DescribeCluster, decision, h.logger)
 		return
 	}
 	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
