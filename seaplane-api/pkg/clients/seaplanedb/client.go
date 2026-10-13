@@ -96,14 +96,11 @@ func (c *Client) ListClusters(ctx context.Context) (*seaplanev1alpha1.ClusterLis
 	return &list, nil
 }
 
-// UpdateCluster CAS-updates a cluster and re-pins account ownership from ctx.
+// UpdateCluster CAS-updates a cluster the caller owns; it never moves ownership.
 func (c *Client) UpdateCluster(ctx context.Context, cluster *seaplanev1alpha1.Cluster) error {
-	if err := seaplanedb.ValidateObjectResourceVersion(cluster); err != nil {
+	if err := validateOwnedSnapshot(ctx, cluster); err != nil {
 		return err
 	}
-	accountID := middleware.GetAccountID(ctx)
-	setAccountLabel(cluster, accountID)
-	cluster.Spec.AccountID = accountID
 	return c.client.Update(ctx, cluster)
 }
 
@@ -341,14 +338,11 @@ func (c *Client) ListNodePools(ctx context.Context, clusterUID string) (*seaplan
 	return &list, nil
 }
 
-// UpdateNodePool CAS-updates a node pool and re-pins account ownership from ctx.
+// UpdateNodePool CAS-updates a node pool the caller owns; it never moves ownership.
 func (c *Client) UpdateNodePool(ctx context.Context, np *seaplanev1alpha1.NodePool) error {
-	if err := seaplanedb.ValidateObjectResourceVersion(np); err != nil {
+	if err := validateOwnedSnapshot(ctx, np); err != nil {
 		return err
 	}
-	accountID := middleware.GetAccountID(ctx)
-	setAccountLabel(np, accountID)
-	np.Spec.AccountID = accountID
 	return c.client.Update(ctx, np)
 }
 

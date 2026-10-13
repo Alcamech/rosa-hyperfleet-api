@@ -134,52 +134,25 @@ func TestClient_CreateNodePool_RequiresOwnedParent(t *testing.T) {
 	}
 }
 
-func TestClient_UpdateCluster_RepinsAccount(t *testing.T) {
-	cr := &seaplanev1alpha1.Cluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "owned", Namespace: "account-acct-1",
-			Labels: map[string]string{accountIDLabel: "acct-1"},
-		},
-		Spec: seaplanev1alpha1.ClusterSpec{AccountID: "acct-1", Properties: map[string]string{"state": "before"}},
-	}
-	fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(cr).Build()
+// An update never moves ownership: a snapshot whose owner differs from the caller is rejected.
+func TestClient_Update_RejectsForeignOwner(t *testing.T) {
+	meta := metav1.ObjectMeta{Name: "owned", Namespace: "account-acct-1", Labels: map[string]string{accountIDLabel: "acct-1"}}
+	cr := &seaplanev1alpha1.Cluster{ObjectMeta: *meta.DeepCopy()}
+	np := &seaplanev1alpha1.NodePool{ObjectMeta: *meta.DeepCopy()}
+	fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(cr, np).Build()
 	c := NewClientFrom(fc, slog.New(slog.NewTextHandler(os.Stdout, nil)))
 
-	cr.Labels[accountIDLabel] = "forged"
-	cr.Spec.AccountID = "forged"
-	cr.Spec.Properties["state"] = "after"
-	if err := c.UpdateCluster(ctxAccount("acct-1"), cr); err != nil {
-		t.Fatalf("UpdateCluster: %v", err)
+	for name, update := range map[string]func() error{
+		"cluster":  func() error { return c.UpdateCluster(ctxAccount("acct-2"), cr.DeepCopy()) },
+		"nodepool": func() error { return c.UpdateNodePool(ctxAccount("acct-2"), np.DeepCopy()) },
+	} {
+		if err := update(); err == nil {
+			t.Errorf("%s: foreign caller updated acct-1 object", name)
+		}
 	}
-	if cr.Labels[accountIDLabel] != "acct-1" || cr.Spec.AccountID != "acct-1" {
-		t.Errorf("ownership = (%q, %q), want acct-1", cr.Labels[accountIDLabel], cr.Spec.AccountID)
-	}
-	if cr.Spec.Properties["state"] != "after" {
-		t.Errorf("properties.state = %q, want after", cr.Spec.Properties["state"])
-	}
-}
-
-func TestClient_UpdateNodePool_RepinsAccount(t *testing.T) {
-	parent := &seaplanev1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
-		Name: "owned", Namespace: "account-acct-1", UID: types.UID("owned-uid"),
-		Labels: map[string]string{accountIDLabel: "acct-1"},
-	}}
-	np := testNodePoolFor(parent)
-	np.Spec.AccountID = "acct-1"
-	fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(parent, np).Build()
-	c := NewClientFrom(fc, slog.New(slog.NewTextHandler(os.Stdout, nil)))
-
-	np.Labels[accountIDLabel] = "forged"
-	np.Spec.AccountID = "forged"
-	np.Spec.Labels = map[string]string{"state": "after"}
-	if err := c.UpdateNodePool(ctxAccount("acct-1"), np); err != nil {
-		t.Fatalf("UpdateNodePool: %v", err)
-	}
-	if np.Labels[accountIDLabel] != "acct-1" || np.Spec.AccountID != "acct-1" {
-		t.Errorf("ownership = (%q, %q), want acct-1", np.Labels[accountIDLabel], np.Spec.AccountID)
-	}
-	if np.Spec.Labels["state"] != "after" {
-		t.Errorf("labels.state = %q, want after", np.Spec.Labels["state"])
+	var stored seaplanev1alpha1.Cluster
+	if err := fc.Get(context.Background(), client.ObjectKeyFromObject(cr), &stored); err != nil || stored.Labels[accountIDLabel] != "acct-1" {
+		t.Fatalf("cluster owner = %q (%v), want acct-1", stored.Labels[accountIDLabel], err)
 	}
 }
 
