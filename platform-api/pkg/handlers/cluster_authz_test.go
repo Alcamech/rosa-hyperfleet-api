@@ -215,17 +215,13 @@ func TestClusterAuthz_NoGrants(t *testing.T) {
 	}
 }
 
+// A List grant alone shows every account cluster as ID, name, and state; paging counts them all.
 func TestClusterAuthz_ListVisibility(t *testing.T) {
-	hidden := testClusterCR("hidden-first", "hidden", testAccountID)
-	hidden.Labels["example.com/team"] = "red"
-	first := testClusterCR("visible-first", "first", testAccountID)
-	first.Labels["example.com/team"] = "blue"
-	missing := testClusterCR("missing-label", "missing", testAccountID)
-	second := testClusterCR("visible-second", "second", testAccountID)
-	second.Labels["example.com/team"] = "blue"
+	first := testClusterCR("first", "one", testAccountID)
+	first.Status.Phase = hyperfleetv1alpha1.ClusterPhaseReady
+	second := testClusterCR("second", "two", testAccountID)
 	foreign := testClusterCR("foreign", "foreign", "999999999999")
-	foreign.Labels["example.com/team"] = "blue"
-	all := []*hyperfleetv1alpha1.Cluster{hidden, first, missing, second, foreign}
+	all := []*hyperfleetv1alpha1.Cluster{first, second, foreign}
 	for _, tc := range []struct {
 		name                         string
 		policies                     []string
@@ -234,23 +230,20 @@ func TestClusterAuthz_ListVisibility(t *testing.T) {
 		ids                          []string
 		total, limit, offset, status int
 	}{
-		{"both actions", []string{clusterReadPermit}, all, "", []string{"hidden-first", "visible-first", "missing-label", "visible-second"}, 4, 50, 0, http.StatusOK},
-		{"hidden first page", []string{clusterListPermit, clusterLabelPermit}, all, "?limit=1", []string{"visible-first"}, 2, 1, 0, http.StatusOK},
-		{"hidden items consume no slots", []string{clusterListPermit, clusterLabelPermit}, all, "?limit=1&offset=1", []string{"visible-second"}, 2, 1, 1, http.StatusOK},
-		{"offset beyond visible set", []string{clusterListPermit, clusterLabelPermit}, all, "?limit=1&offset=2", []string{}, 2, 1, 2, http.StatusOK},
-		{"maximum offset", []string{clusterListPermit, clusterLabelPermit}, all, "?offset=" + strconv.Itoa(int(^uint(0)>>1)), []string{}, 2, 50, int(^uint(0) >> 1), http.StatusOK},
-		{"all denied", []string{clusterListPermit, clusterLabelPermit}, []*hyperfleetv1alpha1.Cluster{hidden, missing}, "", []string{}, 0, 50, 0, http.StatusOK},
-		{"empty storage", []string{clusterReadPermit}, nil, "", []string{}, 0, 50, 0, http.StatusOK},
-		{"list grant only", []string{clusterListPermit}, all, "", []string{}, 0, 50, 0, http.StatusOK},
+		{"list grant only", []string{clusterListPermit}, all, "", []string{"first", "second"}, 2, 50, 0, http.StatusOK},
+		{"describe forbid still lists", []string{clusterListPermit, `forbid(principal, action == HyperFleet::Action::"DescribeCluster", resource);`}, all, "", []string{"first", "second"}, 2, 50, 0, http.StatusOK},
+		{"second page", []string{clusterListPermit}, all, "?limit=1&offset=1", []string{"second"}, 2, 1, 1, http.StatusOK},
+		{"offset beyond list", []string{clusterListPermit}, all, "?limit=1&offset=2", []string{}, 2, 1, 2, http.StatusOK},
+		{"maximum offset", []string{clusterListPermit}, all, "?offset=" + strconv.Itoa(int(^uint(0)>>1)), []string{}, 2, 50, int(^uint(0) >> 1), http.StatusOK},
+		{"empty storage", []string{clusterListPermit}, nil, "", []string{}, 0, 50, 0, http.StatusOK},
+		{"invalid paging retains defaults", []string{clusterListPermit}, all, "?limit=101&offset=-1", []string{"first", "second"}, 2, 50, 0, http.StatusOK},
 		{"describe grant only", []string{clusterDescribePermit}, all, "", nil, 0, 50, 0, http.StatusForbidden},
 		{"collection forbid", []string{clusterReadPermit, `forbid(principal, action == HyperFleet::Action::"ListClusters", resource);`}, all, "", nil, 0, 50, 0, http.StatusForbidden},
-		{"invalid paging retains defaults", []string{clusterListPermit, clusterLabelPermit}, all, "?limit=101&offset=-1", []string{"visible-first", "visible-second"}, 2, 50, 0, http.StatusOK},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reads := 0
-			a := clusterAuthorizer(t, tc.policies...)
 			fc := clusterOrderedStore(tc.objects, func(context.Context) error { reads++; return nil })
-			h, registry, _ := clusterAuthzFixture(t, fc, a)
+			h, registry, _ := clusterAuthzFixture(t, fc, clusterAuthorizer(t, tc.policies...))
 			w := clusterAuthzRequest(h, authz.ListClusters, tc.query, "")
 			if tc.status == http.StatusForbidden {
 				assertClusterAuthzStatus(t, w, tc.status, "AUTHZ-DENIED-001: Access denied")
@@ -272,6 +265,13 @@ func TestClusterAuthz_ListVisibility(t *testing.T) {
 			ids := make([]string, 0, len(body.Items))
 			for _, item := range body.Items {
 				ids = append(ids, string(item.UID))
+				want := public.Cluster{ObjectMeta: metav1.ObjectMeta{Name: item.Name, Namespace: "account-" + testAccountID, UID: item.UID}}
+				if item.UID == "first" {
+					want.Status.Phase = public.ClusterPhase(hyperfleetv1alpha1.ClusterPhaseReady)
+				}
+				if !reflect.DeepEqual(item, want) {
+					t.Fatalf("list item must be ID, name, and state only: %+v", item)
+				}
 			}
 			if w.Code != http.StatusOK || !reflect.DeepEqual(ids, tc.ids) || body.Items == nil || body.Total != tc.total || body.Limit != tc.limit || body.Offset != tc.offset || reads != 1 {
 				t.Fatalf("want ids=%v total=%d limit=%d offset=%d, got HTTP %d ids=%v body=%s reads=%d", tc.ids, tc.total, tc.limit, tc.offset, w.Code, ids, w.Body.String(), reads)

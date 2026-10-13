@@ -133,9 +133,11 @@ func (h *ManagementClusterHandler) List(w http.ResponseWriter, r *http.Request) 
 			writeResourceAuthzError(w, r, attempt, authz.ListManagementClusters, err, h.logger)
 			return
 		}
-		if decision.Allowed {
-			clusters = append(clusters, mcToResponse(&list.Items[i]))
+		mc := mcToResponse(&list.Items[i])
+		if !decision.Allowed {
+			mc = ManagementClusterResponse{ID: mc.ID}
 		}
+		clusters = append(clusters, mc)
 	}
 	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 

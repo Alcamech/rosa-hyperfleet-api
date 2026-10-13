@@ -97,31 +97,29 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check every candidate before paging so a late failure cannot leak partial success.
-	visible := make([]*hyperfleetv1alpha1.Cluster, 0, len(list.Items))
+	// Every item is listed (EKS style); without Describe it shows only ID, name, and state.
+	// Check all items before paging so a late failure cannot leak partial success.
+	clusters := make([]*public.Cluster, 0, len(list.Items))
 	for i := range list.Items {
-		cr := &list.Items[i]
-		decision, err := prepared.Check(ctx, authz.DescribeCluster, h.clusterResource(cr))
+		decision, err := prepared.Check(ctx, authz.DescribeCluster, h.clusterResource(&list.Items[i]))
 		if err != nil {
 			writeResourceAuthzError(w, r, attempt, authz.ListClusters, err, h.logger)
 			return
 		}
-		if decision.Allowed {
-			visible = append(visible, cr)
+		c := hyperfleetdb.InternalToPublicCluster(&list.Items[i])
+		if !decision.Allowed {
+			c = &public.Cluster{ObjectMeta: listMeta(c.ObjectMeta), Status: public.ClusterStatus{Phase: c.Status.Phase}}
 		}
+		clusters = append(clusters, c)
 	}
 	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 
-	total := len(visible)
+	total := len(clusters)
 	if offset >= total {
-		visible = nil
+		clusters = []*public.Cluster{}
 	} else {
 		end := offset + min(limit, total-offset)
-		visible = visible[offset:end]
-	}
-	clusters := make([]*public.Cluster, 0, len(visible))
-	for _, cr := range visible {
-		clusters = append(clusters, hyperfleetdb.InternalToPublicCluster(cr))
+		clusters = clusters[offset:end]
 	}
 
 	response := map[string]any{

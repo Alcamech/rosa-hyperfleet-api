@@ -312,29 +312,29 @@ func TestAuthzHTTP(t *testing.T) {
 		})
 	}
 
-	run("visibility total and pagination", func(t *testing.T) {
+	run("list total and pagination", func(t *testing.T) {
 		response := authzMeasuredGet(t, process, authzClustersPath+"?limit=100", alice, authzAccount, "ListClusters", "allow")
-		full := authzReadList(t, response, 2, 100, 0)
-		want := []string{blueOne, blueTwo}
-		if got := authzClusterIDs(full); !slices.Equal(got, want) {
-			t.Errorf("visible membership = %v, want %v", got, want)
+		full := authzReadList(t, response, 4, 100, 0)
+		if got := authzDetailedIDs(full); !slices.Equal(got, []string{blueOne, blueTwo}) {
+			t.Errorf("detailed membership = %v, want describable %v", got, []string{blueOne, blueTwo})
 		}
-		for offset := 0; offset <= 3; offset++ {
+		for offset := 0; offset <= 5; offset++ {
 			response := authzMeasuredGet(t, process, fmt.Sprintf("%s?limit=1&offset=%d", authzClustersPath, offset), alice, authzAccount, "ListClusters", "allow")
-			page := authzReadList(t, response, 2, 1, offset)
+			page := authzReadList(t, response, 4, 1, offset)
 			var expected []public.Cluster
 			if offset < len(full) {
 				expected = full[offset : offset+1]
 			}
 			if !slices.Equal(authzClusterIDs(page), authzClusterIDs(expected)) {
-				t.Errorf("page %d = %v, want observed visible subsequence %v", offset, authzClusterIDs(page), authzClusterIDs(expected))
+				t.Errorf("page %d = %v, want observed subsequence %v", offset, authzClusterIDs(page), authzClusterIDs(expected))
 			}
 		}
 	})
-	run("list-only empty visible set", func(t *testing.T) {
+	run("list-only identifiers", func(t *testing.T) {
 		response := authzMeasuredGet(t, process, authzClustersPath, authzUser("list-only"), authzAccount, "ListClusters", "allow")
-		if items := authzReadList(t, response, 0, 50, 0); len(items) != 0 {
-			t.Errorf("list-only leaked %d objects", len(items))
+		items := authzReadList(t, response, 4, 50, 0)
+		if detailed := authzDetailedIDs(items); len(items) != 4 || len(detailed) != 0 {
+			t.Errorf("list-only got %d items, details for %v", len(items), detailed)
 		}
 	})
 	run("broad list still excludes foreign account", func(t *testing.T) {
@@ -799,6 +799,18 @@ func authzReadList(t *testing.T, response *APIResponse, total, limit, offset int
 		t.Errorf("list envelope = %+v, want total=%d limit=%d offset=%d non-null items", list, total, limit, offset)
 	}
 	return list.Items
+}
+
+// authzDetailedIDs returns items with full details; identifier-only items carry no labels.
+func authzDetailedIDs(clusters []public.Cluster) []string {
+	var ids []string
+	for _, cluster := range clusters {
+		if cluster.Labels != nil {
+			ids = append(ids, string(cluster.UID))
+		}
+	}
+	slices.Sort(ids)
+	return ids
 }
 
 func authzClusterIDs(clusters []public.Cluster) []string {

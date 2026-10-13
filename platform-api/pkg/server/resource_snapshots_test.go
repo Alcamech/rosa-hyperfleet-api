@@ -203,8 +203,8 @@ func TestImplementedRoutesActionSpecific(t *testing.T) {
 				}
 				if strings.HasPrefix(tc.action, "List") && canAccess {
 					var b struct{ Total int }
-					if err := json.Unmarshal(w.Body.Bytes(), &b); err != nil || b.Total != 0 {
-						t.Fatalf("List without Describe must return empty: %s (%v)", w.Body.String(), err)
+					if err := json.Unmarshal(w.Body.Bytes(), &b); err != nil || b.Total != 1 || strings.Contains(w.Body.String(), "labels") || strings.Contains(w.Body.String(), "us-west-2") {
+						t.Fatalf("List without Describe must return identifiers only: %s (%v)", w.Body.String(), err)
 					}
 				}
 			})

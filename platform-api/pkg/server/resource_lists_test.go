@@ -15,7 +15,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
-func TestResourceCollectionsFilterBeforePaginationAndAbort(t *testing.T) {
+// List shows every item; Describe decides full details or ID, name, and state.
+func TestResourceCollectionsListDetails(t *testing.T) {
 	for _, tc := range []struct {
 		path, list, describe string
 		index                int
@@ -25,27 +26,21 @@ func TestResourceCollectionsFilterBeforePaginationAndAbort(t *testing.T) {
 		for _, mode := range []string{"filtered", "list-only", "describe-only", "late-error"} {
 			t.Run(tc.path+"/"+mode, func(t *testing.T) {
 				objects := resourceFixtures()
-				first := objects[tc.index]
-				first.SetName("a-visible")
-				second := first.DeepCopyObject().(client.Object)
-				second.SetName("z-hidden")
-				second.SetUID(types.UID(string(first.GetUID()) + "-second"))
+				second := objects[tc.index].DeepCopyObject().(client.Object)
+				second.SetName("second")
+				second.SetUID(types.UID(string(objects[tc.index].GetUID()) + "-second"))
 				labels := second.GetLabels()
 				labels["team"], labels["fault"] = "red", "yes"
 				second.SetLabels(labels)
 				objects = append(objects, second)
 				list := actionPermit(tc.list)
 				describe := `permit(principal, action == HyperFleet::Action::"` + tc.describe + `", resource) when { resource.hasTag("team") && resource.getTag("team") == "blue" };`
-				policies := []string{list, describe}
-				if mode == "list-only" {
-					policies = []string{list}
-				}
-				if mode == "describe-only" {
-					policies = []string{describe}
-				}
-				if mode == "late-error" {
-					policies = append(policies, `forbid(principal, action == HyperFleet::Action::"`+tc.describe+`", resource) when { resource.hasTag("fault") && 9223372036854775807 + 1 == 0 };`)
-				}
+				policies := map[string][]string{
+					"filtered":      {list, describe},
+					"list-only":     {list},
+					"describe-only": {describe},
+					"late-error":    {list, describe, `forbid(principal, action == HyperFleet::Action::"` + tc.describe + `", resource) when { resource.hasTag("fault") && 9223372036854775807 + 1 == 0 };`},
+				}[mode]
 				var customer, service []string
 				if tc.index == 3 {
 					service = policies
@@ -53,45 +48,30 @@ func TestResourceCollectionsFilterBeforePaginationAndAbort(t *testing.T) {
 					customer = policies
 				}
 				srv, _ := resourceServer(t, customer, service, interceptor.Funcs{}, objects...)
-				w := resourceRequest(srv, "GET", tc.path+"?limit=1&offset=0", "")
-				want := 200
-				if mode == "describe-only" {
-					want = 403
-				}
-				if mode == "late-error" {
-					want = 500
-				}
-				if w.Code != want {
-					t.Fatalf("want %d got %d: %s", want, w.Code, w.Body.String())
-				}
-				var body map[string]json.RawMessage
-				if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-					t.Fatal(err)
+				w := resourceRequest(srv, "GET", tc.path, "")
+				want := map[string]int{"filtered": 200, "list-only": 200, "describe-only": 403, "late-error": 500}[mode]
+				if w.Code != want || (want != 200 && strings.Contains(w.Body.String(), `"items"`)) {
+					t.Fatalf("want %d without items, got %d: %s", want, w.Code, w.Body.String())
 				}
 				if want != 200 {
-					if _, ok := body["items"]; ok {
-						t.Fatalf("partial success after error: %s", w.Body.String())
-					}
 					return
 				}
-				var total int
-				var items []json.RawMessage
-				_ = json.Unmarshal(body["total"], &total)
-				_ = json.Unmarshal(body["items"], &items)
-				expected := 1
-				if mode == "list-only" {
-					expected = 0
+				var body struct {
+					Total int
+					Items []json.RawMessage
 				}
-				if total != expected || len(items) != expected {
-					t.Fatalf("filter before total/page failed: %s", w.Body.String())
+				if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body.Total != 2 || len(body.Items) != 2 {
+					t.Fatalf("want every item: %s (%v)", w.Body.String(), err)
 				}
-				if tc.index != 3 {
-					w = resourceRequest(srv, "GET", tc.path+"?limit=1&offset=1", "")
-					_ = json.Unmarshal(w.Body.Bytes(), &body)
-					_ = json.Unmarshal(body["items"], &items)
-					_ = json.Unmarshal(body["total"], &total)
-					if total != expected || len(items) != 0 {
-						t.Fatalf("offset counted hidden item: %s", w.Body.String())
+				detail := `"team"`
+				if tc.index == 3 {
+					detail = `"us-west-2"`
+				}
+				for _, item := range body.Items {
+					isFull := strings.Contains(string(item), detail)
+					wantFull := mode == "filtered" && !strings.Contains(string(item), `"second"`)
+					if isFull != wantFull {
+						t.Fatalf("item details = %v, want %v: %s", isFull, wantFull, item)
 					}
 				}
 			})
@@ -135,16 +115,27 @@ func TestNodePoolNamePinsParent(t *testing.T) {
 			t.Fatalf("path %s want %d got %d: %s", tc.path, tc.want, w.Code, w.Body.String())
 		}
 	}
-	// List has independent collection permission; it filters actual selected parents.
+	// List has independent collection permission; Describe on the actual parent decides full details.
 	srv, _ = resourceServer(t, []string{actionPermit("ListNodePools"), policy}, nil, hooks, objects...)
-	w := resourceRequest(srv, "GET", "nodepools?limit=1", "")
+	w := resourceRequest(srv, "GET", "nodepools", "")
 	var result struct {
-		Items []struct{ Metadata struct{ Name string } }
+		Items []struct {
+			Metadata struct {
+				Name   string
+				Labels map[string]string
+			}
+		}
 		Total int
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &result)
-	if w.Code != 200 || result.Total != 1 || len(result.Items) != 1 || result.Items[0].Metadata.Name != second.Name {
-		t.Fatalf("wrong per-parent list filter: %s", w.Body.String())
+	var detailed []string
+	for _, item := range result.Items {
+		if item.Metadata.Labels != nil {
+			detailed = append(detailed, item.Metadata.Name)
+		}
+	}
+	if w.Code != 200 || result.Total != 2 || len(result.Items) != 2 || len(detailed) != 1 || detailed[0] != second.Name {
+		t.Fatalf("wrong per-parent list details: %s", w.Body.String())
 	}
 }
 

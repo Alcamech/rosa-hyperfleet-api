@@ -96,18 +96,26 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 		{"management_clusters", "ListManagementClusters", "DescribeManagementCluster", "operator-list-only", "operator-describe-only", "operator-scoped"},
 	} {
 		t.Run("collection "+tc.path, func(t *testing.T) {
+			// List returns both fixtures; only the Describe-allowed one carries details.
 			for _, check := range []struct {
-				principal     string
-				total, status int
+				principal        string
+				detailed, status int
 			}{{tc.listOnly, 0, 200}, {tc.describeOnly, 0, 403}, {tc.scoped, 1, 200}} {
-				response := authzResourceRequest(t, p, "GET", "/api/v0/"+tc.path+"?limit=1", "", authzUser(check.principal), tc.list, check.status)
+				response := authzResourceRequest(t, p, "GET", "/api/v0/"+tc.path, "", authzUser(check.principal), tc.list, check.status)
 				if check.status == 200 {
 					var body struct {
 						Total int
 						Items []json.RawMessage
 					}
-					if err := json.Unmarshal(response.Body, &body); err != nil || body.Total != check.total || len(body.Items) != check.total {
-						t.Errorf("wrong filtered page: %s %v", response.Body, err)
+					err := json.Unmarshal(response.Body, &body)
+					detailed := 0
+					for _, item := range body.Items {
+						if strings.Contains(string(item), authzTeamLabel) || strings.Contains(string(item), "us-west-2") {
+							detailed++
+						}
+					}
+					if err != nil || body.Total != 2 || len(body.Items) != 2 || detailed != check.detailed {
+						t.Errorf("wrong list details: %s %v", response.Body, err)
 					}
 				}
 			}
