@@ -208,7 +208,7 @@ test-operator-int:
 test-e2e: test-e2e-api
 
 test-e2e-authz: build-api
-	bash scripts/test-e2e-authz.sh "$(TEST_OUTPUT_DIR)"
+	cd test && AUTHZ_HTTP_REQUIRED=1 AUTHZ_HTTP_API_BINARY=$(CURDIR)/bin/rosa-seaplane-api go test -count=1 -timeout=10m -run '^TestAuthzHTTP$$' -v ./e2e-api
 
 test-e2e-api: $(GINKGO)
 	E2E_BASE_URL="$${BASE_URL}" E2E_ACCOUNT_ID="$${E2E_ACCOUNT_ID}" \

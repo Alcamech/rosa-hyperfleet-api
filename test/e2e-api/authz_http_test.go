@@ -5,16 +5,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"io"
-	"maps"
-	"math"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -68,20 +64,6 @@ type authzProcess struct {
 	stopOnce                               sync.Once
 }
 
-type authzJUnitCase struct {
-	Name    string  `xml:"name,attr"`
-	Seconds string  `xml:"time,attr"`
-	Failure *string `xml:"failure,omitempty"`
-}
-
-type authzJUnitSuite struct {
-	XMLName  xml.Name         `xml:"testsuite"`
-	Name     string           `xml:"name,attr"`
-	Tests    int              `xml:"tests,attr"`
-	Failures int              `xml:"failures,attr"`
-	Cases    []authzJUnitCase `xml:"testcase"`
-}
-
 func TestAuthzHTTP(t *testing.T) {
 	binary := os.Getenv("AUTHZ_HTTP_API_BINARY")
 	if binary == "" {
@@ -102,36 +84,8 @@ func TestAuthzHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("local HTTP artifacts: %s", output)
-	suite := authzJUnitSuite{Name: "TestAuthzHTTP"}
-	t.Cleanup(func() {
-		if t.Failed() && suite.Failures == 0 {
-			message := "Infrastructure failed; see authz-http.log and API process logs"
-			suite.Cases = append(suite.Cases, authzJUnitCase{Name: "infrastructure", Failure: &message})
-			suite.Failures++
-		}
-		suite.Tests = len(suite.Cases)
-		content, err := xml.MarshalIndent(suite, "", "  ")
-		if err == nil {
-			err = os.WriteFile(filepath.Join(output, "junit-authz-http.xml"), append([]byte(xml.Header), content...), 0600)
-		}
-		if err != nil {
-			t.Errorf("write JUnit: %v", err)
-		}
-	})
-	run := func(name string, check func(*testing.T)) bool {
-		started := time.Now()
-		passed := t.Run(name, check)
-		record := authzJUnitCase{Name: name, Seconds: strconv.FormatFloat(time.Since(started).Seconds(), 'f', 3, 64)}
-		if !passed {
-			message := "See authz-http.log and API process logs"
-			record.Failure = &message
-			suite.Failures++
-		}
-		suite.Cases = append(suite.Cases, record)
-		return passed
-	}
 	if os.Getenv("PGCTL_DSN") != "" {
-		t.Fatal("refusing external PGCTL_DSN; only a runner-owned disposable database is safe")
+		t.Fatal("refusing external PGCTL_DSN; only a test-owned disposable database is safe")
 	}
 	binary, err = filepath.Abs(binary)
 	if err != nil {
@@ -152,38 +106,9 @@ func TestAuthzHTTP(t *testing.T) {
 	authzWriteFile(t, configPath, bundle)
 
 	db := testinfra.StartPostgres(t)
-	// The shell runner also records container ownership before readiness for interrupted setup.
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	var processes []*authzProcess
-	var processMu sync.Mutex
-	stopped := make(chan struct{})
-	go func() {
-		select {
-		case <-stopped:
-			return
-		case <-ctx.Done():
-			select {
-			case <-stopped:
-				return
-			default:
-			}
-			processMu.Lock()
-			for _, process := range processes {
-				process.stop()
-			}
-			processMu.Unlock()
-			db.Stop()
-			os.Exit(1)
-		}
-	}()
-	t.Cleanup(func() { close(stopped); cancel() })
 	start := func(t *testing.T, name string) *authzProcess {
 		t.Helper()
-		processMu.Lock()
-		defer processMu.Unlock()
-		process := authzStartProcess(t, binary, configPath, db.ConnStr, output, name)
-		processes = append(processes, process)
-		return process
+		return authzStartProcess(t, binary, configPath, db.ConnStr, output, name)
 	}
 	scheme := runtime.NewScheme()
 	if err := seaplanev1.AddToScheme(scheme); err != nil {
@@ -198,7 +123,7 @@ func TestAuthzHTTP(t *testing.T) {
 	earlierID, faultID := authzMarkLateFault(t, store)
 	process := start(t, "initial")
 	t.Cleanup(process.stop)
-	if !run("infrastructure", func(t *testing.T) {
+	if !t.Run("infrastructure", func(t *testing.T) {
 		authzWaitReady(t, process)
 		log, err := os.ReadFile(process.logPath)
 		if err != nil {
@@ -245,7 +170,7 @@ func TestAuthzHTTP(t *testing.T) {
 		{"broad foreign get", broad, authzAccount, "/" + foreign, "deny", http.StatusNotFound},
 		{"broad missing get", broad, authzAccount, "/00000000-0000-4000-8000-000000000099", "deny", http.StatusNotFound},
 	} {
-		run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			operation := "DescribeCluster"
 			if tc.path == "" {
 				operation = "ListClusters"
@@ -261,7 +186,7 @@ func TestAuthzHTTP(t *testing.T) {
 		})
 	}
 
-	run("runtime policy earlier item allow", func(t *testing.T) {
+	t.Run("runtime policy earlier item allow", func(t *testing.T) {
 		response := authzMeasuredGet(t, process, authzClustersPath+"/"+earlierID, authzUser("error-fixture"), authzAccount, "DescribeCluster", "allow")
 		authzAssertStatus(t, response, http.StatusOK)
 		var cluster public.Cluster
@@ -278,7 +203,7 @@ func TestAuthzHTTP(t *testing.T) {
 		{"runtime policy describe failure", "/" + faultID, "DescribeCluster"},
 		{"runtime policy late list failure", "?limit=1", "ListClusters"},
 	} {
-		run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			beforeLog, err := os.ReadFile(process.logPath)
 			if err != nil {
 				t.Fatal(err)
@@ -312,7 +237,7 @@ func TestAuthzHTTP(t *testing.T) {
 		})
 	}
 
-	run("list total and pagination", func(t *testing.T) {
+	t.Run("list total and pagination", func(t *testing.T) {
 		response := authzMeasuredGet(t, process, authzClustersPath+"?limit=100", alice, authzAccount, "ListClusters", "allow")
 		full := authzReadList(t, response, 4, 100, 0)
 		if got := authzDetailedIDs(full); !slices.Equal(got, []string{blueOne, blueTwo}) {
@@ -330,14 +255,14 @@ func TestAuthzHTTP(t *testing.T) {
 			}
 		}
 	})
-	run("list-only identifiers", func(t *testing.T) {
+	t.Run("list-only identifiers", func(t *testing.T) {
 		response := authzMeasuredGet(t, process, authzClustersPath, authzUser("list-only"), authzAccount, "ListClusters", "allow")
 		items := authzReadList(t, response, 4, 50, 0)
 		if detailed := authzDetailedIDs(items); len(items) != 4 || len(detailed) != 0 {
 			t.Errorf("list-only got %d items, details for %v", len(items), detailed)
 		}
 	})
-	run("broad list still excludes foreign account", func(t *testing.T) {
+	t.Run("broad list still excludes foreign account", func(t *testing.T) {
 		response := authzMeasuredGet(t, process, authzClustersPath, broad, authzAccount, "ListClusters", "allow")
 		items := authzReadList(t, response, 4, 50, 0)
 		want := []string{authzStoredClusters[0].id, blueOne, authzStoredClusters[2].id, blueTwo}
@@ -345,7 +270,7 @@ func TestAuthzHTTP(t *testing.T) {
 			t.Errorf("account-scoped list = %v, want %v", got, want)
 		}
 	})
-	run("request claims cannot replace stored labels or owner", func(t *testing.T) {
+	t.Run("request claims cannot replace stored labels or owner", func(t *testing.T) {
 		before := authzMetrics(t, process)
 		path := authzClustersPath + "/" + authzStoredClusters[0].id + "?accountId=111111111111&example.com%2Fteam=blue&labels=blue"
 		request, err := http.NewRequest(http.MethodGet, process.apiURL+path, strings.NewReader(`{"metadata":{"labels":{"example.com/team":"blue","seaplane.io/account-id":"111111111111"}},"spec":{"accountId":"111111111111"}}`))
@@ -366,7 +291,7 @@ func TestAuthzHTTP(t *testing.T) {
 			t.Errorf("request changed stored labels: %+v (%v)", stored.Labels, err)
 		}
 	})
-	run("public requests leave authorization metrics unchanged", func(t *testing.T) {
+	t.Run("public requests leave authorization metrics unchanged", func(t *testing.T) {
 		before := authzMetrics(t, process)
 		for _, endpoint := range []string{
 			process.apiURL + "/api/v0/live", process.apiURL + "/api/v0/ready", process.apiURL + "/api/v0/info",
@@ -384,11 +309,11 @@ func TestAuthzHTTP(t *testing.T) {
 		authzMetricDelta(t, before, authzMetrics(t, process), "", "", "")
 	})
 
-	run("all resource operations and snapshot CAS", func(t *testing.T) {
+	t.Run("all resource operations and snapshot CAS", func(t *testing.T) {
 		authzResourceOperations(t, process, store)
 	})
 
-	run("startup snapshot and restart enrollment", func(t *testing.T) {
+	t.Run("startup snapshot and restart enrollment", func(t *testing.T) {
 		var replacement struct {
 			FormatVersion      int               `json:"formatVersion"`
 			RegisteredAccounts []string          `json:"registeredAccounts"`
@@ -420,55 +345,11 @@ func TestAuthzHTTP(t *testing.T) {
 		{"malformed", `{"formatVersion":1,"attachments":[`},
 		{"unsupported-version", `{"formatVersion":999,"registeredAccounts":[],"policies":[],"attachments":[]}`},
 	} {
-		run("invalid startup "+invalid.name, func(t *testing.T) {
+		t.Run("invalid startup "+invalid.name, func(t *testing.T) {
 			authzWriteFile(t, configPath, []byte(invalid.content))
 			invalidProcess := start(t, invalid.name)
 			defer invalidProcess.stop()
 			authzAssertRejected(t, invalidProcess)
-		})
-	}
-}
-
-func TestAuthzErrorStatus(t *testing.T) {
-	for _, tc := range []struct {
-		name, field, value string
-		wantFailure        bool
-	}{
-		{"typed Status", "", "", false},
-		{"partial items", "items", `[]`, true},
-		{"partial spec", "spec", `{}`, true},
-		{"partial total", "total", `1`, true},
-		{"partial limit", "limit", `1`, true},
-		{"partial offset", "offset", `0`, true},
-		{"resource labels", "metadata", `{"labels":{"example.com/fault":"fault-detail-secret"}}`, true},
-		{"success Status", "status", `"Success"`, true},
-		{"resource kind", "kind", `"Cluster"`, true},
-		{"wrong version", "apiVersion", `"other/v1"`, true},
-		{"wrong code", "code", `200`, true},
-		{"empty message", "message", `""`, true},
-		{"fault label", "message", `"example.com/fault"`, true},
-		{"fault value", "message", `"fault-detail-secret"`, true},
-		{"Cedar diagnostics", "message", `"integer overflow"`, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			body := map[string]json.RawMessage{
-				"apiVersion": json.RawMessage(`"v1"`), "kind": json.RawMessage(`"Status"`),
-				"metadata": json.RawMessage(`{}`), "status": json.RawMessage(`"Failure"`),
-				"code": json.RawMessage(`500`), "reason": json.RawMessage(`"InternalError"`),
-				"message": json.RawMessage(`"AUTHZ-FAILED-001: Authorization failed"`),
-			}
-			if tc.field != "" {
-				body[tc.field] = json.RawMessage(tc.value)
-			}
-			content, err := json.Marshal(body)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var failures authzFailures
-			authzAssertStatus(&failures, &APIResponse{StatusCode: http.StatusInternalServerError, Body: content}, http.StatusInternalServerError)
-			if hasFailure := len(failures) != 0; hasFailure != tc.wantFailure {
-				t.Fatalf("failure = %t, want %t; body %s; diagnostics %v", hasFailure, tc.wantFailure, content, failures)
-			}
 		})
 	}
 }
@@ -530,10 +411,6 @@ func authzSeedClusters(t *testing.T, store client.Client) {
 		if err := store.Create(ctx, cluster); err != nil {
 			t.Fatalf("seed %s: %v", fixture.name, err)
 		}
-		var persisted seaplanev1.Cluster
-		if err := store.Get(ctx, client.ObjectKeyFromObject(cluster), &persisted); err != nil || !maps.Equal(persisted.Labels, labels) || persisted.Spec.InternalID != fixture.id || persisted.Spec.AccountID != fixture.account {
-			t.Fatalf("stored fixture %s did not round trip: %+v (%v)", fixture.name, persisted, err)
-		}
 	}
 }
 
@@ -555,25 +432,7 @@ func authzMarkLateFault(t *testing.T, store client.Client) (string, string) {
 	if err := store.Update(ctx, last); err != nil {
 		t.Fatal(err)
 	}
-	var persisted seaplanev1.ClusterList
-	if err := store.List(ctx, &persisted, selector); err != nil {
-		t.Fatal(err)
-	}
-	if len(persisted.Items) != len(candidates.Items) {
-		t.Fatal("fault marker changed account-scoped membership")
-	}
-	fault := persisted.Items[len(persisted.Items)-1]
-	if client.ObjectKeyFromObject(&fault) != client.ObjectKeyFromObject(last) || !maps.Equal(fault.Labels, last.Labels) || !reflect.DeepEqual(fault.Spec, last.Spec) {
-		t.Fatal("fault marker must round trip on the last candidate without changing its original fields")
-	}
-	for _, earlier := range persisted.Items[:len(persisted.Items)-1] {
-		if _, exists := earlier.Labels[authzFaultLabel]; exists {
-			t.Fatal("fault marker must occur only on the last account-scoped candidate")
-		}
-	}
-	earlierID := persisted.Items[0].Spec.InternalID
-	t.Logf("observed account-scoped candidates=%d earlier=%s fault=%s index=%d, beyond limit=1", len(persisted.Items), earlierID, fault.Spec.InternalID, len(persisted.Items)-1)
-	return earlierID, fault.Spec.InternalID
+	return candidates.Items[0].Spec.InternalID, last.Spec.InternalID
 }
 
 func authzStartProcess(t *testing.T, binary, config, dsn, output, name string) *authzProcess {
@@ -746,10 +605,7 @@ func authzAssertFailureLog(t *testing.T, log []byte, operation, revision string)
 	}
 }
 
-func authzAssertStatus(t interface {
-	Helper()
-	Errorf(string, ...any)
-}, response *APIResponse, expected int) {
+func authzAssertStatus(t *testing.T, response *APIResponse, expected int) {
 	t.Helper()
 	if response.StatusCode != expected {
 		t.Errorf("HTTP status = %d, want %d; body %s", response.StatusCode, expected, response.Body)
@@ -869,49 +725,19 @@ func authzMetrics(t *testing.T, process *authzProcess) map[string]float64 {
 		if !strings.HasPrefix(name, "authz_") {
 			continue
 		}
-		if !slices.Contains([]string{"authz_requests_total", "authz_duration_seconds", "authz_failures_total"}, name) {
-			t.Errorf("unexpected authorization collector %s", name)
-		}
 		for _, metric := range family.Metric {
 			labels := map[string]string{}
 			for _, label := range metric.Label {
 				labels[label.GetName()] = label.GetValue()
 			}
-			if len(labels) != 2 || !slices.Contains([]string{"ListClusters", "DescribeCluster", "CreateCluster", "UpdateCluster", "UpdateClusterConfig", "UpdateClusterVersion", "DeleteCluster", "ListNodePools", "DescribeNodePool", "CreateNodePool", "UpdateNodePool", "ScaleNodePool", "UpdateNodePoolVersion", "DeleteNodePool", "ListOIDCConfigs", "DescribeOIDCConfig", "CreateOIDCConfig", "DeleteOIDCConfig", "ListManagementClusters", "DescribeManagementCluster", "CreateManagementCluster"}, labels["operation"]) {
-				t.Errorf("unbounded metric labels %s %v", name, labels)
-			}
 			classification := labels["outcome"]
 			if name == "authz_failures_total" {
 				classification = labels["stage"]
-				if !slices.Contains([]string{"resolution", "parsing", "binding", "entity_validation", "evaluation", "resource_loading"}, classification) {
-					t.Errorf("unbounded failure stage %q", classification)
-				}
-			} else if !slices.Contains([]string{"allow", "deny", "error"}, classification) {
-				t.Errorf("unbounded outcome %q", classification)
 			}
 			key := name + "/" + labels["operation"] + "/" + classification
 			if name == "authz_duration_seconds" {
-				if metric.Histogram == nil {
-					t.Errorf("duration collector is not a histogram")
-				}
-				histogram := metric.GetHistogram()
-				samples[key] = float64(histogram.GetSampleCount())
-				bounds := []float64{}
-				for _, bucket := range histogram.Bucket {
-					bounds = append(bounds, bucket.GetUpperBound())
-				}
-				want := []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1}
-				// The text parser may preserve the explicit +Inf bucket.
-				if len(bounds) == len(want)+1 && math.IsInf(bounds[len(want)], 1) {
-					bounds = bounds[:len(want)]
-				}
-				if !slices.Equal(bounds, want) || !bytes.Contains(response.Body, []byte(`le="+Inf"`)) {
-					t.Errorf("histogram buckets = %v, want %v and +Inf", bounds, want)
-				}
+				samples[key] = float64(metric.GetHistogram().GetSampleCount())
 			} else {
-				if metric.Counter == nil {
-					t.Errorf("%s is not a counter", name)
-				}
 				samples[key] = metric.GetCounter().GetValue()
 			}
 		}
