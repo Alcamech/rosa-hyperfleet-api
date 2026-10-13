@@ -1451,6 +1451,18 @@ var FieldRegistry = TypedFieldRegistry{
 			OwnerType: "NodePool",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
 		},
+		"spec.maxSurge": {
+			FieldPath: "spec.maxSurge",
+			WriteMode: Mutable,
+			OwnerType: "NodePool",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
+		},
+		"spec.maxUnavailable": {
+			FieldPath: "spec.maxUnavailable",
+			WriteMode: Mutable,
+			OwnerType: "NodePool",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
+		},
 		"spec.nodePool.arch": {
 			FieldPath: "spec.nodePool.arch",
 			WriteMode: ServiceSet,

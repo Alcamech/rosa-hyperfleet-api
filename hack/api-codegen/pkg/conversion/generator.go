@@ -419,6 +419,7 @@ type importInfo struct {
 	NeedsCorev1     bool
 	NeedsConfigv1   bool
 	NeedsRuntime    bool
+	NeedsIntStr     bool
 }
 
 // detectImports scans a list of Go type strings and determines which
@@ -447,6 +448,9 @@ func (g *Generator) detectImports(goTypes []string) importInfo {
 		}
 		if strings.Contains(base, "runtime.") {
 			info.NeedsRuntime = true
+		}
+		if strings.Contains(base, "intstr.") {
+			info.NeedsIntStr = true
 		}
 
 		// Check if the unqualified type is from the CRD package
@@ -552,7 +556,7 @@ var restTypeTmpl = template.Must(template.New("restType").Parse(`// Code generat
 
 package {{ .PackageName }}
 
-{{ if or .Imports.NeedsMetav1 .Imports.NeedsHyperShift .Imports.NeedsV1alpha1 .Imports.NeedsCorev1 .Imports.NeedsConfigv1 .Imports.NeedsRuntime -}}
+{{ if or .Imports.NeedsMetav1 .Imports.NeedsHyperShift .Imports.NeedsV1alpha1 .Imports.NeedsCorev1 .Imports.NeedsConfigv1 .Imports.NeedsRuntime .Imports.NeedsIntStr -}}
 import (
 {{- if .Imports.NeedsConfigv1 }}
 	configv1 "github.com/openshift/api/config/v1"
@@ -568,6 +572,9 @@ import (
 {{- end }}
 {{- if .Imports.NeedsRuntime }}
 	"k8s.io/apimachinery/pkg/runtime"
+{{- end }}
+{{- if .Imports.NeedsIntStr }}
+	"k8s.io/apimachinery/pkg/util/intstr"
 {{- end }}
 {{- if .Imports.NeedsV1alpha1 }}
 	v1alpha1 "{{ .CRDPackage }}"
@@ -1122,7 +1129,7 @@ var serviceSetTmpl = template.Must(template.New("serviceSet").Parse(`// Code gen
 
 package {{ .PackageName }}
 
-{{ if or .Imports.NeedsCorev1 .Imports.NeedsConfigv1 .Imports.NeedsMetav1 .Imports.NeedsHyperShift .Imports.NeedsV1alpha1 -}}
+{{ if or .Imports.NeedsCorev1 .Imports.NeedsConfigv1 .Imports.NeedsMetav1 .Imports.NeedsHyperShift .Imports.NeedsV1alpha1 .Imports.NeedsIntStr -}}
 import (
 {{- if .Imports.NeedsConfigv1 }}
 	configv1 "github.com/openshift/api/config/v1"
@@ -1135,6 +1142,9 @@ import (
 {{- end }}
 {{- if .Imports.NeedsMetav1 }}
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+{{- end }}
+{{- if .Imports.NeedsIntStr }}
+	"k8s.io/apimachinery/pkg/util/intstr"
 {{- end }}
 {{- if .Imports.NeedsV1alpha1 }}
 	v1alpha1 "{{ .CRDPackage }}"
