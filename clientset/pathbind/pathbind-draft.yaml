@@ -502,31 +502,10 @@ resources:
               operations:
                 - create
                 - update
-            - path: spec.nodePool.platform.aws.rootVolume.encrypted
-              goType: boolean
-              operations:
-                - create
-                - update
-            - path: spec.nodePool.platform.aws.rootVolume.encryptionKey
-              goType: string
-              operations:
-                - create
-                - update
-            - path: spec.nodePool.platform.aws.rootVolume.iops
-              goType: integer(int64)
-              operations:
-                - create
-                - update
             - path: spec.nodePool.platform.aws.rootVolume.size
               goType: integer(int64)
               operations:
                 - create
-                - update
-            - path: spec.nodePool.platform.aws.rootVolume.type
-              goType: string
-              operations:
-                - create
-                - update
             - path: spec.nodePool.platform.aws.securityGroups
               goType: array(object)
               operations:

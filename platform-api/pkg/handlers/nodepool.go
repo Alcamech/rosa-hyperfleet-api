@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
+	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
 	public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/internal/codegen/featuregate"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
@@ -40,6 +41,40 @@ func validateNodePoolReplicas(spec *public.NodePoolSpec) validation.ValidationEr
 		&validation.ValidationError{
 			Field:  "spec.nodePool.replicas",
 			Reason: "must be greater than or equal to 0",
+		},
+	}
+}
+
+// validateRootVolumeNullOnUpdate rejects an explicit null anywhere along
+// nodePool.platform.aws.rootVolume when the existing RootVolume is non-nil.
+func validateRootVolumeNullOnUpdate(rawSpec map[string]any, existing *hyperfleetv1alpha1.NodePoolSpec) validation.ValidationErrors {
+	if existing == nil || existing.NodePool.Platform.AWS == nil || existing.NodePool.Platform.AWS.RootVolume == nil {
+		return nil
+	}
+
+	node := rawSpec
+	for _, key := range []string{"nodePool", "platform", "aws", "rootVolume"} {
+		val, exists := node[key]
+		if !exists {
+			return nil
+		}
+		if val == nil {
+			return rootVolumeSizeImmutableError()
+		}
+		next, ok := val.(map[string]any)
+		if !ok {
+			return nil
+		}
+		node = next
+	}
+	return nil
+}
+
+func rootVolumeSizeImmutableError() validation.ValidationErrors {
+	return validation.ValidationErrors{
+		&validation.ValidationError{
+			Field:  "spec.nodePool.platform.aws.rootVolume.size",
+			Reason: "field is immutable and cannot be changed after creation",
 		},
 	}
 }
@@ -216,24 +251,6 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.logger.Info("updating nodepool", "account_id", accountID, "cluster_id", clusterID, "nodepool_id", nodepoolID)
-
-	cr, err := h.db.GetNodePool(ctx, accountID, clusterID, nodepoolID)
-	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
-			writeAPIError(w, ErrNodePoolUpdateNotFound, h.logger)
-			return
-		}
-		h.logger.Error("failed to get nodepool for update", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
-		writeAPIError(w, ErrNodePoolUpdateFailed, h.logger)
-		return
-	}
-
-	if errs := append(h.validator.ValidateUpdate(&req.Spec, &cr.Spec, featuregate.Default), validateNodePoolReplicas(&req.Spec)...); len(errs) > 0 {
-		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
-		return
-	}
-
 	var envelope struct {
 		Spec json.RawMessage `json:"spec"`
 	}
@@ -252,6 +269,28 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, ErrNodePoolUpdateMissingFields, h.logger)
 		return
 	}
+
+	h.logger.Info("updating nodepool", "account_id", accountID, "cluster_id", clusterID, "nodepool_id", nodepoolID)
+
+	cr, err := h.db.GetNodePool(ctx, accountID, clusterID, nodepoolID)
+	if err != nil {
+		if hyperfleetdb.IsNotFound(err) {
+			writeAPIError(w, ErrNodePoolUpdateNotFound, h.logger)
+			return
+		}
+		h.logger.Error("failed to get nodepool for update", "error", err, "account_id", accountID, "nodepool_id", nodepoolID)
+		writeAPIError(w, ErrNodePoolUpdateFailed, h.logger)
+		return
+	}
+
+	errs := h.validator.ValidateUpdate(&req.Spec, &cr.Spec, featuregate.Default)
+	errs = append(errs, validateNodePoolReplicas(&req.Spec)...)
+	errs = append(errs, validateRootVolumeNullOnUpdate(rawSpec, &cr.Spec)...)
+	if len(errs) > 0 {
+		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
+		return
+	}
+
 	if err := hyperfleetdb.MergeSpecJSON(&cr.Spec, envelope.Spec); err != nil {
 		h.logger.Error("failed to merge nodepool spec", "error", err)
 		writeAPIError(w, ErrNodePoolUpdateInvalidSpec, h.logger)

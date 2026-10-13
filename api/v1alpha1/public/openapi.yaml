@@ -8764,13 +8764,7 @@ components:
                                               maxLength: 255
                                               type: string
                                           imageType:
-                                              description: |-
-                                                  imageType specifies the type of image to use for node instances.
-                                                  Valid values are "Linux" or "Windows"
-                                                  When set to Windows, the controller will automatically populate the AMI field
-                                                  with a Windows-compatible AMI based on the region and OpenShift version.
-                                                  When the AMI field is also set, it will take precedence over automatic selection based
-                                                  on imageType. Also note that Windows ImageType is only compatible with an Arch of amd64
+                                              description: imageType specifies the type of image to use for node instances.
                                               enum:
                                                   - Windows
                                                   - Linux
@@ -8907,14 +8901,7 @@ components:
                                           resourceTags:
                                               description: |-
                                                   resourceTags is an optional list of additional tags to apply to AWS node
-                                                  instances. Changes to this field will be propagated in-place to AWS EC2 instances and their initial EBS volumes.
-                                                  Volumes created by the storage operator and attached to instances after they are created do not get these tags applied.
-                                                  These will be merged with HostedCluster scoped tags, which take precedence in case of conflicts.
-                                                  These take precedence over tags defined out of band (i.e., tags added manually or by other tools outside of HyperShift) in AWS in case of conflicts.
-                                                  See https://docs.aws.amazon.com/general/latest/gr/aws_tagging.html for
-                                                  information on tagging AWS resources. AWS supports a maximum of 50 tags per
-                                                  resource. OpenShift reserves 25 tags for its use, leaving 25 tags available
-                                                  for the user.
+                                                  instances.
                                               items:
                                                   description: AWSResourceTag is a tag to apply to AWS resources created for the cluster.
                                                   properties:
@@ -8941,30 +8928,38 @@ components:
                                               maxItems: 25
                                               type: array
                                           rootVolume:
-                                              description: rootVolume specifies configuration for the root volume of node instances.
+                                              description: |-
+                                                  rootVolume specifies configuration for the root volume of node instances.
+                                                  Reduced one level further — see the Volume type.
                                               properties:
                                                   encrypted:
-                                                      description: encrypted indicates whether the EBS volume should be encrypted or not.
+                                                      description: |-
+                                                          encrypted is computed by the platform, matching v1 (always true). A customer-supplied non-default
+                                                          value is rejected at request validation rather than hidden from the schema.
                                                       type: boolean
                                                   encryptionKey:
-                                                      description: encryptionKey is the KMS key to use for volume encryption.
+                                                      description: |-
+                                                          encryptionKey is computed by the platform, matching v1 (never set). A customer-supplied non-default
+                                                          value is rejected at request validation rather than hidden from the schema.
                                                       maxLength: 2048
                                                       type: string
                                                   iops:
                                                       description: |-
-                                                          iops is the number of IOPS requested for the disk. This is only valid
-                                                          for type io1.
+                                                          iops is computed by the platform, matching v1 (always 0 for gp2/gp3). A customer-supplied non-default
+                                                          value is rejected at request validation rather than hidden from the schema.
                                                       format: int64
                                                       type: integer
                                                   size:
                                                       description: |-
                                                           size is the size of the volume in gibibytes (GiB).
-                                                          Must be greater than the image snapshot size or 8 (whichever is greater).
+                                                          Settable on create only — matches v1, which rejects changing this on update.
                                                       format: int64
                                                       minimum: 8
                                                       type: integer
                                                   type:
-                                                      description: type is the type of volume to provision.
+                                                      description: |-
+                                                          type is computed by the platform, matching v1 (always gp3). A customer-supplied non-default value is
+                                                          rejected at request validation rather than hidden from the schema.
                                                       maxLength: 255
                                                       type: string
                                               required:
@@ -9471,13 +9466,7 @@ components:
                                                           maxLength: 255
                                                           type: string
                                                       imageType:
-                                                          description: |-
-                                                              imageType specifies the type of image to use for node instances.
-                                                              Valid values are "Linux" or "Windows"
-                                                              When set to Windows, the controller will automatically populate the AMI field
-                                                              with a Windows-compatible AMI based on the region and OpenShift version.
-                                                              When the AMI field is also set, it will take precedence over automatic selection based
-                                                              on imageType. Also note that Windows ImageType is only compatible with an Arch of amd64
+                                                          description: imageType specifies the type of image to use for node instances.
                                                           enum:
                                                               - Windows
                                                               - Linux
@@ -9614,14 +9603,7 @@ components:
                                                       resourceTags:
                                                           description: |-
                                                               resourceTags is an optional list of additional tags to apply to AWS node
-                                                              instances. Changes to this field will be propagated in-place to AWS EC2 instances and their initial EBS volumes.
-                                                              Volumes created by the storage operator and attached to instances after they are created do not get these tags applied.
-                                                              These will be merged with HostedCluster scoped tags, which take precedence in case of conflicts.
-                                                              These take precedence over tags defined out of band (i.e., tags added manually or by other tools outside of HyperShift) in AWS in case of conflicts.
-                                                              See https://docs.aws.amazon.com/general/latest/gr/aws_tagging.html for
-                                                              information on tagging AWS resources. AWS supports a maximum of 50 tags per
-                                                              resource. OpenShift reserves 25 tags for its use, leaving 25 tags available
-                                                              for the user.
+                                                              instances.
                                                           items:
                                                               description: AWSResourceTag is a tag to apply to AWS resources created for the cluster.
                                                               properties:
@@ -9648,30 +9630,38 @@ components:
                                                           maxItems: 25
                                                           type: array
                                                       rootVolume:
-                                                          description: rootVolume specifies configuration for the root volume of node instances.
+                                                          description: |-
+                                                              rootVolume specifies configuration for the root volume of node instances.
+                                                              Reduced one level further — see the Volume type.
                                                           properties:
                                                               encrypted:
-                                                                  description: encrypted indicates whether the EBS volume should be encrypted or not.
+                                                                  description: |-
+                                                                      encrypted is computed by the platform, matching v1 (always true). A customer-supplied non-default
+                                                                      value is rejected at request validation rather than hidden from the schema.
                                                                   type: boolean
                                                               encryptionKey:
-                                                                  description: encryptionKey is the KMS key to use for volume encryption.
+                                                                  description: |-
+                                                                      encryptionKey is computed by the platform, matching v1 (never set). A customer-supplied non-default
+                                                                      value is rejected at request validation rather than hidden from the schema.
                                                                   maxLength: 2048
                                                                   type: string
                                                               iops:
                                                                   description: |-
-                                                                      iops is the number of IOPS requested for the disk. This is only valid
-                                                                      for type io1.
+                                                                      iops is computed by the platform, matching v1 (always 0 for gp2/gp3). A customer-supplied non-default
+                                                                      value is rejected at request validation rather than hidden from the schema.
                                                                   format: int64
                                                                   type: integer
                                                               size:
                                                                   description: |-
                                                                       size is the size of the volume in gibibytes (GiB).
-                                                                      Must be greater than the image snapshot size or 8 (whichever is greater).
+                                                                      Settable on create only — matches v1, which rejects changing this on update.
                                                                   format: int64
                                                                   minimum: 8
                                                                   type: integer
                                                               type:
-                                                                  description: type is the type of volume to provision.
+                                                                  description: |-
+                                                                      type is computed by the platform, matching v1 (always gp3). A customer-supplied non-default value is
+                                                                      rejected at request validation rather than hidden from the schema.
                                                                   maxLength: 255
                                                                   type: string
                                                           required:
@@ -11615,13 +11605,7 @@ components:
                       maxLength: 255
                       type: string
                   imageType:
-                      description: |-
-                          imageType specifies the type of image to use for node instances.
-                          Valid values are "Linux" or "Windows"
-                          When set to Windows, the controller will automatically populate the AMI field
-                          with a Windows-compatible AMI based on the region and OpenShift version.
-                          When the AMI field is also set, it will take precedence over automatic selection based
-                          on imageType. Also note that Windows ImageType is only compatible with an Arch of amd64
+                      description: imageType specifies the type of image to use for node instances.
                       enum:
                           - Windows
                           - Linux
@@ -11758,14 +11742,7 @@ components:
                   resourceTags:
                       description: |-
                           resourceTags is an optional list of additional tags to apply to AWS node
-                          instances. Changes to this field will be propagated in-place to AWS EC2 instances and their initial EBS volumes.
-                          Volumes created by the storage operator and attached to instances after they are created do not get these tags applied.
-                          These will be merged with HostedCluster scoped tags, which take precedence in case of conflicts.
-                          These take precedence over tags defined out of band (i.e., tags added manually or by other tools outside of HyperShift) in AWS in case of conflicts.
-                          See https://docs.aws.amazon.com/general/latest/gr/aws_tagging.html for
-                          information on tagging AWS resources. AWS supports a maximum of 50 tags per
-                          resource. OpenShift reserves 25 tags for its use, leaving 25 tags available
-                          for the user.
+                          instances.
                       items:
                           description: AWSResourceTag is a tag to apply to AWS resources created for the cluster.
                           properties:
@@ -11792,30 +11769,38 @@ components:
                       maxItems: 25
                       type: array
                   rootVolume:
-                      description: rootVolume specifies configuration for the root volume of node instances.
+                      description: |-
+                          rootVolume specifies configuration for the root volume of node instances.
+                          Reduced one level further — see the Volume type.
                       properties:
                           encrypted:
-                              description: encrypted indicates whether the EBS volume should be encrypted or not.
+                              description: |-
+                                  encrypted is computed by the platform, matching v1 (always true). A customer-supplied non-default
+                                  value is rejected at request validation rather than hidden from the schema.
                               type: boolean
                           encryptionKey:
-                              description: encryptionKey is the KMS key to use for volume encryption.
+                              description: |-
+                                  encryptionKey is computed by the platform, matching v1 (never set). A customer-supplied non-default
+                                  value is rejected at request validation rather than hidden from the schema.
                               maxLength: 2048
                               type: string
                           iops:
                               description: |-
-                                  iops is the number of IOPS requested for the disk. This is only valid
-                                  for type io1.
+                                  iops is computed by the platform, matching v1 (always 0 for gp2/gp3). A customer-supplied non-default
+                                  value is rejected at request validation rather than hidden from the schema.
                               format: int64
                               type: integer
                           size:
                               description: |-
                                   size is the size of the volume in gibibytes (GiB).
-                                  Must be greater than the image snapshot size or 8 (whichever is greater).
+                                  Settable on create only — matches v1, which rejects changing this on update.
                               format: int64
                               minimum: 8
                               type: integer
                           type:
-                              description: type is the type of volume to provision.
+                              description: |-
+                                  type is computed by the platform, matching v1 (always gp3). A customer-supplied non-default value is
+                                  rejected at request validation rather than hidden from the schema.
                               maxLength: 255
                               type: string
                       required:

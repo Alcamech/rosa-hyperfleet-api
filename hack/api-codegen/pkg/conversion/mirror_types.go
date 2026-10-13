@@ -51,6 +51,22 @@ var mirrorTypeMappings = []MirrorTypeMapping{
 		ConversionStrategy: "json-roundtrip",
 	},
 
+	// NodePool AWS platform: reduced further so RootVolume's sub-fields can carry independent write-modes.
+	{
+		FieldName:          "AWS",
+		HyperFleetType:     "v1alpha1.AWSNodePoolPlatform",
+		HyperShiftType:     "v1beta1.AWSNodePoolPlatform",
+		ConversionStrategy: "json-roundtrip",
+	},
+
+	// Root volume: size is customer-settable (create only); type/iops/encrypted/encryptionKey are service-set.
+	{
+		FieldName:          "RootVolume",
+		HyperFleetType:     "v1alpha1.Volume",
+		HyperShiftType:     "v1beta1.Volume",
+		ConversionStrategy: "json-roundtrip",
+	},
+
 	// Add more mirror types here as needed when types diverge between CRD and REST
 	// Example:
 	// {

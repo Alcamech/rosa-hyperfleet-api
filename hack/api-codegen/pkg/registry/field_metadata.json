@@ -1,5 +1,83 @@
 [
   {
+    "fieldPath": "ami",
+    "writeMode": "mutable",
+    "ownerType": "AWSNodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "imageType",
+    "writeMode": "mutable",
+    "ownerType": "AWSNodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "instanceProfile",
+    "writeMode": "mutable",
+    "ownerType": "AWSNodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "instanceType",
+    "writeMode": "mutable",
+    "ownerType": "AWSNodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "placement",
+    "writeMode": "mutable",
+    "ownerType": "AWSNodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "resourceTags",
+    "writeMode": "mutable",
+    "ownerType": "AWSNodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "rootVolume.encrypted",
+    "writeMode": "service-set",
+    "ownerType": "AWSNodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "rootVolume.encryptionKey",
+    "writeMode": "service-set",
+    "ownerType": "AWSNodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "rootVolume.iops",
+    "writeMode": "service-set",
+    "ownerType": "AWSNodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "rootVolume.size",
+    "writeMode": "immutable",
+    "ownerType": "AWSNodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "rootVolume.type",
+    "writeMode": "service-set",
+    "ownerType": "AWSNodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "securityGroups",
+    "writeMode": "mutable",
+    "ownerType": "AWSNodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "subnet",
+    "writeMode": "mutable",
+    "ownerType": "AWSNodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
     "fieldPath": "spec.accountId",
     "writeMode": "service-set",
     "hidden": true,
@@ -1395,7 +1473,79 @@
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
   {
-    "fieldPath": "spec.nodePool.platform.aws",
+    "fieldPath": "spec.nodePool.platform.aws.ami",
+    "writeMode": "mutable",
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.nodePool.platform.aws.imageType",
+    "writeMode": "mutable",
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.nodePool.platform.aws.instanceProfile",
+    "writeMode": "mutable",
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.nodePool.platform.aws.instanceType",
+    "writeMode": "mutable",
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.nodePool.platform.aws.placement",
+    "writeMode": "mutable",
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.nodePool.platform.aws.resourceTags",
+    "writeMode": "mutable",
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.nodePool.platform.aws.rootVolume.encrypted",
+    "writeMode": "service-set",
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.nodePool.platform.aws.rootVolume.encryptionKey",
+    "writeMode": "service-set",
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.nodePool.platform.aws.rootVolume.iops",
+    "writeMode": "service-set",
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.nodePool.platform.aws.rootVolume.size",
+    "writeMode": "immutable",
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.nodePool.platform.aws.rootVolume.type",
+    "writeMode": "service-set",
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.nodePool.platform.aws.securityGroups",
+    "writeMode": "mutable",
+    "ownerType": "NodePool",
+    "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+  },
+  {
+    "fieldPath": "spec.nodePool.platform.aws.subnet",
     "writeMode": "mutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
@@ -1432,7 +1582,79 @@
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
   {
-    "fieldPath": "aws",
+    "fieldPath": "aws.ami",
+    "writeMode": "mutable",
+    "ownerType": "NodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "aws.imageType",
+    "writeMode": "mutable",
+    "ownerType": "NodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "aws.instanceProfile",
+    "writeMode": "mutable",
+    "ownerType": "NodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "aws.instanceType",
+    "writeMode": "mutable",
+    "ownerType": "NodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "aws.placement",
+    "writeMode": "mutable",
+    "ownerType": "NodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "aws.resourceTags",
+    "writeMode": "mutable",
+    "ownerType": "NodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "aws.rootVolume.encrypted",
+    "writeMode": "service-set",
+    "ownerType": "NodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "aws.rootVolume.encryptionKey",
+    "writeMode": "service-set",
+    "ownerType": "NodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "aws.rootVolume.iops",
+    "writeMode": "service-set",
+    "ownerType": "NodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "aws.rootVolume.size",
+    "writeMode": "immutable",
+    "ownerType": "NodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "aws.rootVolume.type",
+    "writeMode": "service-set",
+    "ownerType": "NodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "aws.securityGroups",
+    "writeMode": "mutable",
+    "ownerType": "NodePoolPlatform",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "aws.subnet",
     "writeMode": "mutable",
     "ownerType": "NodePoolPlatform",
     "ownerGVK": ""
@@ -1529,6 +1751,36 @@
     "fieldPath": "profile",
     "writeMode": "mutable",
     "ownerType": "SchedulerConfiguration",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "encrypted",
+    "writeMode": "service-set",
+    "ownerType": "Volume",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "encryptionKey",
+    "writeMode": "service-set",
+    "ownerType": "Volume",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "iops",
+    "writeMode": "service-set",
+    "ownerType": "Volume",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "size",
+    "writeMode": "immutable",
+    "ownerType": "Volume",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "type",
+    "writeMode": "service-set",
+    "ownerType": "Volume",
     "ownerGVK": ""
   }
 ]

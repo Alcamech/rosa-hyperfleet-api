@@ -138,6 +138,10 @@ type ServiceSetFields struct {
 	CpuManagerReconcilePeriod *metav1.Duration `json:"cpuManagerReconcilePeriod,omitempty"`
 	// CreatorARN is service-set (platform-managed, hidden from API)
 	CreatorARN string `json:"creatorARN,omitempty"`
+	// Encrypted is service-set (platform-managed, hidden from API)
+	Encrypted *bool `json:"encrypted,omitempty"`
+	// EncryptionKey is service-set (platform-managed, hidden from API)
+	EncryptionKey string `json:"encryptionKey,omitempty"`
 	// EvictionHard is service-set (platform-managed, hidden from API)
 	EvictionHard map[string]string `json:"evictionHard,omitempty"`
 	// EvictionSoft is service-set (platform-managed, hidden from API)
@@ -160,6 +164,8 @@ type ServiceSetFields struct {
 	InternalID string `json:"internalId,omitempty"`
 	// InternalPoolID is service-set (platform-managed, hidden from API)
 	InternalPoolID string `json:"internalPoolId,omitempty"`
+	// Iops is service-set (platform-managed, hidden from API)
+	Iops int64 `json:"iops,omitempty"`
 	// KernelArguments is service-set (platform-managed, hidden from API)
 	KernelArguments []string `json:"kernelArguments,omitempty"`
 	// KernelType is service-set (platform-managed, hidden from API)
@@ -192,4 +198,6 @@ type ServiceSetFields struct {
 	TopologyManagerScope *string `json:"topologyManagerScope,omitempty"`
 	// TrustedCA is service-set (platform-managed, hidden from API)
 	TrustedCA string `json:"trustedCA,omitempty"`
+	// Type is service-set (platform-managed, hidden from API)
+	Type string `json:"type,omitempty"`
 }

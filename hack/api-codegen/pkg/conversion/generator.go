@@ -1164,18 +1164,21 @@ func (g *Generator) generateServiceSetFields() error {
 	type ssField struct {
 		GoName    string
 		GoType    string
+		Resolved  bool
 		JSONTag   string
 		FieldPath string
 	}
 
 	// Collect all service-set fields
 	var allFields []ssField
-	for _, fields := range registry.FieldRegistry {
+	for ownerType, fields := range registry.FieldRegistry {
 		for path, meta := range fields {
 			if meta.WriteMode == registry.ServiceSet {
+				goType, resolved := g.inferTypeFromPath(ownerType, path)
 				allFields = append(allFields, ssField{
 					GoName:    g.pathToGoName(path),
-					GoType:    g.inferTypeFromPath(path),
+					GoType:    goType,
+					Resolved:  resolved,
 					JSONTag:   g.pathToJSONTag(path),
 					FieldPath: path,
 				})
@@ -1196,10 +1199,11 @@ func (g *Generator) generateServiceSetFields() error {
 		} else if strings.HasPrefix(f.FieldPath, "spec.hostedCluster.") {
 			hostedClusterFields[f.JSONTag] = f
 		} else {
-			// Use JSONTag as key to deduplicate
+			// Use JSONTag as key to deduplicate; the same field can appear under multiple registry owners.
+			// Prefer a resolved GoType over the unresolved fallback; otherwise keep the longer type string.
 			if existing, exists := rootFields[f.JSONTag]; exists {
-				// Keep the one with longer type (more specific)
-				if len(f.GoType) > len(existing.GoType) {
+				if (f.Resolved && !existing.Resolved) ||
+					(f.Resolved == existing.Resolved && len(f.GoType) > len(existing.GoType)) {
 					rootFields[f.JSONTag] = f
 				}
 			} else {
@@ -1340,12 +1344,13 @@ func (g *Generator) pathToJSONTag(path string) string {
 	return parts[len(parts)-1]
 }
 
-func (g *Generator) inferTypeFromPath(path string) string {
-	// First try exact match
-	for _, ti := range g.typeInfos {
+func (g *Generator) inferTypeFromPath(ownerType, path string) (string, bool) {
+	// Prefer an exact match scoped to the field's own registry owner first; this is unambiguous for
+	// bare, type-relative paths. Synthetic multi-hop paths won't match here and fall through below.
+	if ti, ok := g.typeInfos[ownerType]; ok {
 		for _, fi := range ti.Fields {
 			if fi.FieldPath == path {
-				return fi.GoType
+				return fi.GoType, true
 			}
 		}
 	}
@@ -1357,13 +1362,23 @@ func (g *Generator) inferTypeFromPath(path string) string {
 		if dnsType, ok := g.typeInfos["ClusterDNS"]; ok {
 			for _, fi := range dnsType.Fields {
 				if fi.FieldPath == fieldName || fi.JSONName == fieldName {
-					return fi.GoType
+					return fi.GoType, true
 				}
 			}
 		}
 	}
 
-	return "string"
+	// Fall back to an unscoped scan for owners whose registry key doesn't match the declaring Go type.
+	// This can be ambiguous, so callers should prefer a candidate resolved via the exact match above.
+	for _, ti := range g.typeInfos {
+		for _, fi := range ti.Fields {
+			if fi.FieldPath == path {
+				return fi.GoType, true
+			}
+		}
+	}
+
+	return "string", false
 }
 
 // --- Phase 3: JSON-roundtrip conversion functions ---

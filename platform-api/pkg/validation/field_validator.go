@@ -62,7 +62,9 @@ func (v *FieldValidator) ValidateCreate(spec any, fs featuregate.FeatureSet) Val
 		return nil
 	}
 	fields := flattenToFieldPaths(spec)
-	return v.validate(fields, nil, OperationCreate, fs)
+	pointers := make(map[string]bool)
+	collectPointerSet("spec", reflect.ValueOf(spec), pointers)
+	return v.validate(fields, nil, OperationCreate, fs, pointers)
 }
 
 // ValidateUpdate checks that an update request does not set service-set fields,
@@ -72,14 +74,16 @@ func (v *FieldValidator) ValidateUpdate(newSpec, existingSpec any, fs featuregat
 		return nil
 	}
 	newFields := flattenToFieldPaths(newSpec)
+	pointers := make(map[string]bool)
+	collectPointerSet("spec", reflect.ValueOf(newSpec), pointers)
 	var existingFields map[string]any
 	if existingSpec != nil {
 		existingFields = flattenToFieldPaths(existingSpec)
 	}
-	return v.validate(newFields, existingFields, OperationUpdate, fs)
+	return v.validate(newFields, existingFields, OperationUpdate, fs, pointers)
 }
 
-func (v *FieldValidator) validate(fields, existingFields map[string]any, op Operation, fs featuregate.FeatureSet) ValidationErrors {
+func (v *FieldValidator) validate(fields, existingFields map[string]any, op Operation, fs featuregate.FeatureSet, pointers map[string]bool) ValidationErrors {
 	var errs ValidationErrors
 
 	// Get the field metadata map for this resource type
@@ -111,7 +115,7 @@ func (v *FieldValidator) validate(fields, existingFields map[string]any, op Oper
 			}
 		}
 
-		if err := v.validateWriteMode(fieldPath, meta, op, fields, existingFields, fs); err != nil {
+		if err := v.validateWriteMode(fieldPath, meta, op, fields, existingFields, fs, pointers); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -145,7 +149,7 @@ func isStructuralContainer(fieldPath string, fieldMetaMap map[string]registry.Fi
 	return false
 }
 
-func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.FieldMeta, op Operation, fields, existingFields map[string]any, fs featuregate.FeatureSet) *ValidationError {
+func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.FieldMeta, op Operation, fields, existingFields map[string]any, fs featuregate.FeatureSet, pointers map[string]bool) *ValidationError {
 	effectiveMode := meta.WriteMode
 
 	if len(meta.FeatureGateAwareWriteModes) > 0 {
@@ -169,7 +173,13 @@ func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.Field
 
 	switch effectiveMode {
 	case registry.ServiceSet:
-		if isZeroValue(fields[fieldPath]) {
+		// A pointer field (e.g. *bool) that is non-nil was explicitly supplied even if its
+		// value is the zero value, so it must be rejected the same as any other explicit value.
+		if explicitlySet, isPointer := pointers[fieldPath]; isPointer {
+			if !explicitlySet {
+				return nil
+			}
+		} else if isZeroValue(fields[fieldPath]) {
 			return nil
 		}
 		return &ValidationError{
@@ -237,6 +247,54 @@ func isZeroValue(v any) bool {
 		return len(val) == 0
 	}
 	return false
+}
+
+// collectPointerSet records, for every pointer-typed struct field reachable from v,
+// whether it was non-nil at its JSON field path. Unresolvable fields are omitted.
+func collectPointerSet(prefix string, v reflect.Value, result map[string]bool) {
+	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return
+	}
+
+	t := v.Type()
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		tag := strings.Split(field.Tag.Get("json"), ",")[0]
+		if tag == "-" {
+			continue
+		}
+		if tag == "" {
+			tag = field.Name
+		}
+
+		path := prefix
+		if !field.Anonymous {
+			path = prefix + "." + tag
+		}
+
+		fv := v.Field(i)
+		switch fv.Kind() { //nolint:exhaustive // only pointer/struct/interface need handling here
+		case reflect.Pointer:
+			if fv.IsNil() {
+				result[path] = false
+				continue
+			}
+			result[path] = true
+			collectPointerSet(path, fv.Elem(), result)
+		case reflect.Struct:
+			collectPointerSet(path, fv, result)
+		case reflect.Interface:
+			if !fv.IsNil() {
+				collectPointerSet(path, fv.Elem(), result)
+			}
+		}
+	}
 }
 
 func flattenMap(prefix string, m map[string]any, result map[string]any) {

@@ -169,6 +169,24 @@ func TestNodePoolResourceDefaults(t *testing.T) {
 				t.Errorf("got %v, want gp3", np.Spec.Platform.AWS.RootVolume)
 			}
 		}},
+		{"RootVolume.Encrypted", func(t *testing.T) {
+			if np.Spec.Platform.AWS.RootVolume == nil || np.Spec.Platform.AWS.RootVolume.Encrypted == nil || !*np.Spec.Platform.AWS.RootVolume.Encrypted {
+				t.Errorf("got %v, want true", np.Spec.Platform.AWS.RootVolume)
+			}
+		}},
+		{"RootVolume.IOPS", func(t *testing.T) {
+			// IOPS is service-set (enforced by FieldValidator), so it stays at the Go zero value,
+			// matching v1's always-zero behavior for gp2/gp3 volumes.
+			if np.Spec.Platform.AWS.RootVolume == nil || np.Spec.Platform.AWS.RootVolume.IOPS != 0 {
+				t.Errorf("got %v, want 0", np.Spec.Platform.AWS.RootVolume)
+			}
+		}},
+		{"RootVolume.EncryptionKey", func(t *testing.T) {
+			// EncryptionKey is service-set, so it stays empty, matching v1 (AWS's default key is used).
+			if np.Spec.Platform.AWS.RootVolume == nil || np.Spec.Platform.AWS.RootVolume.EncryptionKey != "" {
+				t.Errorf("got %v, want empty", np.Spec.Platform.AWS.RootVolume)
+			}
+		}},
 		{"Release.Image", func(t *testing.T) {
 			if np.Spec.Release.Image != "quay.io/ocp:4.17" {
 				t.Errorf("got %q, want the cluster's %q", np.Spec.Release.Image, "quay.io/ocp:4.17")
@@ -178,6 +196,53 @@ func TestNodePoolResourceDefaults(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, tt.check)
+	}
+}
+
+func TestNodePoolResourceRootVolumePartialDefaults(t *testing.T) {
+	np := &hyperfleetv1alpha1.NodePool{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "workers",
+			Namespace: "cluster-abc12345",
+		},
+		Spec: hyperfleetv1alpha1.NodePoolSpec{
+			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
+				Platform: hypershiftv1beta1.NodePoolPlatform{
+					Type: hypershiftv1beta1.AWSPlatform,
+					AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
+						InstanceProfile: "worker-profile",
+						Subnet:          hypershiftv1beta1.AWSResourceReference{ID: ptr.To("subnet-1")},
+						// Only Size is set — every other sub-field is service-set and rejected by
+						// FieldValidator before reaching here.
+						RootVolume: &hypershiftv1beta1.Volume{Size: 500},
+					},
+				},
+			},
+		},
+	}
+
+	r, err := NodePoolResource(np, testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
+	rv := r.Object.(*hypershiftv1beta1.NodePool).Spec.Platform.AWS.RootVolume
+	if rv == nil {
+		t.Fatal("RootVolume is nil, want the supplied volume with defaults filled in")
+	}
+	if rv.Size != 500 {
+		t.Errorf("Size = %d, want 500 (customer-supplied value preserved)", rv.Size)
+	}
+	if rv.Type != "gp3" {
+		t.Errorf("Type = %q, want %q", rv.Type, "gp3")
+	}
+	if rv.Encrypted == nil || !*rv.Encrypted {
+		t.Errorf("Encrypted = %v, want true", rv.Encrypted)
+	}
+	if rv.IOPS != 0 {
+		t.Errorf("IOPS = %d, want 0", rv.IOPS)
+	}
+	if rv.EncryptionKey != "" {
+		t.Errorf("EncryptionKey = %q, want empty", rv.EncryptionKey)
 	}
 }
 
