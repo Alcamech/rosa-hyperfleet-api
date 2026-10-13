@@ -188,5 +188,6 @@ jobs:
           ### Review
           Once merged, the auto-tag-and-release workflow will create the git tag and GitHub release." \
               --base main \
-              --head "${BRANCH}"
+              --head "${BRANCH}" \
+              --label "ok-to-test"
           fi
