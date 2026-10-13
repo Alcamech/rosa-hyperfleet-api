@@ -262,7 +262,7 @@ func removeRequired(schema *apiextensionsv1.JSONSchemaProps, field string) {
 var refTargets = map[string]map[string]string{
 	"ClusterSpec":                  {"hostedCluster": "HostedClusterSpecPassthrough"},
 	"NodePoolSpec":                 {"nodePool": "NodePoolSpecPassthrough"},
-	"HostedClusterSpecPassthrough": {"configuration": "ClusterConfiguration", "platform": "PlatformSpec"},
+	"HostedClusterSpecPassthrough": {"configuration": "ClusterConfiguration", "platform": "PlatformSpec", "capabilities": "Capabilities"},
 	"NodePoolSpecPassthrough":      {"platform": "NodePoolPlatform"},
 	"ClusterConfiguration":         {"kubelet": "KubeletConfig", "machineConfig": "MachineConfigSpec"},
 }

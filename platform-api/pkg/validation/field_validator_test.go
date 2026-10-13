@@ -303,6 +303,53 @@ func TestValidateUpdate_RejectsImmutableFieldChange(t *testing.T) {
 	}
 }
 
+func TestClusterCapabilities_AreCreateOnly(t *testing.T) {
+	v := NewFieldValidator("Cluster")
+
+	initial := map[string]any{
+		"hostedCluster": map[string]any{
+			"capabilities": map[string]any{"enabled": []string{"Console"}},
+		},
+	}
+	if errs := v.ValidateCreate(initial, featuregate.Default); errs != nil {
+		t.Fatalf("expected capabilities to be allowed on create, got %v", errs)
+	}
+
+	updated := map[string]any{
+		"hostedCluster": map[string]any{
+			"capabilities": map[string]any{"enabled": []string{"Console", "Ingress"}},
+		},
+	}
+	errs := v.ValidateUpdate(updated, initial, featuregate.Default)
+	if len(errs) != 1 || errs[0].Field != "spec.hostedCluster.capabilities.enabled" {
+		t.Fatalf("expected capability change to be rejected, got %v", errs)
+	}
+
+	updatedDisabled := map[string]any{
+		"hostedCluster": map[string]any{
+			"capabilities": map[string]any{
+				"enabled":  []string{"Console"},
+				"disabled": []string{"baremetal"},
+			},
+		},
+	}
+	errs = v.ValidateUpdate(updatedDisabled, initial, featuregate.Default)
+	if len(errs) != 1 || errs[0].Field != "spec.hostedCluster.capabilities.disabled" {
+		t.Fatalf("expected newly-set disabled capability to be rejected, got %v", errs)
+	}
+
+	// Resubmitting the identical value (e.g. Terraform sending the full object)
+	// must not be treated as a change.
+	same := map[string]any{
+		"hostedCluster": map[string]any{
+			"capabilities": map[string]any{"enabled": []string{"Console"}},
+		},
+	}
+	if errs := v.ValidateUpdate(same, initial, featuregate.Default); len(errs) != 0 {
+		t.Fatalf("expected identical capabilities to be accepted on update, got %v", errs)
+	}
+}
+
 func TestValidateUpdate_AllowsImmutableFieldSameValue(t *testing.T) {
 	v := newTestValidator(map[string]registry.FieldMeta{
 		"spec.fips": {FieldPath: "spec.fips", WriteMode: registry.Immutable},

@@ -111,6 +111,14 @@ resources:
               operations:
                 - create
                 - update
+            - path: spec.hostedCluster.capabilities.disabled
+              goType: array(string)
+              operations:
+                - create
+            - path: spec.hostedCluster.capabilities.enabled
+              goType: array(string)
+              operations:
+                - create
             - path: spec.hostedCluster.channel
               goType: string
               operations:
