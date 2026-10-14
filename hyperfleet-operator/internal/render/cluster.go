@@ -21,12 +21,19 @@ import (
 // ClusterResources generates the Kubernetes resources for a cluster on the MC.
 // baseDomain is the fully assembled DNS base domain from the DNSReservation
 // (e.g. "f7a3.0.openshiftapps.com").
-func ClusterResources(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal bool, baseDomain, controlPlaneOperatorImage string) ([]Resource, error) {
-	clusterID := ClusterIDFromNamespace(cluster.Namespace)
-	clusterName := cluster.Name // human-readable
-	ns := cluster.Namespace     // already "cluster-<uuid>"
+func ClusterResources(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal bool,
+	baseDomain, controlPlaneOperatorImage string) ([]Resource, error) {
+	clusterID, ns, err := managementClusterIdentity(cluster)
+	if err != nil {
+		return nil, err
+	}
+	clusterName := cluster.Name // customer-facing identity
+	hostedClusterName := HostedClusterName(cluster)
+	if hostedClusterName == "" {
+		return nil, fmt.Errorf("cluster %s/%s has no valid HostedCluster name", cluster.Namespace, cluster.Name)
+	}
 
-	hc, err := hostedCluster(cluster, oidcSigningKeyExternal, baseDomain, controlPlaneOperatorImage)
+	hc, err := hostedCluster(cluster, clusterID, ns, hostedClusterName, oidcSigningKeyExternal, baseDomain, controlPlaneOperatorImage)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +42,7 @@ func ClusterResources(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExterna
 		namespace(clusterID, ns),
 		clusterConfig(clusterID, clusterName, ns),
 		pullSecret(clusterID, ns),
-		apiServingCert(clusterID, clusterName, baseDomain, ns),
+		apiServingCert(clusterID, hostedClusterName, baseDomain, ns),
 		hc,
 		sshKey(clusterID, ns),
 	}
@@ -71,10 +78,7 @@ func oidcSigningKeySecret(accountID, oidcConfigID, clusterID, ns string) Resourc
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      oidcSigningKeyName,
 				Namespace: ns,
-				Labels: map[string]string{
-					"hyperfleet.io/cluster-id":    clusterID,
-					"hyperfleet.io/resource-type": "oidc-signing-key",
-				},
+				Labels:    clusterResourceLabels(clusterID, "oidc-signing-key"),
 			},
 			Spec: ExternalSecretSpec{
 				RefreshInterval: "1h",
@@ -98,18 +102,16 @@ func oidcSigningKeySecret(accountID, oidcConfigID, clusterID, ns string) Resourc
 }
 
 func namespace(clusterID, ns string) Resource {
+	labels := clusterResourceLabels(clusterID, "namespace")
+	labels[managedByLabel] = managedByOperator
 	return Resource{
 		Group: "", Version: "v1", Resource: "namespaces",
 		Name: ns, Namespace: "",
 		Object: &corev1.Namespace{
 			TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Namespace"},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: ns,
-				Labels: map[string]string{
-					"hyperfleet.io/cluster-id":    clusterID,
-					"hyperfleet.io/managed-by":    "hyperfleet-operator",
-					"hyperfleet.io/resource-type": "namespace",
-				},
+				Name:   ns,
+				Labels: labels,
 			},
 		},
 	}
@@ -124,9 +126,7 @@ func clusterConfig(clusterID, clusterName, ns string) Resource {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "cluster-config",
 				Namespace: ns,
-				Labels: map[string]string{
-					"hyperfleet.io/cluster-id": clusterID,
-				},
+				Labels:    clusterLabels(clusterID),
 			},
 			Data: map[string]string{
 				"cluster_id":   clusterID,
@@ -166,10 +166,7 @@ func pullSecret(clusterID, ns string) Resource {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pull-secret",
 				Namespace: ns,
-				Labels: map[string]string{
-					"hyperfleet.io/cluster-id":    clusterID,
-					"hyperfleet.io/resource-type": "pull-secret",
-				},
+				Labels:    clusterResourceLabels(clusterID, "pull-secret"),
 			},
 			Spec: ExternalSecretSpec{
 				RefreshInterval: "1h",
@@ -195,7 +192,7 @@ func pullSecret(clusterID, ns string) Resource {
 	}
 }
 
-func apiServingCert(clusterID, clusterName, baseDomain, ns string) Resource {
+func apiServingCert(clusterID, hostedClusterName, baseDomain, ns string) Resource {
 	return Resource{
 		Group: "cert-manager.io", Version: "v1", Resource: "certificates",
 		Name: "api-serving-cert", Namespace: ns,
@@ -204,9 +201,7 @@ func apiServingCert(clusterID, clusterName, baseDomain, ns string) Resource {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "api-serving-cert",
 				Namespace: ns,
-				Labels: map[string]string{
-					"hyperfleet.io/cluster-id": clusterID,
-				},
+				Labels:    clusterLabels(clusterID),
 			},
 			Spec: CertificateSpec{
 				SecretName: "api-serving-cert",
@@ -215,18 +210,17 @@ func apiServingCert(clusterID, clusterName, baseDomain, ns string) Resource {
 					Kind: "ClusterIssuer",
 				},
 				DNSNames: []string{
-					fmt.Sprintf("*.%s.%s", clusterName, baseDomain),
+					fmt.Sprintf("*.%s.%s", hostedClusterName, baseDomain),
 				},
 			},
 		},
 	}
 }
 
-func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal bool, baseDomain, controlPlaneOperatorImage string) (Resource, error) {
-	clusterID := ClusterIDFromNamespace(cluster.Namespace)
-	clusterName := cluster.Name // human-readable
-	ns := cluster.Namespace     // already "cluster-<uuid>"
-	apiHost := fmt.Sprintf("api.%s.%s", clusterName, baseDomain)
+func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, clusterID, ns, hostedClusterName string, oidcSigningKeyExternal bool,
+	baseDomain, controlPlaneOperatorImage string) (Resource, error) {
+	clusterName := cluster.Name // customer-facing identity
+	apiHost := fmt.Sprintf("api.%s.%s", hostedClusterName, baseDomain)
 
 	hcSpec, err := toHostedClusterSpec(&cluster.Spec.HostedCluster)
 	if err != nil {
@@ -245,7 +239,7 @@ func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal b
 	hcSpec.PullSecret = corev1.LocalObjectReference{Name: "pull-secret"}
 	hcSpec.SSHKey = corev1.LocalObjectReference{Name: "ssh-key"}
 	hcSpec.KubeAPIServerDNSName = apiHost
-	hcSpec.Services = servicePublishingStrategies(clusterName, baseDomain)
+	hcSpec.Services = servicePublishingStrategies(hostedClusterName, baseDomain)
 	if hcSpec.Configuration == nil {
 		hcSpec.Configuration = apiServerConfiguration()
 	} else {
@@ -313,18 +307,16 @@ func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal b
 
 	return Resource{
 		Group: "hypershift.openshift.io", Version: "v1beta1", Resource: "hostedclusters",
-		Name: clusterName, Namespace: ns,
+		Name: hostedClusterName, Namespace: ns,
 		Object: &hypershiftv1beta1.HostedCluster{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: "hypershift.openshift.io/v1beta1",
 				Kind:       "HostedCluster",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      clusterName,
-				Namespace: ns,
-				Labels: map[string]string{
-					"hyperfleet.io/cluster-id": clusterID,
-				},
+				Name:        hostedClusterName,
+				Namespace:   ns,
+				Labels:      clusterLabels(clusterID),
 				Annotations: annotations,
 			},
 			Spec: *hcSpec,
@@ -332,8 +324,8 @@ func hostedCluster(cluster *hyperfleetv1alpha1.Cluster, oidcSigningKeyExternal b
 	}, nil
 }
 
-func servicePublishingStrategies(clusterName, baseDomain string) []hypershiftv1beta1.ServicePublishingStrategyMapping {
-	apiHost := fmt.Sprintf("api.%s.%s", clusterName, baseDomain)
+func servicePublishingStrategies(hostedClusterName, baseDomain string) []hypershiftv1beta1.ServicePublishingStrategyMapping {
+	apiHost := fmt.Sprintf("api.%s.%s", hostedClusterName, baseDomain)
 	return []hypershiftv1beta1.ServicePublishingStrategyMapping{
 		{
 			Service: hypershiftv1beta1.APIServer,
@@ -346,7 +338,7 @@ func servicePublishingStrategies(clusterName, baseDomain string) []hypershiftv1b
 			Service: hypershiftv1beta1.OAuthServer,
 			ServicePublishingStrategy: hypershiftv1beta1.ServicePublishingStrategy{
 				Type:  hypershiftv1beta1.Route,
-				Route: &hypershiftv1beta1.RoutePublishingStrategy{Hostname: fmt.Sprintf("oauth.%s.%s", clusterName, baseDomain)},
+				Route: &hypershiftv1beta1.RoutePublishingStrategy{Hostname: fmt.Sprintf("oauth.%s.%s", hostedClusterName, baseDomain)},
 			},
 		},
 		{
@@ -443,9 +435,7 @@ func sshKey(clusterID, ns string) Resource {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "ssh-key",
 				Namespace: ns,
-				Labels: map[string]string{
-					"hyperfleet.io/cluster-id": clusterID,
-				},
+				Labels:    clusterLabels(clusterID),
 			},
 			Type: corev1.SecretTypeOpaque,
 			Data: map[string][]byte{

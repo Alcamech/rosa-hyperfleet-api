@@ -67,8 +67,8 @@ func (v *FieldValidator) ValidateCreate(spec any, fs featuregate.FeatureSet) Val
 	return v.validate(fields, nil, OperationCreate, fs, pointers)
 }
 
-// ValidateUpdate checks that an update request does not set service-set fields,
-// change immutable fields, or use feature-gated fields without the gate enabled.
+// ValidateUpdate checks that an update request does not change service-set or
+// immutable fields, or use feature-gated fields without the gate enabled.
 func (v *FieldValidator) ValidateUpdate(newSpec, existingSpec any, fs featuregate.FeatureSet) ValidationErrors {
 	if newSpec == nil {
 		return nil
@@ -173,13 +173,16 @@ func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.Field
 
 	switch effectiveMode {
 	case registry.ServiceSet:
-		// A pointer field (e.g. *bool) that is non-nil was explicitly supplied even if its
-		// value is the zero value, so it must be rejected the same as any other explicit value.
-		if explicitlySet, isPointer := pointers[fieldPath]; isPointer {
-			if !explicitlySet {
+		if op == OperationUpdate && existingFields != nil {
+			oldValue, oldExists := existingFields[fieldPath]
+			newValue, newExists := fields[fieldPath]
+			if !newExists || (oldExists && reflect.DeepEqual(oldValue, newValue)) {
 				return nil
 			}
-		} else if isZeroValue(fields[fieldPath]) {
+			if !oldExists && isZeroValue(newValue) && !pointers[fieldPath] {
+				return nil
+			}
+		} else if isZeroValue(fields[fieldPath]) && !pointers[fieldPath] {
 			return nil
 		}
 		// Current Terraform will send the full object for resource update

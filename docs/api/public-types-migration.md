@@ -221,7 +221,7 @@ Changes:
 - Update endpoint: Accept `{spec: public.ClusterSpec}` or raw JSON merge
 - All responses: Return `public.Cluster` or `public.NodePool`
 - Validation: Works unchanged (operates on spec JSON)
-- Enrichment: Set service-set fields (CreatorARN, InternalID, etc.)
+- Enrichment: Set service-set fields (CreatorARN, HostedClusterName, etc.)
 
 ### Phase 3: Type Deletion
 
@@ -292,7 +292,7 @@ Service-set (platform-managed) fields are:
 Examples:
 
 - `spec.accountId` - Platform assigns, never user-visible
-- `spec.internalId` - Platform generates, never user-visible
+- `spec.hostedClusterName` - Platform/operator sets, never user-visible
 - `spec.creatorARN` - Platform sets, filtered from public responses
 - `spec.hostedCluster.pullSecret` - Platform-managed, hidden
 

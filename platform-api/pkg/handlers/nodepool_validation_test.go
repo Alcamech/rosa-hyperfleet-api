@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -52,12 +53,9 @@ func TestValidateNodePoolReplicas(t *testing.T) {
 }
 
 func TestNodePoolHandlerCreateRejectsNegativeReplicas(t *testing.T) {
-	const (
-		accountID = "123456789012"
-		clusterID = "550e8400-e29b-41d4-a716-446655440000"
-	)
+	const accountID = "123456789012"
 	handler := newNodePoolValidationTestHandler(t)
-	body := `{"metadata":{"name":"pool-a","namespace":"cluster-` + clusterID + `"},"spec":{"nodePool":{"replicas":-1}}}`
+	body := `{"metadata":{"name":"test-cluster.pool-a","namespace":"account-` + accountID + `"},"spec":{"nodePool":{"replicas":-1}}}`
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/nodepools", strings.NewReader(body))
 	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
 	response := httptest.NewRecorder()
@@ -75,19 +73,18 @@ func TestNodePoolHandlerCreateRejectsNegativeReplicas(t *testing.T) {
 func TestNodePoolHandlerUpdateRejectsNegativeReplicas(t *testing.T) {
 	const (
 		accountID = "123456789012"
-		clusterID = "550e8400-e29b-41d4-a716-446655440000"
 		poolName  = "pool-a"
 	)
 	object := &hyperfleetv1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      poolName,
-			Namespace: hyperfleetdb.ClusterNSPrefix + clusterID,
+			Namespace: "account-" + accountID,
 			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
 		},
 	}
 	handler := newNodePoolValidationTestHandler(t, object)
 	body := `{"spec":{"nodePool":{"replicas":-1}}}`
-	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName+"?clusterId="+clusterID, strings.NewReader(body))
+	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName, strings.NewReader(body))
 	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
 	request = mux.SetURLVars(request, map[string]string{"id": poolName})
 	response := httptest.NewRecorder()
@@ -100,12 +97,80 @@ func TestNodePoolHandlerUpdateRejectsNegativeReplicas(t *testing.T) {
 	if !strings.Contains(response.Body.String(), "spec.nodePool.replicas") {
 		t.Fatalf("Update() response does not identify replicas: %s", response.Body.String())
 	}
+	if !json.Valid(response.Body.Bytes()) {
+		t.Fatalf("Update() response contains multiple JSON documents: %s", response.Body.String())
+	}
+}
+
+func TestNodePoolHandlerUpdateReturnsMultipleValidationErrors(t *testing.T) {
+	const (
+		accountID = "123456789012"
+		poolName  = "pool-a"
+	)
+	object := &hyperfleetv1alpha1.NodePool{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      poolName,
+			Namespace: "account-" + accountID,
+			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+		},
+		Spec: hyperfleetv1alpha1.NodePoolSpec{
+			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
+				Platform: hypershiftv1beta1.NodePoolPlatform{Type: hypershiftv1beta1.AWSPlatform},
+			},
+		},
+	}
+	handler := newNodePoolValidationTestHandler(t, object)
+	body := `{"spec":{"nodePool":{"platform":{"type":"Azure"},"replicas":-1}}}`
+	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName, strings.NewReader(body))
+	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
+	request = mux.SetURLVars(request, map[string]string{"id": poolName})
+	response := httptest.NewRecorder()
+
+	handler.Update(response, request)
+
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("Update() status = %d, want %d; body=%s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
+	}
+	var status metav1.Status
+	if err := json.Unmarshal(response.Body.Bytes(), &status); err != nil {
+		t.Fatalf("Update() response is not valid Status JSON: %v; body=%s", err, response.Body.String())
+	}
+	if status.Details == nil {
+		t.Fatalf("Update() response has no validation causes: %s", response.Body.String())
+	}
+	gotCauses := make(map[string]metav1.StatusCause, len(status.Details.Causes))
+	for _, cause := range status.Details.Causes {
+		gotCauses[cause.Field] = cause
+	}
+	wantCauses := map[string]string{
+		"spec.nodePool.platform.type": "field is immutable and cannot be changed after creation",
+		"spec.nodePool.replicas":      "must be greater than or equal to 0",
+	}
+	for field, wantMessage := range wantCauses {
+		cause, ok := gotCauses[field]
+		if !ok {
+			t.Errorf("Update() validation causes %v do not include %q", status.Details.Causes, field)
+			continue
+		}
+		if cause.Type != metav1.CauseTypeFieldValueInvalid {
+			t.Errorf("cause %q type = %q, want %q", field, cause.Type, metav1.CauseTypeFieldValueInvalid)
+		}
+		if cause.Message != wantMessage {
+			t.Errorf("cause %q message = %q, want %q", field, cause.Message, wantMessage)
+		}
+	}
+	if len(status.Details.Causes) != 2 {
+		t.Errorf("Update() returned %d validation causes, want 2: %+v", len(status.Details.Causes), status.Details.Causes)
+	}
 }
 
 // TestNodePoolHandlerCreateRejectsRootVolumeServiceSetFields verifies that a create request setting
 // rootVolume.type/iops/encrypted/encryptionKey is rejected end-to-end via FieldValidator.
 func TestNodePoolHandlerCreateRejectsRootVolumeServiceSetFields(t *testing.T) {
-	const clusterID = "550e8400-e29b-41d4-a716-446655440000"
+	const (
+		accountID = "123456789012"
+		poolName  = "test-cluster.pool-a"
+	)
 	handler := newNodePoolValidationTestHandler(t)
 
 	tests := []struct {
@@ -123,9 +188,9 @@ func TestNodePoolHandlerCreateRejectsRootVolumeServiceSetFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body := `{"metadata":{"name":"pool-a","namespace":"cluster-` + clusterID + `"},"spec":{"nodePool":{"platform":{"aws":{"rootVolume":{` + tt.rootVol + `}}}}}}`
+			body := `{"metadata":{"name":"` + poolName + `","namespace":"account-` + accountID + `"},"spec":{"nodePool":{"platform":{"aws":{"rootVolume":{` + tt.rootVol + `}}}}}}`
 			request := httptest.NewRequest(http.MethodPost, "/api/v0/nodepools", strings.NewReader(body))
-			request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, "123456789012"))
+			request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
 			response := httptest.NewRecorder()
 
 			handler.Create(response, request)
@@ -143,18 +208,21 @@ func TestNodePoolHandlerCreateRejectsRootVolumeServiceSetFields(t *testing.T) {
 // TestNodePoolHandlerCreateAllowsRootVolumeSizeOnly verifies a create request setting only
 // rootVolume.size succeeds — size remains the one customer-settable field, matching v1.
 func TestNodePoolHandlerCreateAllowsRootVolumeSizeOnly(t *testing.T) {
-	const clusterID = "550e8400-e29b-41d4-a716-446655440000"
+	const (
+		accountID   = "123456789012"
+		clusterName = "my-cluster"
+	)
 	cluster := &hyperfleetv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-cluster",
-			Namespace: hyperfleetdb.ClusterNSPrefix + clusterID,
-			Labels:    map[string]string{"hyperfleet.io/account-id": "123456789012"},
+			Name:      clusterName,
+			Namespace: "account-" + accountID,
+			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
 		},
 	}
 	handler := newNodePoolValidationTestHandler(t, cluster)
-	body := `{"metadata":{"name":"pool-a","namespace":"cluster-` + clusterID + `"},"spec":{"nodePool":{"platform":{"aws":{"rootVolume":{"size":500}}}}}}`
+	body := `{"metadata":{"name":"` + clusterName + `.pool-a","namespace":"account-` + accountID + `"},"spec":{"nodePool":{"platform":{"aws":{"rootVolume":{"size":500}}}}}}`
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/nodepools", strings.NewReader(body))
-	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, "123456789012"))
+	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
 	response := httptest.NewRecorder()
 
 	handler.Create(response, request)
@@ -169,13 +237,12 @@ func TestNodePoolHandlerCreateAllowsRootVolumeSizeOnly(t *testing.T) {
 func TestNodePoolHandlerUpdateRejectsRootVolumeSizeChange(t *testing.T) {
 	const (
 		accountID = "123456789012"
-		clusterID = "550e8400-e29b-41d4-a716-446655440000"
 		poolName  = "pool-a"
 	)
 	object := &hyperfleetv1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      poolName,
-			Namespace: hyperfleetdb.ClusterNSPrefix + clusterID,
+			Namespace: "account-" + accountID,
 			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
 		},
 		Spec: hyperfleetv1alpha1.NodePoolSpec{
@@ -190,7 +257,7 @@ func TestNodePoolHandlerUpdateRejectsRootVolumeSizeChange(t *testing.T) {
 	}
 	handler := newNodePoolValidationTestHandler(t, object)
 	body := `{"spec":{"nodePool":{"platform":{"aws":{"rootVolume":{"size":800}}}}}}`
-	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName+"?clusterId="+clusterID, strings.NewReader(body))
+	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName, strings.NewReader(body))
 	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
 	request = mux.SetURLVars(request, map[string]string{"id": poolName})
 	response := httptest.NewRecorder()
@@ -210,13 +277,12 @@ func TestNodePoolHandlerUpdateRejectsRootVolumeSizeChange(t *testing.T) {
 func TestNodePoolHandlerUpdateRejectsExplicitNullRootVolume(t *testing.T) {
 	const (
 		accountID = "123456789012"
-		clusterID = "550e8400-e29b-41d4-a716-446655440000"
 		poolName  = "pool-a"
 	)
 	object := &hyperfleetv1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      poolName,
-			Namespace: hyperfleetdb.ClusterNSPrefix + clusterID,
+			Namespace: "account-" + accountID,
 			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
 		},
 		Spec: hyperfleetv1alpha1.NodePoolSpec{
@@ -231,7 +297,7 @@ func TestNodePoolHandlerUpdateRejectsExplicitNullRootVolume(t *testing.T) {
 	}
 	handler := newNodePoolValidationTestHandler(t, object)
 	body := `{"spec":{"nodePool":{"platform":{"aws":{"rootVolume":null}}}}}`
-	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName+"?clusterId="+clusterID, strings.NewReader(body))
+	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName, strings.NewReader(body))
 	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
 	request = mux.SetURLVars(request, map[string]string{"id": poolName})
 	response := httptest.NewRecorder()
@@ -246,7 +312,7 @@ func TestNodePoolHandlerUpdateRejectsExplicitNullRootVolume(t *testing.T) {
 	}
 
 	// Confirm the stored RootVolume was NOT wiped out by a rejected request.
-	stored, err := handler.db.GetNodePool(context.Background(), accountID, clusterID, poolName)
+	stored, err := handler.db.GetNodePool(context.Background(), accountID, poolName)
 	if err != nil {
 		t.Fatalf("GetNodePool: %v", err)
 	}
@@ -263,13 +329,12 @@ func TestNodePoolHandlerUpdateRejectsExplicitNullRootVolume(t *testing.T) {
 func TestNodePoolHandlerUpdateAllowsOmittedRootVolume(t *testing.T) {
 	const (
 		accountID = "123456789012"
-		clusterID = "550e8400-e29b-41d4-a716-446655440000"
 		poolName  = "pool-a"
 	)
 	object := &hyperfleetv1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      poolName,
-			Namespace: hyperfleetdb.ClusterNSPrefix + clusterID,
+			Namespace: "account-" + accountID,
 			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
 		},
 		Spec: hyperfleetv1alpha1.NodePoolSpec{
@@ -284,7 +349,7 @@ func TestNodePoolHandlerUpdateAllowsOmittedRootVolume(t *testing.T) {
 	}
 	handler := newNodePoolValidationTestHandler(t, object)
 	body := `{"spec":{"nodePool":{"platform":{"aws":{"instanceType":"m5.xlarge"}}}}}`
-	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName+"?clusterId="+clusterID, strings.NewReader(body))
+	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName, strings.NewReader(body))
 	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
 	request = mux.SetURLVars(request, map[string]string{"id": poolName})
 	response := httptest.NewRecorder()
@@ -295,7 +360,7 @@ func TestNodePoolHandlerUpdateAllowsOmittedRootVolume(t *testing.T) {
 		t.Fatalf("Update() status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
 	}
 
-	stored, err := handler.db.GetNodePool(context.Background(), accountID, clusterID, poolName)
+	stored, err := handler.db.GetNodePool(context.Background(), accountID, poolName)
 	if err != nil {
 		t.Fatalf("GetNodePool: %v", err)
 	}
@@ -312,7 +377,6 @@ func TestNodePoolHandlerUpdateAllowsOmittedRootVolume(t *testing.T) {
 func TestNodePoolHandlerUpdateRejectsExplicitNullAtParentLevels(t *testing.T) {
 	const (
 		accountID = "123456789012"
-		clusterID = "550e8400-e29b-41d4-a716-446655440000"
 	)
 
 	tests := []struct {
@@ -330,7 +394,7 @@ func TestNodePoolHandlerUpdateRejectsExplicitNullAtParentLevels(t *testing.T) {
 			object := &hyperfleetv1alpha1.NodePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      poolName,
-					Namespace: hyperfleetdb.ClusterNSPrefix + clusterID,
+					Namespace: "account-" + accountID,
 					Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
 				},
 				Spec: hyperfleetv1alpha1.NodePoolSpec{
@@ -344,7 +408,7 @@ func TestNodePoolHandlerUpdateRejectsExplicitNullAtParentLevels(t *testing.T) {
 				},
 			}
 			handler := newNodePoolValidationTestHandler(t, object)
-			request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName+"?clusterId="+clusterID, strings.NewReader(tt.body))
+			request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName, strings.NewReader(tt.body))
 			request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
 			request = mux.SetURLVars(request, map[string]string{"id": poolName})
 			response := httptest.NewRecorder()
@@ -358,7 +422,7 @@ func TestNodePoolHandlerUpdateRejectsExplicitNullAtParentLevels(t *testing.T) {
 				t.Fatalf("Update() response does not identify rootVolume.size: %s", response.Body.String())
 			}
 
-			stored, err := handler.db.GetNodePool(context.Background(), accountID, clusterID, poolName)
+			stored, err := handler.db.GetNodePool(context.Background(), accountID, poolName)
 			if err != nil {
 				t.Fatalf("GetNodePool: %v", err)
 			}

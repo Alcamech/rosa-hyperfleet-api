@@ -198,8 +198,8 @@ func TestValidator_Validate_MultipleErrors(t *testing.T) {
 					WriteMode: registry.ServiceSet,
 					OwnerType: "Cluster",
 				},
-				"spec.internalId": {
-					FieldPath: "spec.internalId",
+				"spec.hostedClusterName": {
+					FieldPath: "spec.hostedClusterName",
 					WriteMode: registry.ServiceSet,
 					OwnerType: "Cluster",
 				},
@@ -217,9 +217,9 @@ func TestValidator_Validate_MultipleErrors(t *testing.T) {
 		Operation:    OperationCreate,
 		ResourceType: "Cluster",
 		Fields: map[string]interface{}{
-			"spec.accountId":  "test-account",
-			"spec.internalId": "test-id",
-			"spec.tags":       map[string]string{"key": "value"},
+			"spec.accountId":         "test-account",
+			"spec.hostedClusterName": "hc-test-id",
+			"spec.tags":              map[string]string{"key": "value"},
 		},
 		FeatureSet: featuregate.Default,
 	}
@@ -235,8 +235,8 @@ func TestValidator_Validate_MultipleErrors(t *testing.T) {
 	if !strings.Contains(errStr, "spec.accountId") {
 		t.Error("expected error for spec.accountId")
 	}
-	if !strings.Contains(errStr, "spec.internalId") {
-		t.Error("expected error for spec.internalId")
+	if !strings.Contains(errStr, "spec.hostedClusterName") {
+		t.Error("expected error for spec.hostedClusterName")
 	}
 	if !strings.Contains(errStr, "spec.tags") {
 		t.Error("expected error for spec.tags")
@@ -347,12 +347,12 @@ func TestNewValidator_UsesGeneratedRegistry(t *testing.T) {
 
 	// Verify it's using the real generated registry by checking a known field
 	// This tests that the integration with pkg/registry works
-	meta, exists := v.GetFieldMetadata("Cluster", "spec.displayName")
+	meta, exists := v.GetFieldMetadata("Cluster", "spec.properties")
 	if !exists {
-		t.Error("expected spec.displayName to exist in generated registry for Cluster")
+		t.Error("expected spec.properties to exist in generated registry for Cluster")
 	}
 	if meta.WriteMode != registry.Mutable {
-		t.Errorf("expected spec.displayName to be Mutable, got %v", meta.WriteMode)
+		t.Errorf("expected spec.properties to be Mutable, got %v", meta.WriteMode)
 	}
 }
 

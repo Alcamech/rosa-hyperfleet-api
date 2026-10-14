@@ -130,6 +130,8 @@ type ServiceSetFields struct {
 	BaseDomain string `json:"baseDomain,omitempty"`
 	// BaseDomainPrefix is service-set (platform-managed, hidden from API)
 	BaseDomainPrefix *string `json:"baseDomainPrefix,omitempty"`
+	// ClusterDeletionPolicy is service-set (platform-managed, hidden from API)
+	ClusterDeletionPolicy v1alpha1.DNSReservationClusterDeletionPolicy `json:"clusterDeletionPolicy,omitempty"`
 	// CpuManagerPolicy is service-set (platform-managed, hidden from API)
 	CpuManagerPolicy *string `json:"cpuManagerPolicy,omitempty"`
 	// CpuManagerPolicyOptions is service-set (platform-managed, hidden from API)
@@ -156,12 +158,10 @@ type ServiceSetFields struct {
 	Files []v1alpha1.FileSpec `json:"files,omitempty"`
 	// HostedCluster is service-set (platform-managed, hidden from API)
 	HostedCluster *ServiceSetFieldsHostedCluster `json:"hostedCluster,omitempty"`
+	// HostedClusterName is service-set (platform-managed, hidden from API)
+	HostedClusterName string `json:"hostedClusterName,omitempty"`
 	// Image is service-set (platform-managed, hidden from API)
 	Image *v1alpha1.ImageConfiguration `json:"image,omitempty"`
-	// IndexRef is service-set (platform-managed, hidden from API)
-	IndexRef v1alpha1.IndexRef `json:"indexRef,omitempty"`
-	// InternalID is service-set (platform-managed, hidden from API)
-	InternalID string `json:"internalId,omitempty"`
 	// InternalPoolID is service-set (platform-managed, hidden from API)
 	InternalPoolID string `json:"internalPoolId,omitempty"`
 	// Iops is service-set (platform-managed, hidden from API)
