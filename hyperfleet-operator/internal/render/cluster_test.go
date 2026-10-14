@@ -262,14 +262,14 @@ func TestLongCustomerNameUsesHostedClusterNameForAPIOAuthAndCertificateDNS(t *te
 	}
 	var apiRouteHostname, oauthRouteHostname string
 	for _, service := range hostedCluster.Spec.Services {
-		if service.ServicePublishingStrategy.Route == nil {
+		if service.Route == nil {
 			continue
 		}
 		switch service.Service {
 		case hypershiftv1beta1.APIServer:
-			apiRouteHostname = service.ServicePublishingStrategy.Route.Hostname
+			apiRouteHostname = service.Route.Hostname
 		case hypershiftv1beta1.OAuthServer:
-			oauthRouteHostname = service.ServicePublishingStrategy.Route.Hostname
+			oauthRouteHostname = service.Route.Hostname
 		}
 	}
 	if apiRouteHostname != wantAPIHost {
@@ -462,14 +462,14 @@ func TestHostedClusterDNS(t *testing.T) {
 	}
 	var apiRouteHostname, oauthRouteHostname string
 	for _, service := range hc.Spec.Services {
-		if service.ServicePublishingStrategy.Route == nil {
+		if service.Route == nil {
 			continue
 		}
 		switch service.Service {
 		case hypershiftv1beta1.APIServer:
-			apiRouteHostname = service.ServicePublishingStrategy.Route.Hostname
+			apiRouteHostname = service.Route.Hostname
 		case hypershiftv1beta1.OAuthServer:
-			oauthRouteHostname = service.ServicePublishingStrategy.Route.Hostname
+			oauthRouteHostname = service.Route.Hostname
 		}
 	}
 	if apiRouteHostname != "api.my-cluster.f7a3.0.example.com" {
