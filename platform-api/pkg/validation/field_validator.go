@@ -123,6 +123,9 @@ func (v *FieldValidator) validate(fields, existingFields map[string]any, op Oper
 		if err := validateAdditionalTrustBundle(fields); err != nil {
 			errs = append(errs, err)
 		}
+		if err := validateAdditionalAllowedPrincipals(fields); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	if len(errs) > 0 {
