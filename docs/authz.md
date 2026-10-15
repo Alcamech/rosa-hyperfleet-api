@@ -71,22 +71,24 @@ fails the request, even when Cedar would allow.
 
 ## Operations
 
-| Resource          | Operation             | Required actions                                                |
-| ----------------- | --------------------- | --------------------------------------------------------------- |
-| Cluster           | List                  | ListClusters; DescribeCluster per item for details              |
-| Cluster           | Get                   | DescribeCluster                                                 |
-| Cluster           | Create                | CreateCluster                                                   |
-| Cluster           | PUT / PATCH           | UpdateCluster + changed-field actions                           |
-| Cluster           | Delete                | DeleteCluster                                                   |
-| NodePool          | List                  | ListNodePools; DescribeNodePool per item for details            |
-| NodePool          | Get                   | DescribeNodePool                                                |
-| NodePool          | Create                | CreateNodePool                                                  |
-| NodePool          | PUT                   | UpdateNodePool + changed-field actions                          |
-| NodePool          | Delete                | DeleteNodePool                                                  |
-| OIDCConfig        | List                  | ListOIDCConfigs; DescribeOIDCConfig per item for details        |
-| OIDCConfig        | Get / Create / Delete | DescribeOIDCConfig / CreateOIDCConfig / DeleteOIDCConfig        |
-| ManagementCluster | List                  | ListManagementClusters; DescribeManagementCluster for details   |
-| ManagementCluster | Get / Create          | DescribeManagementCluster / CreateManagementCluster             |
+| Resource          | Operation             | Required actions                                                     |
+| ----------------- | --------------------- | -------------------------------------------------------------------- |
+| Cluster           | List                  | ListClusters; DescribeCluster per item for details                   |
+| Cluster           | Get                   | DescribeCluster                                                      |
+| Cluster           | Create                | CreateCluster                                                        |
+| Cluster           | PUT / PATCH           | UpdateCluster + changed-field actions                                |
+| Cluster           | Delete                | DeleteCluster                                                        |
+| NodePool          | List                  | ListNodePools; DescribeNodePool per item for details                 |
+| NodePool          | Get                   | DescribeNodePool                                                     |
+| NodePool          | Create                | CreateNodePool                                                       |
+| NodePool          | PUT                   | UpdateNodePool + changed-field actions                               |
+| NodePool          | Delete                | DeleteNodePool                                                       |
+| OIDCConfig        | List                  | ListOIDCConfigs; DescribeOIDCConfig per item for details             |
+| OIDCConfig        | Get / Create / Delete | DescribeOIDCConfig / CreateOIDCConfig / DeleteOIDCConfig             |
+| DNSReservation    | List                  | ListDNSReservations; DescribeDNSReservation per item for details     |
+| DNSReservation    | Get / Create / Delete | DescribeDNSReservation / CreateDNSReservation / DeleteDNSReservation |
+| ManagementCluster | List                  | ListManagementClusters; DescribeManagementCluster for details        |
+| ManagementCluster | Get / Create          | DescribeManagementCluster / CreateManagementCluster                  |
 
 Changed-field actions, required in addition to the base update:
 
@@ -111,7 +113,8 @@ Rules:
 - Updates and deletes write the checked `resourceVersion`. On a conflict, updates
   retry (up to 5 attempts), re-reading, re-validating, and re-authorizing each
   attempt; exhausted retries return 409 `*-MGMT-UPDATE-006`. Deletes return 409
-  without retrying.
+  without retrying, except DNSReservation, which keeps upstream's conflict retry
+  and re-authorizes each attempt.
 - Denials return 403 `AUTHZ-DENIED-001`; authorization failures return 500
   `AUTHZ-FAILED-001`. Responses never include policy details.
 
@@ -120,15 +123,16 @@ Rules:
 Namespace `Seaplane`. The schema is embedded from
 `seaplane-api/pkg/authz/testdata/seaplane.cedarschema`.
 
-| Entity            | UID                                                    | Parents                        |
-| ----------------- | ------------------------------------------------------ | ------------------------------ |
-| Principal         | caller ARN                                             | matching Roles                 |
-| Collection        | `<account>/<region>/{clusters,nodepools,oidc_configs}` | none                           |
-| Cluster           | `<account>/<region>/<cluster-uid>`                     | Collection                     |
-| NodePool          | `<account>/<region>/<cluster-uid>/<pool-uid>`          | its stored Cluster, Collection |
-| OIDCConfig        | `<account>/<region>/<config-uid>`                      | Collection                     |
-| ServiceCollection | `<region>/management_clusters`                         | none                           |
-| ManagementCluster | `<region>/<mc-id>`                                     | ServiceCollection              |
+| Entity            | UID                                                                     | Parents                        |
+| ----------------- | ----------------------------------------------------------------------- | ------------------------------ |
+| Principal         | caller ARN                                                              | matching Roles                 |
+| Collection        | `<account>/<region>/{clusters,nodepools,oidc_configs,dns_reservations}` | none                           |
+| Cluster           | `<account>/<region>/<cluster-uid>`                                      | Collection                     |
+| NodePool          | `<account>/<region>/<cluster-uid>/<pool-uid>`                           | its stored Cluster, Collection |
+| OIDCConfig        | `<account>/<region>/<config-uid>`                                       | Collection                     |
+| DNSReservation    | `<account>/<region>/<reservation-uid>`                                  | Collection                     |
+| ServiceCollection | `<region>/management_clusters`                                          | none                           |
+| ManagementCluster | `<region>/<mc-id>`                                                      | ServiceCollection              |
 
 - Resources carry `account` and `region` attributes (ServiceCollection: `region`
   only; ManagementCluster adds `registrationRegion`). `region` is always the
@@ -150,14 +154,15 @@ Frozen once per request: `region`, `accountId`, `principalArn`, `sourceIp`,
 
 ## Groups and examples
 
-| Group           | Actions                                                                   |
-| --------------- | ------------------------------------------------------------------------- |
-| ReadOnly        | Customer List and Describe actions                                        |
-| ClusterAdmin    | Create, Update, UpdateClusterConfig, UpdateClusterVersion, Delete Cluster |
-| NodePoolAdmin   | Create, Update, ScaleNodePool, UpdateNodePoolVersion, Delete NodePool     |
-| OIDCConfigAdmin | Create, Delete OIDCConfig                                                 |
-| AllActions      | The four customer groups. Not ServiceOperator.                            |
-| ServiceOperator | Create, List, Describe ManagementCluster                                  |
+| Group               | Actions                                                                   |
+| ------------------- | ------------------------------------------------------------------------- |
+| ReadOnly            | Customer List and Describe actions                                        |
+| ClusterAdmin        | Create, Update, UpdateClusterConfig, UpdateClusterVersion, Delete Cluster |
+| NodePoolAdmin       | Create, Update, ScaleNodePool, UpdateNodePoolVersion, Delete NodePool     |
+| OIDCConfigAdmin     | Create, Delete OIDCConfig                                                 |
+| DNSReservationAdmin | Create, Delete DNSReservation                                             |
+| AllActions          | The five customer groups. Not ServiceOperator.                            |
+| ServiceOperator     | Create, List, Describe ManagementCluster                                  |
 
 These examples are validated against the schema in tests.
 

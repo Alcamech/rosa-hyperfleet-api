@@ -48,12 +48,21 @@ func (h *NodePoolHandler) authorizeNodePool(w http.ResponseWriter, r *http.Reque
 	return authorizeResource(w, r, h.authorizer, h.logger, operation, resource, additional...)
 }
 
-func (h *OidcConfigHandler) oidcConfigResource(oc *v1.OidcConfig) authz.Resource {
-	account := strings.TrimPrefix(oc.Namespace, "account-")
-	if account == oc.Namespace {
-		account = ""
+// namespaceAccount returns the account that owns an account-<id> namespace, or "".
+func namespaceAccount(namespace string) string {
+	account, isAccountNamespace := strings.CutPrefix(namespace, "account-")
+	if !isAccountNamespace {
+		return ""
 	}
-	return authz.Resource{Kind: authz.OIDCConfig, ID: string(oc.UID), AccountID: account, Labels: maps.Clone(oc.Labels)}
+	return account
+}
+
+func (h *OidcConfigHandler) oidcConfigResource(oc *v1.OidcConfig) authz.Resource {
+	return authz.Resource{Kind: authz.OIDCConfig, ID: string(oc.UID), AccountID: namespaceAccount(oc.Namespace), Labels: maps.Clone(oc.Labels)}
+}
+
+func (h *DNSReservationHandler) dnsReservationResource(res *v1.DNSReservation) authz.Resource {
+	return authz.Resource{Kind: authz.DNSReservation, ID: string(res.UID), AccountID: namespaceAccount(res.Namespace), Labels: maps.Clone(res.Labels)}
 }
 func (h *ManagementClusterHandler) managementClusterResource(mc *v1.ManagementCluster) authz.Resource {
 	id := mc.Name

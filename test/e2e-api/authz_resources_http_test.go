@@ -74,6 +74,10 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 		if err := store.Create(ctx, mc); err != nil {
 			t.Fatal(err)
 		}
+		dns := &v1.DNSReservation{ObjectMeta: metav1.ObjectMeta{Name: fixture.name, Namespace: "account-" + authzAccount, Labels: map[string]string{authzAccountLabel: authzAccount, authzTeamLabel: fixture.team}}}
+		if err := store.Create(ctx, dns); err != nil {
+			t.Fatal(err)
+		}
 	}
 	poolPath := "/api/v0/nodepools/" + blue + ".workers"
 	clusterPath := authzClustersPath + "/" + blue
@@ -85,6 +89,7 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 		{"GET", authzClustersPath, "", "ListClusters"}, {"GET", clusterPath, "", "DescribeCluster"}, {"POST", authzClustersPath, `{"metadata":{"name":"denied-cluster"},"spec":{"oidcConfigId":"` + string(configA.UID) + `"}}`, "CreateCluster"}, {"PUT", clusterPath, `{"spec":{"properties":{"state":"denied"}}}`, "UpdateCluster"}, {"PATCH", clusterPath, `{"spec":{"properties":{"state":"denied"}}}`, "UpdateCluster"}, {"DELETE", clusterPath, "", "DeleteCluster"},
 		{"GET", "/api/v0/nodepools", "", "ListNodePools"}, {"GET", poolPath, "", "DescribeNodePool"}, {"POST", "/api/v0/nodepools", `{"metadata":{"name":"` + blue + `.denied"},"spec":{"labels":{"state":"denied"}}}`, "CreateNodePool"}, {"PUT", poolPath, `{"spec":{"labels":{"state":"denied"}}}`, "UpdateNodePool"}, {"DELETE", poolPath, "", "DeleteNodePool"},
 		{"GET", "/api/v0/oidc_configs", "", "ListOIDCConfigs"}, {"GET", "/api/v0/oidc_configs/a-config", "", "DescribeOIDCConfig"}, {"POST", "/api/v0/oidc_configs", `{"metadata":{"name":"denied-config"},"spec":{"type":"unmanaged","issuerUrl":"https://example.com/denied","secretArn":"secret","installerRoleArn":"role"}}`, "CreateOIDCConfig"}, {"DELETE", "/api/v0/oidc_configs/a-config", "", "DeleteOIDCConfig"},
+		{"GET", "/api/v0/dns_reservations", "", "ListDNSReservations"}, {"GET", "/api/v0/dns_reservations/a-config", "", "DescribeDNSReservation"}, {"POST", "/api/v0/dns_reservations", `{"metadata":{"name":"denied-zone"}}`, "CreateDNSReservation"}, {"DELETE", "/api/v0/dns_reservations/a-config", "", "DeleteDNSReservation"},
 		{"GET", "/api/v0/management_clusters", "", "ListManagementClusters"}, {"GET", "/api/v0/management_clusters/a-config", "", "DescribeManagementCluster"}, {"POST", "/api/v0/management_clusters", `{"id":"denied","accountId":"222222222222","region":"us-west-2"}`, "CreateManagementCluster"},
 	} {
 		t.Run("default deny "+tc.action+tc.method, func(t *testing.T) {
@@ -103,6 +108,7 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 	for _, tc := range []struct{ path, list, describe, listOnly, describeOnly, scoped string }{
 		{"nodepools", "ListNodePools", "DescribeNodePool", "resource-list-only", "resource-describe-only", "resource-scoped"},
 		{"oidc_configs", "ListOIDCConfigs", "DescribeOIDCConfig", "resource-list-only", "resource-describe-only", "resource-scoped"},
+		{"dns_reservations", "ListDNSReservations", "DescribeDNSReservation", "resource-list-only", "resource-describe-only", "resource-scoped"},
 		{"management_clusters", "ListManagementClusters", "DescribeManagementCluster", "operator-list-only", "operator-describe-only", "operator-scoped"},
 	} {
 		t.Run("collection "+tc.path, func(t *testing.T) {
@@ -171,6 +177,9 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 	}
 	authzResourceRequest(t, p, "GET", "/api/v0/oidc_configs/http-created", "", lifecycle, "DescribeOIDCConfig", 200)
 	authzResourceRequest(t, p, "DELETE", "/api/v0/oidc_configs/http-created", "", lifecycle, "DeleteOIDCConfig", 202)
+	authzResourceRequest(t, p, "POST", "/api/v0/dns_reservations", `{"metadata":{"name":"http-created","labels":{"example.com/team":"blue","seaplane.io/claimed-by-cluster-uid":"forged"}}}`, lifecycle, "CreateDNSReservation", 201)
+	authzResourceRequest(t, p, "GET", "/api/v0/dns_reservations/http-created", "", lifecycle, "DescribeDNSReservation", 200)
+	authzResourceRequest(t, p, "DELETE", "/api/v0/dns_reservations/http-created", "", lifecycle, "DeleteDNSReservation", 202)
 	authzResourceRequest(t, p, "POST", "/api/v0/management_clusters", `{"id":"http-created","accountId":"222222222222","region":"us-west-2"}`, operator, "CreateManagementCluster", 201)
 	authzResourceRequest(t, p, "GET", "/api/v0/management_clusters/http-created", "", operator, "DescribeManagementCluster", 200)
 	var registered v1.ManagementCluster
@@ -183,7 +192,7 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 		path, action, principal string
 		list                    client.ObjectList
 	}{
-		{"nodepools", "ListNodePools", "resource-error", &v1.NodePoolList{}}, {"oidc_configs", "ListOIDCConfigs", "resource-error", &v1.OidcConfigList{}}, {"management_clusters", "ListManagementClusters", "operator-error", &v1.ManagementClusterList{}},
+		{"nodepools", "ListNodePools", "resource-error", &v1.NodePoolList{}}, {"oidc_configs", "ListOIDCConfigs", "resource-error", &v1.OidcConfigList{}}, {"dns_reservations", "ListDNSReservations", "resource-error", &v1.DNSReservationList{}}, {"management_clusters", "ListManagementClusters", "operator-error", &v1.ManagementClusterList{}},
 	} {
 		t.Run("late diagnostic "+tc.path, func(t *testing.T) {
 			var objects []client.Object
@@ -196,6 +205,10 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 					objects = append(objects, &list.Items[i])
 				}
 			case *v1.OidcConfigList:
+				for i := range list.Items {
+					objects = append(objects, &list.Items[i])
+				}
+			case *v1.DNSReservationList:
 				for i := range list.Items {
 					objects = append(objects, &list.Items[i])
 				}

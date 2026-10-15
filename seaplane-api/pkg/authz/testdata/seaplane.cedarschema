@@ -13,6 +13,7 @@ namespace Seaplane {
     entity Cluster in [Collection] { account: AccountID, region: Region } tags String;
     entity NodePool in [Cluster, Collection] { account: AccountID, region: Region } tags String;
     entity OIDCConfig in [Collection] { account: AccountID, region: Region } tags String;
+    entity DNSReservation in [Collection] { account: AccountID, region: Region } tags String;
     entity ServiceCollection { region: Region };
     entity ManagementCluster in [ServiceCollection] {
         account: AccountID, region: Region, registrationRegion: String
@@ -23,6 +24,7 @@ namespace Seaplane {
     action ClusterAdmin in [AllActions];
     action NodePoolAdmin in [AllActions];
     action OIDCConfigAdmin in [AllActions];
+    action DNSReservationAdmin in [AllActions];
     action ServiceOperator;
 
     // cedar-go v1.8.0 validates action entities against the complete parent closure.
@@ -46,6 +48,11 @@ namespace Seaplane {
     action DescribeOIDCConfig in [ReadOnly, AllActions] appliesTo { principal: [Principal, Role], resource: OIDCConfig, context: RequestContext };
     action CreateOIDCConfig in [OIDCConfigAdmin, AllActions] appliesTo { principal: [Principal, Role], resource: OIDCConfig, context: RequestContext };
     action DeleteOIDCConfig in [OIDCConfigAdmin, AllActions] appliesTo { principal: [Principal, Role], resource: OIDCConfig, context: RequestContext };
+
+    action ListDNSReservations in [ReadOnly, AllActions] appliesTo { principal: [Principal, Role], resource: Collection, context: RequestContext };
+    action DescribeDNSReservation in [ReadOnly, AllActions] appliesTo { principal: [Principal, Role], resource: DNSReservation, context: RequestContext };
+    action CreateDNSReservation in [DNSReservationAdmin, AllActions] appliesTo { principal: [Principal, Role], resource: DNSReservation, context: RequestContext };
+    action DeleteDNSReservation in [DNSReservationAdmin, AllActions] appliesTo { principal: [Principal, Role], resource: DNSReservation, context: RequestContext };
 
     action ListManagementClusters in [ServiceOperator] appliesTo { principal: [Principal, Role], resource: ServiceCollection, context: RequestContext };
     action DescribeManagementCluster in [ServiceOperator] appliesTo { principal: [Principal, Role], resource: ManagementCluster, context: RequestContext };
