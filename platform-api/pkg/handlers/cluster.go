@@ -284,7 +284,7 @@ func (h *ClusterHandler) completeClusterCreate(ctx context.Context, accountID, c
 
 	if oidcConfig == nil && h.oidcIssuerBaseURL != "" {
 		issuerURL := strings.TrimRight(h.oidcIssuerBaseURL, "/") + "/" + clusterUID
-		if err := h.updateManagedIssuerURL(ctx, accountID, clusterName, clusterUID, issuerURL); err != nil {
+		if err := h.updateManagedIssuerURL(ctx, clusterName, clusterUID, issuerURL); err != nil {
 			deleteClusterForCleanup()
 			h.logger.Error("failed to set managed issuer URL", "error", err, "cluster_uid", clusterUID)
 			return nil, &ErrClusterCreateFailed
@@ -313,7 +313,7 @@ func (h *ClusterHandler) completeClusterCreate(ctx context.Context, accountID, c
 	}
 	return cluster, nil
 }
-func (h *ClusterHandler) updateManagedIssuerURL(ctx context.Context, accountID, clusterName, clusterUID, issuerURL string) error {
+func (h *ClusterHandler) updateManagedIssuerURL(ctx context.Context, clusterName, clusterUID, issuerURL string) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		cluster, err := h.db.GetCluster(ctx, clusterName)
 		if err != nil {
