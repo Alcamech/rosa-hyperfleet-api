@@ -318,6 +318,117 @@ func TestValidateUpdate_AllowsImmutableFieldSameValue(t *testing.T) {
 	}
 }
 
+func TestValidateUpdateWithRawSpec_UsesExplicitImmutableFieldValues(t *testing.T) {
+	v := newTestValidator(map[string]registry.FieldMeta{
+		"spec.value": {FieldPath: "spec.value", WriteMode: registry.Immutable},
+	})
+	type testSpec struct {
+		Value string `json:"value,omitempty"`
+	}
+
+	tests := []struct {
+		name       string
+		newValue   string
+		rawValue   any
+		sendValue  bool
+		wantErrors int
+	}{
+		{name: "omitted", wantErrors: 0},
+		{name: "unchanged", newValue: "configured", rawValue: "configured", sendValue: true, wantErrors: 0},
+		{name: "changed", newValue: "other", rawValue: "other", sendValue: true, wantErrors: 1},
+		{name: "cleared with empty string", rawValue: "", sendValue: true, wantErrors: 1},
+		{name: "cleared with null", rawValue: nil, sendValue: true, wantErrors: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rawSpec := map[string]any{"unrelated": true}
+			if tt.sendValue {
+				rawSpec["value"] = tt.rawValue
+			}
+
+			errs := v.ValidateUpdateWithRawSpec(testSpec{Value: tt.newValue}, rawSpec, testSpec{Value: "configured"}, featuregate.Default)
+			if len(errs) != tt.wantErrors {
+				t.Fatalf("ValidateUpdateWithRawSpec() returned %v, want %d error(s)", errs, tt.wantErrors)
+			}
+			if tt.wantErrors > 0 && errs[0].Field != "spec.value" {
+				t.Errorf("error field = %q, want spec.value", errs[0].Field)
+			}
+		})
+	}
+}
+
+func TestValidateUpdateWithRawSpec_RequiresRawSpec(t *testing.T) {
+	v := newTestValidator(map[string]registry.FieldMeta{})
+	type testSpec struct {
+		Value string `json:"value,omitempty"`
+	}
+
+	tests := []struct {
+		name    string
+		rawSpec map[string]any
+	}{
+		{name: "nil raw spec"},
+		{name: "empty raw spec", rawSpec: map[string]any{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := v.ValidateUpdateWithRawSpec(testSpec{}, tt.rawSpec, testSpec{}, featuregate.Default)
+			if len(errs) != 1 || errs[0].Field != "spec" {
+				t.Fatalf("ValidateUpdateWithRawSpec() returned %v, want one raw-spec error", errs)
+			}
+		})
+	}
+}
+
+func TestValidateUpdateWithRawSpec_RejectsNullParentOfImmutableField(t *testing.T) {
+	v := newTestValidator(map[string]registry.FieldMeta{
+		"spec.parent.child": {FieldPath: "spec.parent.child", WriteMode: registry.Immutable},
+	})
+	type testSpec struct {
+		Parent *struct {
+			Child string `json:"child,omitempty"`
+		} `json:"parent,omitempty"`
+	}
+
+	tests := []struct {
+		name       string
+		oldValue   any
+		wantErrors int
+	}{
+		{name: "non-empty immutable descendant", oldValue: "configured", wantErrors: 1},
+		{name: "zero-valued immutable descendant", oldValue: "", wantErrors: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			existing := map[string]any{
+				"parent": map[string]any{"child": tt.oldValue},
+			}
+			errs := v.ValidateUpdateWithRawSpec(testSpec{}, map[string]any{"parent": nil}, existing, featuregate.Default)
+			if len(errs) != tt.wantErrors {
+				t.Fatalf("ValidateUpdateWithRawSpec() returned %v, want %d error(s)", errs, tt.wantErrors)
+			}
+			if tt.wantErrors > 0 && errs[0].Field != "spec.parent.child" {
+				t.Errorf("error field = %q, want spec.parent.child", errs[0].Field)
+			}
+		})
+	}
+}
+
+func TestValidateUpdate_RawMapRejectsNullParentOfImmutableField(t *testing.T) {
+	v := newTestValidator(map[string]registry.FieldMeta{
+		"spec.parent.child": {FieldPath: "spec.parent.child", WriteMode: registry.Immutable},
+	})
+	existing := map[string]any{
+		"parent": map[string]any{"child": "configured"},
+	}
+
+	errs := v.ValidateUpdate(map[string]any{"parent": nil}, existing, featuregate.Default)
+	if len(errs) != 1 || errs[0].Field != "spec.parent.child" {
+		t.Fatalf("ValidateUpdate() returned %v, want one error on spec.parent.child", errs)
+	}
+}
+
 func TestValidateUpdate_RejectsImmutableFieldChangeFromOmittedZeroValue(t *testing.T) {
 	v := newTestValidator(map[string]registry.FieldMeta{
 		"spec.oidcConfigId": {FieldPath: "spec.oidcConfigId", WriteMode: registry.Immutable},

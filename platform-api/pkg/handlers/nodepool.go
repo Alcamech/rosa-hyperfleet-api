@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/google/uuid"
@@ -50,72 +52,17 @@ func validateNodePoolReplicas(spec *public.NodePoolSpec) validation.ValidationEr
 	}
 }
 
-// validateRootVolumeNullOnUpdate rejects an explicit null anywhere along
-// nodePool.platform.aws.rootVolume when the existing RootVolume is non-nil.
-func validateRootVolumeNullOnUpdate(rawSpec map[string]any, existing *hyperfleetv1alpha1.NodePoolSpec) validation.ValidationErrors {
-	if existing == nil || existing.NodePool.Platform.AWS == nil || existing.NodePool.Platform.AWS.RootVolume == nil {
-		return nil
-	}
-
-	node := rawSpec
-	for _, key := range []string{"nodePool", "platform", "aws", "rootVolume"} {
-		val, exists := node[key]
-		if !exists {
-			return nil
-		}
-		if val == nil {
-			return rootVolumeSizeImmutableError()
-		}
-		next, ok := val.(map[string]any)
-		if !ok {
-			return nil
-		}
-		node = next
-	}
-	return nil
-}
-
-func rootVolumeSizeImmutableError() validation.ValidationErrors {
-	return validation.ValidationErrors{
-		&validation.ValidationError{
-			Field:  "spec.nodePool.platform.aws.rootVolume.size",
-			Reason: "field is immutable and cannot be changed after creation",
-		},
-	}
-}
-
-// validateImageTypeClearedOnUpdate rejects an update that blanks imageType on a
-// pool that has one. imageType is omitempty, so an explicit "" or null is
-// dropped from the flattened spec and never reaches the FieldValidator's
-// immutable check, yet the spec merge would convert a Windows (License
-// Included) pool back to the Linux default. A differing non-empty value is
-// already rejected by the FieldValidator, so it is left alone here to avoid
-// reporting the same field twice.
-func validateImageTypeClearedOnUpdate(rawSpec map[string]any, existing *hyperfleetv1alpha1.NodePoolSpec) validation.ValidationErrors {
-	if existing == nil || existing.NodePool.Platform.AWS == nil || existing.NodePool.Platform.AWS.ImageType == "" {
-		return nil
-	}
-
-	node := rawSpec
-	for _, key := range []string{"nodePool", "platform", "aws"} {
-		next, ok := node[key].(map[string]any)
-		if !ok {
-			return nil
-		}
-		node = next
-	}
-
-	supplied, exists := node["imageType"]
-	if !exists {
-		return nil
-	}
-	if value, isString := supplied.(string); isString && value != "" {
+func validateNodePoolEC2InstanceMetadataHttpTokens(value public.EC2InstanceMetadataHttpTokens) validation.ValidationErrors {
+	if slices.Contains([]public.EC2InstanceMetadataHttpTokens{
+		public.EC2InstanceMetadataHttpTokensRequired,
+		public.EC2InstanceMetadataHttpTokensOptional,
+	}, value) {
 		return nil
 	}
 	return validation.ValidationErrors{
 		&validation.ValidationError{
-			Field:  "spec.nodePool.platform.aws.imageType",
-			Reason: "field is immutable and cannot be changed after creation",
+			Field:  "spec.ec2InstanceMetadataHttpTokens",
+			Reason: "must be either required or optional",
 		},
 	}
 }
@@ -222,8 +169,18 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
 
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeAPIError(w, ErrNodePoolCreateInvalidBody, h.logger)
+		return
+	}
 	var req public.NodePool
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&req); err != nil {
+		writeAPIError(w, ErrNodePoolCreateInvalidBody, h.logger)
+		return
+	}
+	var rawRequest map[string]any
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&rawRequest); err != nil {
 		writeAPIError(w, ErrNodePoolCreateInvalidBody, h.logger)
 		return
 	}
@@ -244,8 +201,15 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// ClusterName is derived from the validated metadata.name prefix; do not
 	// trust a separately supplied passthrough value to select a parent.
 	req.Spec.NodePool.ClusterName = clusterName
+	// Apply defaults only to omitted fields; explicit empty or null values are
+	// retained for enum validation below.
+	if !validation.HasJSONField(rawRequest, "spec.ec2InstanceMetadataHttpTokens") {
+		req.Spec.EC2InstanceMetadataHttpTokens = public.EC2InstanceMetadataHttpTokensRequired
+	}
 
-	if errs := append(h.validator.ValidateCreate(&req.Spec, featuregate.Default), validateNodePoolReplicas(&req.Spec)...); len(errs) > 0 {
+	errs := append(h.validator.ValidateCreate(&req.Spec, featuregate.Default), validateNodePoolReplicas(&req.Spec)...)
+	errs = append(errs, validateNodePoolEC2InstanceMetadataHttpTokens(req.Spec.EC2InstanceMetadataHttpTokens)...)
+	if len(errs) > 0 {
 		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
 		return
 	}
@@ -366,10 +330,8 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		errs := h.validator.ValidateUpdate(&req.Spec, &current.Spec, featuregate.Default)
+		errs := h.validator.ValidateUpdateWithRawSpec(&req.Spec, rawSpec, &current.Spec, featuregate.Default)
 		errs = append(errs, validateNodePoolReplicas(&req.Spec)...)
-		errs = append(errs, validateRootVolumeNullOnUpdate(rawSpec, &current.Spec)...)
-		errs = append(errs, validateImageTypeClearedOnUpdate(rawSpec, &current.Spec)...)
 		if len(errs) > 0 {
 			validationErr = errs
 			return fmt.Errorf("invalid nodepool update: %w", errs)
