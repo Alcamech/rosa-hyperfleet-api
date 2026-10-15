@@ -44,12 +44,21 @@ func authzResourceRequest(t *testing.T, p *authzProcess, method, path, body, arn
 
 func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client) {
 	ctx := context.Background()
-	blue := authzStoredClusters[1].id
-	red := authzStoredClusters[0].id
+	blue := authzStoredClusters[1].name
+	red := authzStoredClusters[0].name
 	pools := []*v1.NodePool{}
-	for _, fixture := range []struct{ id, team string }{{red, "red"}, {blue, "blue"}} {
+	for _, fixture := range []struct{ cluster, team string }{{red, "red"}, {blue, "blue"}} {
+		var parent v1.Cluster
+		if err := store.Get(ctx, client.ObjectKey{Namespace: "account-" + authzAccount, Name: fixture.cluster}, &parent); err != nil {
+			t.Fatal(err)
+		}
 		replicas := int32(3)
-		np := &v1.NodePool{ObjectMeta: metav1.ObjectMeta{Name: "workers", Namespace: "cluster-" + fixture.id, Labels: map[string]string{authzAccountLabel: authzAccount, authzTeamLabel: fixture.team}}, Spec: v1.NodePoolSpec{AccountID: authzAccount}}
+		np := &v1.NodePool{ObjectMeta: metav1.ObjectMeta{
+			Name: fixture.cluster + ".workers", Namespace: parent.Namespace,
+			Labels:          map[string]string{authzAccountLabel: authzAccount, authzTeamLabel: fixture.team, "hyperfleet.io/cluster-uid": string(parent.UID)},
+			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(&parent, v1.GroupVersion.WithKind("Cluster"))},
+		}, Spec: v1.NodePoolSpec{AccountID: authzAccount}}
+		np.Spec.NodePool.ClusterName = parent.Name
 		np.Spec.NodePool.Replicas = &replicas
 		if err := store.Create(ctx, np); err != nil {
 			t.Fatal(err)
@@ -66,12 +75,16 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 			t.Fatal(err)
 		}
 	}
-	poolPath := "/api/v0/nodepools/workers?clusterId=" + blue
+	poolPath := "/api/v0/nodepools/" + blue + ".workers"
 	clusterPath := authzClustersPath + "/" + blue
+	var configA v1.OidcConfig
+	if err := store.Get(ctx, client.ObjectKey{Namespace: "account-" + authzAccount, Name: "a-config"}, &configA); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct{ method, path, body, action string }{
-		{"GET", authzClustersPath, "", "ListClusters"}, {"GET", clusterPath, "", "DescribeCluster"}, {"POST", authzClustersPath, `{"metadata":{"name":"denied-cluster"},"spec":{"oidcConfigId":"a-config"}}`, "CreateCluster"}, {"PUT", clusterPath, `{"spec":{"displayName":"denied"}}`, "UpdateCluster"}, {"PATCH", clusterPath, `{"spec":{"displayName":"denied"}}`, "UpdateCluster"}, {"DELETE", clusterPath, "", "DeleteCluster"},
-		{"GET", "/api/v0/nodepools", "", "ListNodePools"}, {"GET", poolPath, "", "DescribeNodePool"}, {"POST", "/api/v0/nodepools", `{"metadata":{"name":"denied","namespace":"cluster-` + blue + `"},"spec":{"displayName":"denied"}}`, "CreateNodePool"}, {"PUT", poolPath, `{"spec":{"displayName":"denied"}}`, "UpdateNodePool"}, {"DELETE", poolPath, "", "DeleteNodePool"},
-		{"GET", "/api/v0/oidc_configs", "", "ListOIDCConfigs"}, {"GET", "/api/v0/oidc_configs/a-config", "", "DescribeOIDCConfig"}, {"POST", "/api/v0/oidc_configs", `{"spec":{"type":"unmanaged","issuerUrl":"https://example.com/denied","secretArn":"secret","installerRoleArn":"role"}}`, "CreateOIDCConfig"}, {"DELETE", "/api/v0/oidc_configs/a-config", "", "DeleteOIDCConfig"},
+		{"GET", authzClustersPath, "", "ListClusters"}, {"GET", clusterPath, "", "DescribeCluster"}, {"POST", authzClustersPath, `{"metadata":{"name":"denied-cluster"},"spec":{"oidcConfigId":"` + string(configA.UID) + `"}}`, "CreateCluster"}, {"PUT", clusterPath, `{"spec":{"properties":{"state":"denied"}}}`, "UpdateCluster"}, {"PATCH", clusterPath, `{"spec":{"properties":{"state":"denied"}}}`, "UpdateCluster"}, {"DELETE", clusterPath, "", "DeleteCluster"},
+		{"GET", "/api/v0/nodepools", "", "ListNodePools"}, {"GET", poolPath, "", "DescribeNodePool"}, {"POST", "/api/v0/nodepools", `{"metadata":{"name":"` + blue + `.denied"},"spec":{"labels":{"state":"denied"}}}`, "CreateNodePool"}, {"PUT", poolPath, `{"spec":{"labels":{"state":"denied"}}}`, "UpdateNodePool"}, {"DELETE", poolPath, "", "DeleteNodePool"},
+		{"GET", "/api/v0/oidc_configs", "", "ListOIDCConfigs"}, {"GET", "/api/v0/oidc_configs/a-config", "", "DescribeOIDCConfig"}, {"POST", "/api/v0/oidc_configs", `{"metadata":{"name":"denied-config"},"spec":{"type":"unmanaged","issuerUrl":"https://example.com/denied","secretArn":"secret","installerRoleArn":"role"}}`, "CreateOIDCConfig"}, {"DELETE", "/api/v0/oidc_configs/a-config", "", "DeleteOIDCConfig"},
 		{"GET", "/api/v0/management_clusters", "", "ListManagementClusters"}, {"GET", "/api/v0/management_clusters/a-config", "", "DescribeManagementCluster"}, {"POST", "/api/v0/management_clusters", `{"id":"denied","accountId":"222222222222","region":"us-west-2"}`, "CreateManagementCluster"},
 	} {
 		t.Run("default deny "+tc.action+tc.method, func(t *testing.T) {
@@ -79,7 +92,7 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 		})
 	}
 	var deniedOC v1.OidcConfig
-	if err := store.Get(ctx, client.ObjectKey{Namespace: "account-" + authzAccount, Name: "a-config"}, &deniedOC); err != nil || deniedOC.Labels["hyperfleet.io/cluster-namespace"] != "" {
+	if err := store.Get(ctx, client.ObjectKey{Namespace: "account-" + authzAccount, Name: "a-config"}, &deniedOC); err != nil || deniedOC.Labels["hyperfleet.io/claimed-by-cluster-uid"] != "" {
 		t.Fatalf("denied CreateCluster claimed OIDC: %+v %v", deniedOC, err)
 	}
 
@@ -118,20 +131,10 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 			}
 		})
 	}
-	// Observe the exact first account-scoped name match. Denial must not select an allowed alternate.
-	var selected v1.NodePoolList
-	if err := store.List(ctx, &selected, client.MatchingLabels{authzAccountLabel: authzAccount}); err != nil || len(selected.Items) != 2 {
-		t.Fatalf("duplicate pool fixtures: %v", err)
-	}
-	first := selected.Items[0]
-	want := 403
-	if first.Labels[authzTeamLabel] == "blue" {
-		want = 200
-	}
-	t.Logf("absent clusterId selects stored namespace %s before authorization", first.Namespace)
-	authzResourceRequest(t, p, "GET", "/api/v0/nodepools/workers", "", authzUser("resource-scoped"), "DescribeNodePool", want)
+	// The qualified name selects the pool; clusterId cannot redirect Describe to another parent.
 	authzResourceRequest(t, p, "GET", poolPath, "", authzUser("resource-scoped"), "DescribeNodePool", 200)
-	authzResourceRequest(t, p, "GET", "/api/v0/nodepools/workers?clusterId="+red, "", authzUser("resource-scoped"), "DescribeNodePool", 403)
+	authzResourceRequest(t, p, "GET", "/api/v0/nodepools/"+red+".workers", "", authzUser("resource-scoped"), "DescribeNodePool", 403)
+	authzResourceRequest(t, p, "GET", "/api/v0/nodepools/"+red+".workers?clusterId="+authzStoredClusters[1].id, "", authzUser("resource-scoped"), "DescribeNodePool", 403)
 
 	// Each specialized update and the mandatory base must allow; omitted replicas remain unchanged.
 	for _, principal := range []string{"base-updater", "special-updater"} {
@@ -140,34 +143,34 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 		authzResourceRequest(t, p, "PUT", poolPath, `{"spec":{"nodePool":{"replicas":0,"release":{"image":"new"}}}}`, authzUser(principal), "UpdateNodePool", 403)
 	}
 	lifecycle := authzUser("lifecycle")
-	authzResourceRequest(t, p, "PUT", poolPath, `{"spec":{"displayName":"changed"}}`, lifecycle, "UpdateNodePool", 200)
+	authzResourceRequest(t, p, "PUT", poolPath, `{"spec":{"labels":{"state":"changed"}}}`, lifecycle, "UpdateNodePool", 200)
 	var saved v1.NodePool
 	if err := store.Get(ctx, client.ObjectKeyFromObject(pools[1]), &saved); err != nil || saved.Spec.NodePool.Replicas == nil || *saved.Spec.NodePool.Replicas != 3 {
 		t.Fatalf("omitted replicas changed: %+v %v", saved, err)
 	}
 	authzResourceRequest(t, p, "PUT", poolPath, `{"spec":{"nodePool":{"replicas":0,"release":{"image":"new"}}}}`, lifecycle, "UpdateNodePool", 200)
-	authzResourceRequest(t, p, "PUT", clusterPath, `{"spec":{"displayName":"changed"}}`, lifecycle, "UpdateCluster", 200)
+	authzResourceRequest(t, p, "PUT", clusterPath, `{"spec":{"properties":{"state":"changed"}}}`, lifecycle, "UpdateCluster", 200)
 	authzResourceRequest(t, p, "PATCH", clusterPath, `{"spec":{"hostedCluster":{"release":{"image":"new"}}}}`, lifecycle, "UpdateCluster", 200)
 
 	// Actual HTTP create/get/delete for all customer families and global service registration.
-	createCluster := authzResourceRequest(t, p, "POST", authzClustersPath, `{"metadata":{"name":"http-created","labels":{"example.com/team":"blue"}},"spec":{"displayName":"http-created"}}`, lifecycle, "CreateCluster", 201)
+	createCluster := authzResourceRequest(t, p, "POST", authzClustersPath, `{"metadata":{"name":"http-created","labels":{"example.com/team":"blue"}},"spec":{"properties":{"state":"created"}}}`, lifecycle, "CreateCluster", 201)
 	var cluster publicResourceID
 	_ = json.Unmarshal(createCluster.Body, &cluster)
-	createdID := cluster.Metadata.UID
-	if createdID == "" {
+	if cluster.Metadata.UID == "" {
 		t.Fatal("create lacked UID")
 	}
-	authzResourceRequest(t, p, "GET", authzClustersPath+"/"+createdID, "", lifecycle, "DescribeCluster", 200)
-	authzResourceRequest(t, p, "POST", "/api/v0/nodepools", `{"metadata":{"name":"http-created","namespace":"cluster-`+createdID+`"},"spec":{"displayName":"created"}}`, lifecycle, "CreateNodePool", 201)
-	authzResourceRequest(t, p, "GET", "/api/v0/nodepools/http-created?clusterId="+createdID, "", lifecycle, "DescribeNodePool", 200)
-	authzResourceRequest(t, p, "DELETE", "/api/v0/nodepools/http-created?clusterId="+createdID, "", lifecycle, "DeleteNodePool", 202)
-	authzResourceRequest(t, p, "DELETE", authzClustersPath+"/"+createdID, "", lifecycle, "DeleteCluster", 202)
-	createOC := authzResourceRequest(t, p, "POST", "/api/v0/oidc_configs", `{"metadata":{"labels":{"example.com/team":"blue","hyperfleet.io/cluster-namespace":"forged"}},"spec":{"type":"unmanaged","issuerUrl":"https://example.com/http-created","secretArn":"secret","installerRoleArn":"role"}}`, lifecycle, "CreateOIDCConfig", 201)
+	authzResourceRequest(t, p, "GET", authzClustersPath+"/http-created", "", lifecycle, "DescribeCluster", 200)
+	authzResourceRequest(t, p, "POST", "/api/v0/nodepools", `{"metadata":{"name":"http-created.pool"},"spec":{"labels":{"state":"created"}}}`, lifecycle, "CreateNodePool", 201)
+	authzResourceRequest(t, p, "GET", "/api/v0/nodepools/http-created.pool", "", lifecycle, "DescribeNodePool", 200)
+	authzResourceRequest(t, p, "DELETE", "/api/v0/nodepools/http-created.pool", "", lifecycle, "DeleteNodePool", 202)
+	authzResourceRequest(t, p, "DELETE", authzClustersPath+"/http-created", "", lifecycle, "DeleteCluster", 202)
+	createOC := authzResourceRequest(t, p, "POST", "/api/v0/oidc_configs", `{"metadata":{"name":"http-created","labels":{"example.com/team":"blue","hyperfleet.io/claimed-by-cluster-uid":"forged"}},"spec":{"type":"unmanaged","issuerUrl":"https://example.com/http-created","secretArn":"secret","installerRoleArn":"role"}}`, lifecycle, "CreateOIDCConfig", 201)
 	var config publicResourceID
-	_ = json.Unmarshal(createOC.Body, &config)
-	configID := config.Metadata.UID
-	authzResourceRequest(t, p, "GET", "/api/v0/oidc_configs/"+configID, "", lifecycle, "DescribeOIDCConfig", 200)
-	authzResourceRequest(t, p, "DELETE", "/api/v0/oidc_configs/"+configID, "", lifecycle, "DeleteOIDCConfig", 202)
+	if err := json.Unmarshal(createOC.Body, &config); err != nil || config.Metadata.UID == "" {
+		t.Fatalf("OIDC create lacked UID: %s %v", createOC.Body, err)
+	}
+	authzResourceRequest(t, p, "GET", "/api/v0/oidc_configs/http-created", "", lifecycle, "DescribeOIDCConfig", 200)
+	authzResourceRequest(t, p, "DELETE", "/api/v0/oidc_configs/http-created", "", lifecycle, "DeleteOIDCConfig", 202)
 	authzResourceRequest(t, p, "POST", "/api/v0/management_clusters", `{"id":"http-created","accountId":"222222222222","region":"us-west-2"}`, operator, "CreateManagementCluster", 201)
 	authzResourceRequest(t, p, "GET", "/api/v0/management_clusters/http-created", "", operator, "DescribeManagementCluster", 200)
 	var registered v1.ManagementCluster
