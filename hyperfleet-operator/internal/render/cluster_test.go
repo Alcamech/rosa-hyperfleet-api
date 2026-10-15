@@ -4,6 +4,8 @@ import (
 	"slices"
 	"testing"
 
+	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
+
 	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
 	configv1 "github.com/openshift/api/config/v1"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
@@ -16,7 +18,8 @@ func testCluster() *hyperfleetv1alpha1.Cluster {
 	return &hyperfleetv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-cluster",
-			Namespace: "cluster-abc12345",
+			Namespace: "account-123456789012",
+			UID:       "abc12345",
 		},
 		Spec: hyperfleetv1alpha1.ClusterSpec{
 			CreatorARN: "arn:aws:iam::123456789012:user/admin",
@@ -123,7 +126,7 @@ func TestClusterResourcesTypes(t *testing.T) {
 		{"configmaps", "cluster-config"},
 		{"externalsecrets", "pull-secret"},
 		{"certificates", "api-serving-cert"},
-		{"hostedclusters", "my-cluster"},
+		{"hostedclusters", HostedClusterName(testCluster())},
 		{"secrets", "ssh-key"},
 	}
 
@@ -133,6 +136,171 @@ func TestClusterResourcesTypes(t *testing.T) {
 		}
 		if resources[i].Name != e.name {
 			t.Errorf("resource[%d]: expected name %q, got %q", i, e.name, resources[i].Name)
+		}
+	}
+}
+
+func TestClusterResourcesDecoupleHostedClusterNameFromCustomerName(t *testing.T) {
+	cluster := testCluster()
+	cluster.UID = "550e8400-e29b-41d4-a716-446655440000"
+	cluster.Name = "customer-name-longer-than-18-characters"
+	cluster.Spec.HostedClusterName = hyperfleetv1alpha1.HostedClusterNameFromDNSReservation(&hyperfleetv1alpha1.DNSReservation{
+		ObjectMeta: metav1.ObjectMeta{UID: "550e8400-e29b-41d4-a716-446655440000"},
+	})
+	resources, err := ClusterResources(cluster, false, "f7a3.0.example.com", "")
+	if err != nil {
+		t.Fatalf("ClusterResources: %v", err)
+	}
+
+	var hostedCluster *hypershiftv1beta1.HostedCluster
+	var clusterConfig *corev1.ConfigMap
+	var servingCert *Certificate
+	for _, resource := range resources {
+		switch resource.Resource {
+		case "hostedclusters":
+			if resource.Name != HostedClusterName(cluster) {
+				t.Errorf("HostedCluster resource name = %q, want %q", resource.Name, HostedClusterName(cluster))
+			}
+			hostedCluster = resource.Object.(*hypershiftv1beta1.HostedCluster)
+		case "configmaps":
+			if resource.Name == "cluster-config" {
+				clusterConfig = resource.Object.(*corev1.ConfigMap)
+			}
+		case "certificates":
+			if resource.Name == "api-serving-cert" {
+				servingCert = resource.Object.(*Certificate)
+			}
+		}
+	}
+	if hostedCluster == nil {
+		t.Fatal("rendered resources do not include a HostedCluster")
+	}
+	if hostedCluster.Name != HostedClusterName(cluster) {
+		t.Errorf("HostedCluster metadata.name = %q, want %q", hostedCluster.Name, HostedClusterName(cluster))
+	}
+	hcpNamespace := ManagementNamespace(string(cluster.UID)) + "-" + hostedCluster.Name
+	if len(hcpNamespace) != k8svalidation.DNS1123LabelMaxLength {
+		t.Errorf("HostedControlPlane namespace length = %d, want %d", len(hcpNamespace), k8svalidation.DNS1123LabelMaxLength)
+	}
+	if len(hcpNamespace) > k8svalidation.DNS1123LabelMaxLength {
+		t.Errorf("HostedControlPlane namespace %q is %d chars; max is %d", hcpNamespace, len(hcpNamespace), k8svalidation.DNS1123LabelMaxLength)
+	}
+	if problems := k8svalidation.IsDNS1123Label(hcpNamespace); len(problems) > 0 {
+		t.Errorf("HostedControlPlane namespace %q is not a DNS label: %v", hcpNamespace, problems)
+	}
+	wantAPIHost := "api." + HostedClusterName(cluster) + ".f7a3.0.example.com"
+	if got := hostedCluster.Spec.KubeAPIServerDNSName; got != wantAPIHost {
+		t.Errorf("KubeAPIServerDNSName = %q, want HostedCluster name %q", got, wantAPIHost)
+	}
+	var apiRouteHostname, oauthRouteHostname string
+	for _, service := range hostedCluster.Spec.Services {
+		if service.Route == nil {
+			continue
+		}
+		switch service.Service {
+		case hypershiftv1beta1.APIServer:
+			apiRouteHostname = service.Route.Hostname
+		case hypershiftv1beta1.OAuthServer:
+			oauthRouteHostname = service.Route.Hostname
+		}
+	}
+	if apiRouteHostname != wantAPIHost {
+		t.Errorf("API Route hostname = %q, want %q", apiRouteHostname, wantAPIHost)
+	}
+	wantOAuthHost := "oauth." + HostedClusterName(cluster) + ".f7a3.0.example.com"
+	if oauthRouteHostname != wantOAuthHost {
+		t.Errorf("OAuth Route hostname = %q, want HostedCluster name %q", oauthRouteHostname, wantOAuthHost)
+	}
+	if servingCert == nil {
+		t.Fatal("rendered resources do not include the API serving Certificate")
+	}
+	wantCertDNSName := "*." + HostedClusterName(cluster) + ".f7a3.0.example.com"
+	if len(servingCert.Spec.DNSNames) != 1 || servingCert.Spec.DNSNames[0] != wantCertDNSName {
+		t.Errorf("API serving cert DNSNames = %v, want [%q]", servingCert.Spec.DNSNames, wantCertDNSName)
+	}
+	if clusterConfig == nil || clusterConfig.Data["cluster_name"] != cluster.Name {
+		t.Errorf("cluster-config cluster_name = %v, want customer-facing name %q", clusterConfig, cluster.Name)
+	}
+}
+
+func TestLongCustomerNameUsesHostedClusterNameForAPIOAuthAndCertificateDNS(t *testing.T) {
+	reservation := &hyperfleetv1alpha1.DNSReservation{
+		ObjectMeta: metav1.ObjectMeta{UID: "550e8400-e29b-41d4-a716-446655440000"},
+	}
+	cluster := testCluster()
+	cluster.UID = "12345678-1234-1234-1234-123456789abc"
+	cluster.Name = "customer-name-longer-than-18-characters"
+	cluster.Spec.DNSReservationID = string(reservation.UID)
+	cluster.Spec.HostedClusterName = hyperfleetv1alpha1.HostedClusterNameFromDNSReservation(reservation)
+
+	resources, err := ClusterResources(cluster, false, "f7a3.0.example.com", "")
+	if err != nil {
+		t.Fatalf("ClusterResources: %v", err)
+	}
+
+	var hostedCluster *hypershiftv1beta1.HostedCluster
+	var servingCert *Certificate
+	for _, resource := range resources {
+		switch resource.Resource {
+		case "hostedclusters":
+			hostedCluster = resource.Object.(*hypershiftv1beta1.HostedCluster)
+		case "certificates":
+			if resource.Name == "api-serving-cert" {
+				servingCert = resource.Object.(*Certificate)
+			}
+		}
+	}
+	if hostedCluster == nil || servingCert == nil {
+		t.Fatalf("rendered HostedCluster or API serving Certificate is missing: HostedCluster=%v Certificate=%v", hostedCluster != nil, servingCert != nil)
+	}
+
+	hostedName := hyperfleetv1alpha1.HostedClusterNameFromDNSReservation(reservation)
+	wantAPIHost := "api." + hostedName + ".f7a3.0.example.com"
+	wantOAuthHost := "oauth." + hostedName + ".f7a3.0.example.com"
+	if got := hostedCluster.Spec.KubeAPIServerDNSName; got != wantAPIHost {
+		t.Errorf("KubeAPIServerDNSName = %q, want %q", got, wantAPIHost)
+	}
+	var apiRouteHostname, oauthRouteHostname string
+	for _, service := range hostedCluster.Spec.Services {
+		if service.Route == nil {
+			continue
+		}
+		switch service.Service {
+		case hypershiftv1beta1.APIServer:
+			apiRouteHostname = service.Route.Hostname
+		case hypershiftv1beta1.OAuthServer:
+			oauthRouteHostname = service.Route.Hostname
+		}
+	}
+	if apiRouteHostname != wantAPIHost {
+		t.Errorf("API Route hostname = %q, want %q", apiRouteHostname, wantAPIHost)
+	}
+	if oauthRouteHostname != wantOAuthHost {
+		t.Errorf("OAuth Route hostname = %q, want %q", oauthRouteHostname, wantOAuthHost)
+	}
+	wantCertDNSName := "*." + hostedName + ".f7a3.0.example.com"
+	if len(servingCert.Spec.DNSNames) != 1 || servingCert.Spec.DNSNames[0] != wantCertDNSName {
+		t.Errorf("API serving cert DNSNames = %v, want [%q]", servingCert.Spec.DNSNames, wantCertDNSName)
+	}
+}
+
+func TestClusterResourcesRenderIntoUIDManagementNamespace(t *testing.T) {
+	cluster := testCluster()
+	resources, err := ClusterResources(cluster, false, "f7a3.0.example.com", "")
+	if err != nil {
+		t.Fatalf("ClusterResources: %v", err)
+	}
+	wantNamespace := ManagementNamespace(string(cluster.UID))
+	for _, resource := range resources {
+		if resource.Resource == "namespaces" {
+			namespace := resource.Object.(*corev1.Namespace)
+			if namespace.Name != wantNamespace {
+				t.Errorf("rendered namespace name = %q, want %q", namespace.Name, wantNamespace)
+			}
+			continue
+		}
+		if resource.Namespace != wantNamespace {
+			t.Errorf("resource %s/%s namespace = %q, want %q", resource.Resource, resource.Name, resource.Namespace, wantNamespace)
 		}
 	}
 }
@@ -270,10 +438,15 @@ func TestHostedClusterDNS(t *testing.T) {
 	}
 
 	var hc *hypershiftv1beta1.HostedCluster
+	var servingCert *Certificate
 	for _, m := range resources {
-		if m.Resource == "hostedclusters" {
+		switch m.Resource {
+		case "hostedclusters":
 			hc = m.Object.(*hypershiftv1beta1.HostedCluster)
-			break
+		case "certificates":
+			if m.Name == "api-serving-cert" {
+				servingCert = m.Object.(*Certificate)
+			}
 		}
 	}
 	if hc == nil {
@@ -286,6 +459,30 @@ func TestHostedClusterDNS(t *testing.T) {
 
 	if want := "api.my-cluster.f7a3.0.example.com"; hc.Spec.KubeAPIServerDNSName != want {
 		t.Errorf("kubeAPIServerDNSName = %q, want %q", hc.Spec.KubeAPIServerDNSName, want)
+	}
+	var apiRouteHostname, oauthRouteHostname string
+	for _, service := range hc.Spec.Services {
+		if service.Route == nil {
+			continue
+		}
+		switch service.Service {
+		case hypershiftv1beta1.APIServer:
+			apiRouteHostname = service.Route.Hostname
+		case hypershiftv1beta1.OAuthServer:
+			oauthRouteHostname = service.Route.Hostname
+		}
+	}
+	if apiRouteHostname != "api.my-cluster.f7a3.0.example.com" {
+		t.Errorf("API Route hostname = %q, want customer-name fallback", apiRouteHostname)
+	}
+	if oauthRouteHostname != "oauth.my-cluster.f7a3.0.example.com" {
+		t.Errorf("OAuth Route hostname = %q, want customer-name fallback", oauthRouteHostname)
+	}
+	if servingCert == nil {
+		t.Fatal("rendered resources do not include the API serving Certificate")
+	}
+	if len(servingCert.Spec.DNSNames) != 1 || servingCert.Spec.DNSNames[0] != "*.my-cluster.f7a3.0.example.com" {
+		t.Errorf("API serving cert DNSNames = %v, want customer-name wildcard", servingCert.Spec.DNSNames)
 	}
 
 	if got := hc.Spec.IssuerURL; got != "https://oidc.example.com/abc12345" {

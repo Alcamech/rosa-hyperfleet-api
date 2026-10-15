@@ -18,6 +18,7 @@ import (
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
+	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/validation"
 )
 
 // maxIssuerURLLength bounds customer-supplied unmanaged issuer URLs.
@@ -149,6 +150,18 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, ErrOidcConfigCreateInvalidBody, h.logger)
 		return
 	}
+	if req.Name == "" {
+		writeAPIError(w, ErrOidcConfigCreateMissingFields, h.logger)
+		return
+	}
+	if err := validation.ValidateResourceName(req.Name); err != nil {
+		writeAPIError(w, ErrOidcConfigCreateInvalidName, h.logger)
+		return
+	}
+	if err := validation.ValidateAccountNamespace(req.Namespace, accountID); err != nil {
+		writeAPIError(w, ErrOidcConfigCreateNamespaceMismatch, h.logger)
+		return
+	}
 
 	// Reject absent spec (nil) and empty spec object ({}) — spec.type is required.
 	var envelope struct {
@@ -191,23 +204,24 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	configID := h.generateID()
-	h.logger.Info("creating oidc config", "account_id", accountID, "config_id", configID, "type", req.Spec.Type)
+	configName := req.Name
+	issuerID := h.generateID()
+	h.logger.Info("creating oidc config", "account_id", accountID, "config_name", configName, "type", req.Spec.Type)
 
 	if req.Spec.Type == hyperfleetv1alpha1.OidcConfigTypeManaged {
 		if h.oidcIssuerBaseURL == "" {
-			h.logger.Error("oidc issuer base URL is not configured; refusing to create managed config with a path-only issuerUrl", "account_id", accountID, "config_id", configID)
+			h.logger.Error("oidc issuer base URL is not configured; refusing to create managed config with a path-only issuerUrl", "account_id", accountID, "config_name", configName)
 			writeAPIError(w, ErrOidcConfigCreateIssuerNotConfigured, h.logger)
 			return
 		}
 		base := strings.TrimRight(h.oidcIssuerBaseURL, "/")
 		// Server-generated from a UUID; normalization below is a defensive no-op, not a real gate.
-		req.Spec.IssuerUrl = base + "/" + configID
+		req.Spec.IssuerUrl = base + "/" + issuerID
 	}
 
 	normalizedIssuerURL, err := normalizeIssuerURL(req.Spec.IssuerUrl)
 	if err != nil {
-		h.logger.Error("invalid issuer URL", "error", err, "account_id", accountID, "config_id", configID)
+		h.logger.Error("invalid issuer URL", "error", err, "account_id", accountID, "config_name", configName)
 		writeAPIError(w, ErrOidcConfigCreateInvalidIssuerUrl.WithReason(err.Error()), h.logger)
 		return
 	}
@@ -220,22 +234,17 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, ErrOidcConfigCreateDuplicateIssuerUrl, h.logger)
 		return
 	} else if !hyperfleetdb.IsNotFound(err) {
-		h.logger.Warn("fast-path issuer URL uniqueness check failed; falling through to async reservation", "error", err, "account_id", accountID, "config_id", configID)
+		h.logger.Warn("fast-path issuer URL uniqueness check failed; falling through to async reservation", "error", err, "account_id", accountID, "config_name", configName)
 	}
 
-	cr := hyperfleetdb.PublicToInternalOidcConfig(&req, accountID, configID)
+	cr := hyperfleetdb.PublicToInternalOidcConfig(&req, accountID)
 
-	// Anti-spoofing: strip any client-supplied clusterNamespaceLabel before persisting.
-	delete(cr.Labels, clusterNamespaceLabel)
-
-	// indexRef is service-set: platform-api computes it, but OidcConfigReconciler creates the Index.
-	cr.Spec.IndexRef = hyperfleetv1alpha1.IndexRef{
-		Namespace: hyperfleetv1alpha1.OidcIssuerReservationsNamespace,
-		Name:      indexName,
-	}
-
-	if err := h.db.CreateOidcConfig(ctx, cr); err != nil {
-		h.logger.Error("failed to create oidc config", "error", err, "account_id", accountID)
+	if err := h.db.CreateOidcConfig(ctx, accountID, cr); err != nil {
+		if hyperfleetdb.IsAlreadyExists(err) {
+			writeAPIError(w, ErrOidcConfigCreateNameConflict, h.logger)
+			return
+		}
+		h.logger.Error("failed to create oidc config", "error", err, "account_id", accountID, "config_name", configName)
 		writeAPIError(w, ErrOidcConfigCreateFailed, h.logger)
 		return
 	}
@@ -289,7 +298,7 @@ func (h *OidcConfigHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if oc.Labels[clusterNamespaceLabel] != "" {
+	if oc.Labels[claimedByClusterUIDLabel] != "" {
 		writeAPIError(w, ErrOidcConfigDeleteInUse, h.logger)
 		return
 	}

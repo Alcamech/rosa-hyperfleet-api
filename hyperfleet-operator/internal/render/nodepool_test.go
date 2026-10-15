@@ -13,8 +13,8 @@ import (
 func testNodePool() *hyperfleetv1alpha1.NodePool {
 	return &hyperfleetv1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "workers",
-			Namespace: "cluster-abc12345",
+			Name:      "my-cluster.workers",
+			Namespace: "account-123456789012",
 		},
 		Spec: hyperfleetv1alpha1.NodePoolSpec{
 			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
@@ -67,7 +67,7 @@ func TestNodePoolResourceNaming(t *testing.T) {
 		t.Fatalf("NodePoolResource: %v", err)
 	}
 
-	wantName := "my-cluster-workers"
+	wantName := "workers"
 	if r.Name != wantName {
 		t.Errorf("Name = %q, want %q", r.Name, wantName)
 	}
@@ -77,8 +77,17 @@ func TestNodePoolResourceNaming(t *testing.T) {
 	}
 }
 
+func TestNodePoolResourceRejectsMismatchedParentName(t *testing.T) {
+	nodePool := testNodePool()
+	nodePool.Name = "other-cluster.workers"
+	if _, err := NodePoolResource(nodePool, testCluster()); err == nil {
+		t.Fatal("expected error for NodePool name whose parent prefix does not match the Cluster")
+	}
+}
+
 func TestNodePoolResourceObject(t *testing.T) {
-	r, err := NodePoolResource(testNodePool(), testCluster())
+	cluster := testCluster()
+	r, err := NodePoolResource(testNodePool(), cluster)
 	if err != nil {
 		t.Fatalf("NodePoolResource: %v", err)
 	}
@@ -87,8 +96,8 @@ func TestNodePoolResourceObject(t *testing.T) {
 		t.Fatalf("Object is %T, want *NodePool", r.Object)
 	}
 
-	if np.Spec.ClusterName != "my-cluster" {
-		t.Errorf("ClusterName = %q, want %q", np.Spec.ClusterName, "my-cluster")
+	if np.Spec.ClusterName != HostedClusterName(cluster) {
+		t.Errorf("ClusterName = %q, want %q", np.Spec.ClusterName, HostedClusterName(cluster))
 	}
 	if np.Spec.Replicas == nil || *np.Spec.Replicas != 3 {
 		t.Errorf("Replicas = %v, want 3", np.Spec.Replicas)
@@ -110,11 +119,26 @@ func TestNodePoolResourceObject(t *testing.T) {
 	}
 }
 
+func TestNodePoolResourceUsesReservationDerivedHostedClusterName(t *testing.T) {
+	cluster := testCluster()
+	cluster.Spec.HostedClusterName = hyperfleetv1alpha1.HostedClusterNameFromDNSReservation(&hyperfleetv1alpha1.DNSReservation{
+		ObjectMeta: metav1.ObjectMeta{UID: "550e8400-e29b-41d4-a716-446655440000"},
+	})
+	r, err := NodePoolResource(testNodePool(), cluster)
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
+	np := r.Object.(*hypershiftv1beta1.NodePool)
+	if want := HostedClusterName(cluster); np.Spec.ClusterName != want {
+		t.Errorf("ClusterName = %q, want %q", np.Spec.ClusterName, want)
+	}
+}
+
 func TestNodePoolResourceDefaults(t *testing.T) {
 	minimalNP := &hyperfleetv1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "workers",
-			Namespace: "cluster-abc12345",
+			Name:      "my-cluster.workers",
+			Namespace: "account-123456789012",
 		},
 		Spec: hyperfleetv1alpha1.NodePoolSpec{
 			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
@@ -203,8 +227,8 @@ func TestNodePoolResourceDefaults(t *testing.T) {
 func TestNodePoolResourceRootVolumePartialDefaults(t *testing.T) {
 	np := &hyperfleetv1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "workers",
-			Namespace: "cluster-abc12345",
+			Name:      "my-cluster.workers",
+			Namespace: "account-123456789012",
 		},
 		Spec: hyperfleetv1alpha1.NodePoolSpec{
 			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{

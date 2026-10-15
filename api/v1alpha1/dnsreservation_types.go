@@ -23,50 +23,104 @@ import (
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced,shortName=hfdns
-// +kubebuilder:printcolumn:name="BaseDomain",type=string,JSONPath=".spec.baseDomain"
-// +kubebuilder:printcolumn:name="Cluster",type=string,JSONPath=".metadata.labels.hyperfleet\\.io/cluster-namespace"
+// +genclient
+// +genclient:nonNamespaced
+// +resourceName=dns_reservations
+// +bridge:watch=disabled
+// +bridge:wait
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="BaseDomain",type=string,JSONPath=".status.baseDomain"
+// +kubebuilder:printcolumn:name="Cluster",type=string,JSONPath=".metadata.labels.hyperfleet\\.io/claimed-by-cluster-uid"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
 // DNSReservation reserves a DNS prefix within a specific zone shard.
-// Lives in the account namespace (account-<accountID>) for account isolation.
-// Global uniqueness of the DNS prefix is guaranteed by the referenced Index
-// resource in the shard's uniqueness namespace (dns-shard-<id>-reservations).
+// Customers create it in their account namespace (account-<accountID>). The
+// regional DNS zone and allocated prefix are operator-managed; the assigned base
+// domain and internal HostedCluster name are reported in status. metadata.name
+// is customer-selected.
 // Labels:
 //   - hyperfleet.io/account-id: AWS account that owns this reservation (always set).
-//   - hyperfleet.io/cluster-namespace: set when a cluster claims the reservation;
-//     absent for pre-reservations (e.g. shared-VPC flows).
+//   - hyperfleet.io/claimed-by-cluster-uid: set when a Cluster claims the reservation.
 type DNSReservation struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitzero"`
 
-	Spec DNSReservationSpec `json:"spec"`
+	// Spec configures the reservation's behavior when a Cluster releases its claim.
+	// +optional
+	Spec DNSReservationSpec `json:"spec,omitempty"`
+
+	// Status describes whether the reservation has been allocated and its base domain.
+	// +optional
+	Status DNSReservationStatus `json:"status,omitzero"`
 }
 
-// IndexRef is a reference to an Index resource by namespace and name.
-type IndexRef struct {
-	// Namespace of the Index (the uniqueness domain, e.g. "dns-shard-0-reservations").
-	// +kubebuilder:validation:MinLength=1
-	Namespace string `json:"namespace"`
+// DNSReservationClusterDeletionPolicy controls reservation cleanup when its
+// claiming Cluster is deleted.
+// +kubebuilder:validation:Enum=Retain;Delete
+type DNSReservationClusterDeletionPolicy string
 
-	// Name of the Index (the unique value, e.g. "f7a3").
-	// +kubebuilder:validation:MinLength=1
-	Name string `json:"name"`
-}
+const (
+	// DNSReservationClusterDeletionPolicyRetain keeps the reservation available for reuse.
+	DNSReservationClusterDeletionPolicyRetain DNSReservationClusterDeletionPolicy = "Retain"
+	// DNSReservationClusterDeletionPolicyDelete deletes the reservation and releases its allocation.
+	DNSReservationClusterDeletionPolicyDelete DNSReservationClusterDeletionPolicy = "Delete"
+)
 
 // DNSReservationSpec defines the desired state of a DNS reservation.
 type DNSReservationSpec struct {
-	// IndexRef references the Index resource in the shard's uniqueness
-	// namespace that guarantees global uniqueness for this reservation's
-	// prefix within the shard.
-	IndexRef IndexRef `json:"indexRef"`
+	// ClusterDeletionPolicy determines what happens when the claiming Cluster is deleted.
+	// It is platform-managed: customer-created reservations default to Retain and
+	// operator-created automatic reservations use Delete.
+	// +k8s:openapi-gen=false
+	// +hyperfleet:write-mode=service-set
+	// +optional
+	ClusterDeletionPolicy DNSReservationClusterDeletionPolicy `json:"clusterDeletionPolicy,omitempty"`
+}
 
-	// BaseDomain is the fully assembled base domain for this reservation
-	// (e.g. "f7a3.0.openshiftapps.com"). Used directly as the HostedCluster
-	// BaseDomain. Computed at creation time as {prefix}.{shard}.{baseDomain},
-	// where baseDomain is the operator's configured --base-domain.
-	BaseDomain string `json:"baseDomain"`
+// DNSReservationPhase represents the allocation lifecycle of a DNS reservation.
+// Pending means allocation or recovery is in progress; Ready means the Index is
+// reserved by this resource UID and BaseDomain is assigned. Retryable failures
+// are reported with a Ready=False condition while the phase remains Pending.
+// +kubebuilder:validation:Enum=Pending;Ready
+type DNSReservationPhase string
+
+const (
+	// DNSReservationPhasePending means allocation or recovery is in progress.
+	DNSReservationPhasePending DNSReservationPhase = "Pending"
+	// DNSReservationPhaseReady means an owned Index and base domain are assigned.
+	DNSReservationPhaseReady DNSReservationPhase = "Ready"
+)
+
+// DNSReservationStatus describes the operator-allocated DNS name.
+type DNSReservationStatus struct {
+	// Conditions represent the latest observations of the reservation's state.
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// Phase summarizes allocation state. BaseDomain is empty unless Phase is Ready.
+	// +optional
+	Phase DNSReservationPhase `json:"phase,omitempty"`
+
+	// BaseDomain is the assigned domain, e.g. "f7a3.0.openshiftapps.com".
+	// It is populated when Phase is Ready.
+	// +optional
+	BaseDomain string `json:"baseDomain,omitempty"`
+
+	// InternalHostedClusterName is the canonical management-cluster name to use
+	// with this reservation. Customer-created reservations use a UID-derived name
+	// that remains stable after claim; automatic reservations use their owning
+	// Cluster's persisted name. It is exposed so networking and Cluster creation
+	// use the same value.
+	// +optional
+	InternalHostedClusterName string `json:"internalHostedClusterName,omitempty"`
+
+	// ObservedGeneration is the most recent generation observed by the controller.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // +kubebuilder:object:root=true
