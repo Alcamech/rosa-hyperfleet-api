@@ -2,6 +2,7 @@ package hyperfleetdb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -17,8 +18,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
+	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 )
 
 func testScheme() *runtime.Scheme {
@@ -486,5 +489,241 @@ func TestNewClient_RequiresDSN(t *testing.T) {
 	_, err := NewClient(context.Background(), "", slog.Default())
 	if err == nil || !strings.Contains(err.Error(), "DSN is required") {
 		t.Fatalf("NewClient error = %v, want missing DSN error", err)
+	}
+}
+
+const (
+	spotQueueTestAccountID = "123456789012"
+	spotQueueTestURL       = "https://sqs.us-east-1.amazonaws.com/123456789012/spot-termination"
+)
+
+func spotQueueTestReservation(owner string, claimedAt time.Time) *hyperfleetv1alpha1.Index {
+	return &hyperfleetv1alpha1.Index{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: hyperfleetv1alpha1.SpotTerminationQueueReservationsNamespace,
+			Name:      hyperfleetv1alpha1.SpotTerminationQueueIndexName(spotQueueTestAccountID, spotQueueTestURL),
+			Labels:    map[string]string{hyperfleetv1alpha1.SpotTerminationQueueOwnerLabel: owner},
+			Annotations: map[string]string{
+				hyperfleetv1alpha1.SpotTerminationQueueClaimedAtAnnotation: claimedAt.UTC().Format(time.RFC3339Nano),
+			},
+		},
+	}
+}
+
+func newSpotQueueTestClient(objects ...client.Object) (*Client, client.Client) {
+	fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(objects...).Build()
+	return NewClientFrom(fc, slog.New(slog.NewTextHandler(os.Stdout, nil))), fc
+}
+
+func TestClient_ClaimSpotTerminationQueueCreatesReservation(t *testing.T) {
+	c, fc := newSpotQueueTestClient()
+	created, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1")
+	if err != nil || !created {
+		t.Fatalf("ClaimSpotTerminationQueue() = (%t, %v), want (true, nil)", created, err)
+	}
+
+	var reservation hyperfleetv1alpha1.Index
+	key := types.NamespacedName{
+		Namespace: hyperfleetv1alpha1.SpotTerminationQueueReservationsNamespace,
+		Name:      hyperfleetv1alpha1.SpotTerminationQueueIndexName(spotQueueTestAccountID, spotQueueTestURL),
+	}
+	if err := fc.Get(context.Background(), key, &reservation); err != nil {
+		t.Fatalf("getting created reservation: %v", err)
+	}
+	if got := reservation.Labels[hyperfleetv1alpha1.SpotTerminationQueueOwnerLabel]; got != spotQueueOwnerKey("cluster-1") {
+		t.Errorf("reservation owner = %q, want %q", got, spotQueueOwnerKey("cluster-1"))
+	}
+	if _, err := time.Parse(time.RFC3339Nano, reservation.Annotations[hyperfleetv1alpha1.SpotTerminationQueueClaimedAtAnnotation]); err != nil {
+		t.Errorf("reservation timestamp is invalid: %v", err)
+	}
+}
+
+func TestClient_ClaimSpotTerminationQueueRefreshesSameOwner(t *testing.T) {
+	reservation := spotQueueTestReservation(spotQueueOwnerKey("cluster-1"), time.Now().Add(-time.Hour))
+	reservation.Annotations = nil
+	c, fc := newSpotQueueTestClient(reservation)
+	created, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1")
+	if err != nil || created {
+		t.Fatalf("ClaimSpotTerminationQueue() = (%t, %v), want (false, nil)", created, err)
+	}
+
+	var updated hyperfleetv1alpha1.Index
+	key := types.NamespacedName{Namespace: reservation.Namespace, Name: reservation.Name}
+	if err := fc.Get(context.Background(), key, &updated); err != nil {
+		t.Fatalf("getting refreshed reservation: %v", err)
+	}
+	if updated.Annotations[hyperfleetv1alpha1.SpotTerminationQueueClaimedAtAnnotation] == "" {
+		t.Error("expected refresh to initialize the claim timestamp")
+	}
+}
+
+func TestClient_ClaimSpotTerminationQueueRejectsActiveOwner(t *testing.T) {
+	reservation := spotQueueTestReservation(spotQueueOwnerKey("owner"), time.Now())
+	owner := spotQueueTestCluster("owner", spotQueueTestURL)
+	c, _ := newSpotQueueTestClient(reservation, owner)
+	created, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "other")
+	if created || !IsAlreadyExists(err) {
+		t.Fatalf("ClaimSpotTerminationQueue() = (%t, %v), want an already-exists error", created, err)
+	}
+}
+
+func TestClient_ClaimSpotTerminationQueueReclaimsExpiredReservation(t *testing.T) {
+	reservation := spotQueueTestReservation(spotQueueOwnerKey("deleted-cluster"), time.Now().Add(-2*spotQueueClaimTimeout))
+	c, fc := newSpotQueueTestClient(reservation)
+	created, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-new")
+	if err != nil || !created {
+		t.Fatalf("ClaimSpotTerminationQueue() = (%t, %v), want (true, nil)", created, err)
+	}
+
+	var current hyperfleetv1alpha1.Index
+	key := types.NamespacedName{Namespace: reservation.Namespace, Name: reservation.Name}
+	if err := fc.Get(context.Background(), key, &current); err != nil {
+		t.Fatalf("getting reclaimed reservation: %v", err)
+	}
+	if got := current.Labels[hyperfleetv1alpha1.SpotTerminationQueueOwnerLabel]; got != spotQueueOwnerKey("cluster-new") {
+		t.Errorf("reservation owner = %q, want %q", got, spotQueueOwnerKey("cluster-new"))
+	}
+}
+
+func TestClient_ClaimSpotTerminationQueueKeepsRecentReservation(t *testing.T) {
+	reservation := spotQueueTestReservation(spotQueueOwnerKey("deleted-cluster"), time.Now())
+	c, _ := newSpotQueueTestClient(reservation)
+	created, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-new")
+	if created || !IsAlreadyExists(err) {
+		t.Fatalf("ClaimSpotTerminationQueue() = (%t, %v), want a recent-reservation conflict", created, err)
+	}
+}
+
+func TestClient_ClaimSpotTerminationQueueReturnsClientErrors(t *testing.T) {
+	wantErr := errors.New("storage failure")
+	t.Run("create", func(t *testing.T) {
+		c := NewClientFrom(fake.NewClientBuilder().WithScheme(testScheme()).WithInterceptorFuncs(interceptor.Funcs{
+			Create: func(context.Context, client.WithWatch, client.Object, ...client.CreateOption) error { return wantErr },
+		}).Build(), slog.New(slog.NewTextHandler(os.Stdout, nil)))
+		if _, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); !errors.Is(err, wantErr) {
+			t.Fatalf("ClaimSpotTerminationQueue() error = %v, want %v", err, wantErr)
+		}
+	})
+	t.Run("get existing reservation", func(t *testing.T) {
+		reservation := spotQueueTestReservation(spotQueueOwnerKey("owner"), time.Now())
+		c := NewClientFrom(fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(reservation).WithInterceptorFuncs(interceptor.Funcs{
+			Get: func(context.Context, client.WithWatch, types.NamespacedName, client.Object, ...client.GetOption) error {
+				return wantErr
+			},
+		}).Build(), slog.New(slog.NewTextHandler(os.Stdout, nil)))
+		if _, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); !errors.Is(err, wantErr) {
+			t.Fatalf("ClaimSpotTerminationQueue() error = %v, want %v", err, wantErr)
+		}
+	})
+	t.Run("refresh existing reservation", func(t *testing.T) {
+		reservation := spotQueueTestReservation(spotQueueOwnerKey("cluster-1"), time.Now())
+		c := NewClientFrom(fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(reservation).WithInterceptorFuncs(interceptor.Funcs{
+			Update: func(context.Context, client.WithWatch, client.Object, ...client.UpdateOption) error { return wantErr },
+		}).Build(), slog.New(slog.NewTextHandler(os.Stdout, nil)))
+		if _, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); !errors.Is(err, wantErr) {
+			t.Fatalf("ClaimSpotTerminationQueue() error = %v, want %v", err, wantErr)
+		}
+	})
+	t.Run("release stale reservation", func(t *testing.T) {
+		reservation := spotQueueTestReservation(spotQueueOwnerKey("deleted-cluster"), time.Now().Add(-2*spotQueueClaimTimeout))
+		c := NewClientFrom(fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(reservation).WithInterceptorFuncs(interceptor.Funcs{
+			Delete: func(context.Context, client.WithWatch, client.Object, ...client.DeleteOption) error { return wantErr },
+		}).Build(), slog.New(slog.NewTextHandler(os.Stdout, nil)))
+		if _, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); !errors.Is(err, wantErr) {
+			t.Fatalf("ClaimSpotTerminationQueue() error = %v, want %v", err, wantErr)
+		}
+	})
+}
+
+func TestSpotQueueHelpers(t *testing.T) {
+	if !spotQueueClaimExpired(spotQueueTestReservation("owner", time.Now().Add(-2*spotQueueClaimTimeout))) {
+		t.Error("expected old claim to be expired")
+	}
+	missingTimestamp := spotQueueTestReservation("owner", time.Time{})
+	missingTimestamp.Annotations = nil
+	if spotQueueClaimExpired(missingTimestamp) {
+		t.Error("claim without a timestamp must not be expired")
+	}
+	if clusterUsesSpotTerminationQueue(nil, spotQueueTestURL) {
+		t.Error("nil cluster must not use the queue")
+	}
+	if clusterUsesSpotTerminationQueue(&hyperfleetv1alpha1.Cluster{}, spotQueueTestURL) {
+		t.Error("cluster without AWS platform must not use the queue")
+	}
+	cluster := &hyperfleetv1alpha1.Cluster{Spec: hyperfleetv1alpha1.ClusterSpec{HostedCluster: hyperfleetv1alpha1.HostedClusterSpecPassthrough{
+		Platform: hypershiftPlatformWithQueue(spotQueueTestURL),
+	}}}
+	if !clusterUsesSpotTerminationQueue(cluster, spotQueueTestURL) || clusterUsesSpotTerminationQueue(cluster, "other") {
+		t.Error("queue usage helper returned an unexpected result")
+	}
+}
+
+func TestClient_ReleaseSpotTerminationQueue(t *testing.T) {
+	t.Run("missing reservation", func(t *testing.T) {
+		c, _ := newSpotQueueTestClient()
+		if err := c.ReleaseSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); err != nil {
+			t.Fatalf("ReleaseSpotTerminationQueue() error = %v, want nil", err)
+		}
+	})
+	t.Run("wrong owner", func(t *testing.T) {
+		reservation := spotQueueTestReservation(spotQueueOwnerKey("cluster-other"), time.Now())
+		c, _ := newSpotQueueTestClient(reservation)
+		if err := c.ReleaseSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); err == nil {
+			t.Fatal("ReleaseSpotTerminationQueue() error = nil, want ownership error")
+		}
+	})
+	t.Run("cluster still uses queue", func(t *testing.T) {
+		reservation := spotQueueTestReservation(spotQueueOwnerKey("cluster-1"), time.Now())
+		cluster := spotQueueTestCluster("cluster-1", spotQueueTestURL)
+		c, fc := newSpotQueueTestClient(reservation, cluster)
+		if err := c.ReleaseSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); err != nil {
+			t.Fatalf("ReleaseSpotTerminationQueue() error = %v, want nil", err)
+		}
+		var found hyperfleetv1alpha1.Index
+		if err := fc.Get(context.Background(), types.NamespacedName{Namespace: reservation.Namespace, Name: reservation.Name}, &found); err != nil {
+			t.Errorf("reservation was deleted while cluster still uses it: %v", err)
+		}
+	})
+	t.Run("cluster no longer uses queue", func(t *testing.T) {
+		reservation := spotQueueTestReservation(spotQueueOwnerKey("cluster-1"), time.Now())
+		cluster := spotQueueTestCluster("cluster-1", "")
+		c, fc := newSpotQueueTestClient(reservation, cluster)
+		if err := c.ReleaseSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); err != nil {
+			t.Fatalf("ReleaseSpotTerminationQueue() error = %v, want nil", err)
+		}
+		var found hyperfleetv1alpha1.Index
+		if err := fc.Get(context.Background(), types.NamespacedName{Namespace: reservation.Namespace, Name: reservation.Name}, &found); !IsNotFound(err) {
+			t.Errorf("reservation still exists after release: %v", err)
+		}
+	})
+	t.Run("delete failure", func(t *testing.T) {
+		wantErr := errors.New("delete failure")
+		reservation := spotQueueTestReservation(spotQueueOwnerKey("cluster-1"), time.Now())
+		cluster := spotQueueTestCluster("cluster-1", "")
+		c := NewClientFrom(fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(reservation, cluster).WithInterceptorFuncs(interceptor.Funcs{
+			Delete: func(context.Context, client.WithWatch, client.Object, ...client.DeleteOption) error { return wantErr },
+		}).Build(), slog.New(slog.NewTextHandler(os.Stdout, nil)))
+		if err := c.ReleaseSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); !errors.Is(err, wantErr) {
+			t.Fatalf("ReleaseSpotTerminationQueue() error = %v, want %v", err, wantErr)
+		}
+	})
+}
+
+func spotQueueTestCluster(clusterName, queueURL string) *hyperfleetv1alpha1.Cluster {
+	return &hyperfleetv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      clusterName,
+			Namespace: accountNamespace(spotQueueTestAccountID),
+			Labels:    map[string]string{accountIDLabel: spotQueueTestAccountID},
+		},
+		Spec: hyperfleetv1alpha1.ClusterSpec{HostedCluster: hyperfleetv1alpha1.HostedClusterSpecPassthrough{
+			Platform: hypershiftPlatformWithQueue(queueURL),
+		}},
+	}
+}
+
+func hypershiftPlatformWithQueue(queueURL string) hypershiftv1beta1.PlatformSpec {
+	return hypershiftv1beta1.PlatformSpec{
+		AWS: &hypershiftv1beta1.AWSPlatformSpec{TerminationHandlerQueueURL: queueURL},
 	}
 }
