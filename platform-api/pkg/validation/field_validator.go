@@ -182,13 +182,15 @@ func effectiveWriteMode(meta registry.FieldMeta, fs featuregate.FeatureSet) regi
 func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.FieldMeta, op Operation, value any, existingFields map[string]any, fs featuregate.FeatureSet, pointers map[string]bool) *ValidationError {
 	switch effectiveWriteMode(meta, fs) {
 	case registry.ServiceSet:
-		// A zero value means "not provided": create skips it and update keeps the
-		// stored value (PreserveServiceSet). Update also allows an exact echo.
-		// A non-nil pointer (e.g. *bool) is explicit even when zero, so it must echo.
-		if !pointers[fieldPath] && isZeroValue(value) {
-			return nil
-		}
-		if op == OperationUpdate && existingFields != nil && reflect.DeepEqual(existingFields[fieldPath], value) {
+		// Update allows an exact echo of the stored value, or a zero value where none
+		// is stored; clearing or changing a stored value is rejected. Create skips
+		// unset values. A non-nil pointer (e.g. *bool) is explicit even when zero.
+		if op == OperationUpdate && existingFields != nil {
+			oldValue, oldExists := existingFields[fieldPath]
+			if reflect.DeepEqual(oldValue, value) || (!oldExists && isZeroValue(value) && !pointers[fieldPath]) {
+				return nil
+			}
+		} else if isZeroValue(value) && !pointers[fieldPath] {
 			return nil
 		}
 		return &ValidationError{

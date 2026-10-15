@@ -105,8 +105,9 @@ Rules:
   fails the whole list.
 - Updates compare the stored spec with the merged object to be written. All
   required actions must allow before any write.
-- Service-set fields never change on update. An exact echo or a zero value is
-  accepted and the stored value kept; any other value returns 422.
+- Service-set fields never change on update. An exact echo is accepted;
+  changing or clearing one returns 422. An explicit `null` parent keeps its
+  service-set children.
 - Updates and deletes write the checked `resourceVersion`. On a conflict, updates
   retry (up to 5 attempts), re-reading, re-validating, and re-authorizing each
   attempt; exhausted retries return 409 `*-MGMT-UPDATE-006`. Deletes return 409
