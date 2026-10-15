@@ -1,8 +1,32 @@
 package render
 
 import (
+	"fmt"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
 )
+
+const (
+	clusterIDLabel    = "hyperfleet.io/cluster-id"
+	resourceTypeLabel = "hyperfleet.io/resource-type"
+	managedByLabel    = "hyperfleet.io/managed-by"
+	managedByOperator = "hyperfleet-operator"
+)
+
+// HostedClusterName resolves the internal management-cluster name persisted
+// by the platform API or operator. Legacy and automatic-DNS Clusters fall back
+// to their existing customer name.
+func HostedClusterName(cluster *hyperfleetv1alpha1.Cluster) string {
+	if cluster == nil {
+		return ""
+	}
+	if name := cluster.Spec.HostedClusterName; name != "" && name != hyperfleetv1alpha1.HostedClusterNamePending {
+		return name
+	}
+	return cluster.Name
+}
 
 // RegionalConfig holds per-region values injected by the operator at startup.
 type RegionalConfig struct {
@@ -28,14 +52,32 @@ type Resource struct {
 	Object    any
 }
 
-// ClusterIDFromNamespace extracts the cluster UUID from a namespace name
-// with the "cluster-" prefix.
-func ClusterIDFromNamespace(ns string) string {
-	const prefix = "cluster-"
-	if len(ns) > len(prefix) && ns[:len(prefix)] == prefix {
-		return ns[len(prefix):]
+// ManagementNamespace returns the namespace used for a Cluster's resources on
+// its management cluster. FleetDB namespaces are account-scoped and are not
+// used to derive this namespace.
+func ManagementNamespace(clusterUID string) string {
+	return "cluster-" + clusterUID
+}
+
+func clusterLabels(clusterUID string) map[string]string {
+	return map[string]string{clusterIDLabel: clusterUID}
+}
+
+func clusterResourceLabels(clusterUID, resourceType string) map[string]string {
+	labels := clusterLabels(clusterUID)
+	labels[resourceTypeLabel] = resourceType
+	return labels
+}
+
+func managementClusterIdentity(cluster *hyperfleetv1alpha1.Cluster) (uid, namespace string, err error) {
+	if cluster == nil {
+		return "", "", fmt.Errorf("cluster is nil")
 	}
-	return ns
+	if cluster.UID == "" {
+		return "", "", fmt.Errorf("cluster %s/%s has no database UID", cluster.Namespace, cluster.Name)
+	}
+	uid = string(cluster.UID)
+	return uid, ManagementNamespace(uid), nil
 }
 
 // Minimal local types for CRDs that lack standalone API modules.

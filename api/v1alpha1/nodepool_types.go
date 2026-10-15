@@ -43,17 +43,11 @@ const (
 // slip past the both-zero check and stall on its first upgrade.
 
 // NodePoolSpec defines the desired state of a NodePool.
-// The parent Cluster is identified by the shared metadata.Namespace (cluster UUID).
+// The parent Cluster is resolved from the cluster-name prefix in metadata.name within the account namespace.
 // +kubebuilder:validation:XValidation:rule="!((!has(self.maxUnavailable) || string(self.maxUnavailable) == '0' || string(self.maxUnavailable) == '0%') && has(self.maxSurge) && (string(self.maxSurge) == '0' || string(self.maxSurge) == '0%'))",message="maxUnavailable and maxSurge cannot both be 0: an upgrade can neither remove an existing node nor add a new one, so it would never make progress. maxUnavailable defaults to 0 when omitted"
 // +kubebuilder:validation:XValidation:rule="!has(self.maxUnavailable) || type(self.maxUnavailable) == string || !has(self.nodePool) || !has(self.nodePool.replicas) || self.maxUnavailable <= self.nodePool.replicas",message="maxUnavailable cannot exceed spec.nodePool.replicas"
 // +kubebuilder:validation:XValidation:rule="!has(self.maxSurge) || !has(self.nodePool) || !has(self.nodePool.management) || self.nodePool.management.upgradeType == 'Replace'",message="maxSurge is only valid when the upgrade type is Replace: InPlace upgrades never provision additional nodes"
 type NodePoolSpec struct {
-	// DisplayName is a human-readable name for the node pool.
-	// +hyperfleet:write-mode=mutable
-	// +kubebuilder:validation:MaxLength=256
-	// +optional
-	DisplayName string `json:"displayName,omitempty"`
-
 	// AutoRepair controls whether unhealthy nodes are automatically replaced.
 	// +hyperfleet:write-mode=mutable
 	// +optional
@@ -138,17 +132,23 @@ type NodePoolStatus struct {
 }
 
 // +genclient
+// +genclient:nonNamespaced
 // +bridge:watch=disabled
 // +bridge:wait
+// +bridge:parent=Cluster,label=hyperfleet.io/cluster-uid
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,shortName=hfnp
+// +kubebuilder:validation:XValidation:rule=`self.metadata.name.matches("^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?[.][a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")`,message="metadata.name must be <cluster>.<child> with DNS labels of at most 63 characters each"
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
 // NodePool is the Schema for the nodepools API.
 // It represents a set of worker nodes for a Cluster.
-// The parent Cluster shares the same metadata.Namespace (cluster UUID).
+// metadata.Namespace is account-<accountID>. metadata.Name is the client-selected
+// <cluster>.<child> name.
+// The parent Cluster name is the prefix of metadata.name; the server sets its
+// ownerReference and cluster-uid label after resolving that Cluster by account namespace/name.
 type NodePool struct {
 	metav1.TypeMeta `json:",inline"`
 

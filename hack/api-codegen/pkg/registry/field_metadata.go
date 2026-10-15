@@ -129,9 +129,9 @@ var FieldRegistry = TypedFieldRegistry{
 			OwnerType: "Cluster",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
 		},
-		"spec.displayName": {
-			FieldPath: "spec.displayName",
-			WriteMode: Mutable,
+		"spec.dnsReservationId": {
+			FieldPath: "spec.dnsReservationId",
+			WriteMode: Immutable,
 			OwnerType: "Cluster",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
 		},
@@ -732,8 +732,8 @@ var FieldRegistry = TypedFieldRegistry{
 			OwnerType: "Cluster",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
 		},
-		"spec.internalId": {
-			FieldPath: "spec.internalId",
+		"spec.hostedClusterName": {
+			FieldPath: "spec.hostedClusterName",
 			WriteMode: ServiceSet,
 			Hidden:    true,
 			OwnerType: "Cluster",
@@ -1189,6 +1189,15 @@ var FieldRegistry = TypedFieldRegistry{
 			OwnerGVK:  "",
 		},
 	},
+	"DNSReservation": {
+		"spec.clusterDeletionPolicy": {
+			FieldPath: "spec.clusterDeletionPolicy",
+			WriteMode: ServiceSet,
+			Hidden:    true,
+			OwnerType: "DNSReservation",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.DNSReservation",
+		},
+	},
 	"IngressConfiguration": {
 		"componentRoutes": {
 			FieldPath: "componentRoutes",
@@ -1428,12 +1437,6 @@ var FieldRegistry = TypedFieldRegistry{
 		},
 		"spec.autoRepair": {
 			FieldPath: "spec.autoRepair",
-			WriteMode: Mutable,
-			OwnerType: "NodePool",
-			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
-		},
-		"spec.displayName": {
-			FieldPath: "spec.displayName",
 			WriteMode: Mutable,
 			OwnerType: "NodePool",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
@@ -1727,13 +1730,6 @@ var FieldRegistry = TypedFieldRegistry{
 	"OidcConfig": {
 		"spec.accountId": {
 			FieldPath: "spec.accountId",
-			WriteMode: ServiceSet,
-			Hidden:    true,
-			OwnerType: "OidcConfig",
-			OwnerGVK:  "hyperfleet.io/v1alpha1.OidcConfig",
-		},
-		"spec.indexRef": {
-			FieldPath: "spec.indexRef",
 			WriteMode: ServiceSet,
 			Hidden:    true,
 			OwnerType: "OidcConfig",

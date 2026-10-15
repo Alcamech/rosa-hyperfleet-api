@@ -149,26 +149,24 @@ type CobraTemplateData struct {
 	RequiredCreateFlagFields []MergedAlias
 	RequiredUpdateFlagFields []MergedAlias
 	HasUpdateFields          bool
-	Namespaced               bool
 	UnsetPtrFields           []UnsetPtrField
 }
 
 // TFTemplateData is passed to tf templates.
 type TFTemplateData struct {
-	Package         string
-	ResourceName    string
-	SDKType         string
-	SDKShortType    string
-	AllFields       []MergedAlias
-	TopFields       []MergedAlias
-	Bundles         []AliasBundle
-	CreateFields    []MergedAlias
-	UpdateFields    []MergedAlias
-	ImmutableList   []string
-	ComputedList    []string
-	Namespaced      bool
-	IdentifierField string
-	HandlerFactory  string // e.g., "NewClusterHandlerImpl" for template to call
+	Package        string
+	ResourceName   string
+	SDKType        string
+	SDKShortType   string
+	AllFields      []MergedAlias
+	TopFields      []MergedAlias
+	Bundles        []AliasBundle
+	CreateFields   []MergedAlias
+	UpdateFields   []MergedAlias
+	ImmutableList  []string
+	ComputedList   []string
+	NameField      string // Go field resolved from metadata.name for Platform API routing
+	HandlerFactory string // e.g., "NewClusterHandlerImpl" for template to call
 }
 
 // AliasBundle describes a nested Terraform object made from leaf aliases.
@@ -179,11 +177,6 @@ type AliasBundle struct {
 	Required bool
 	Optional bool
 	Computed bool
-}
-
-// IsNamespacedResource returns true if the resource requires a namespace/parent argument.
-func IsNamespacedResource(resourceKey string) bool {
-	return strings.EqualFold(resourceKey, "nodepool")
 }
 
 // SDKTypeForOwner maps ownerType to SDK Go type.

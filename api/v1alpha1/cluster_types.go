@@ -33,16 +33,14 @@ const (
 	ClusterPhaseDeleting            ClusterPhase = "Deleting"
 )
 
-// ClusterSpec defines the desired state of a ROSA HCP cluster.
-// metadata.Name is the human-readable cluster name; metadata.Namespace is the cluster UUID.
-// The owning AWS account is stored as the label hyperfleet.io/account-id.
-type ClusterSpec struct {
-	// DisplayName is a human-readable name for the cluster.
-	// +hyperfleet:write-mode=mutable
-	// +kubebuilder:validation:MaxLength=256
-	// +optional
-	DisplayName string `json:"displayName,omitempty"`
+// HostedClusterNamePending marks a Cluster whose internal HostedCluster name
+// has not yet been initialized by the platform API or operator.
+const HostedClusterNamePending = "uid-pending"
 
+// ClusterSpec defines the desired state of a ROSA HCP cluster.
+// metadata.Name is the client-chosen account-scoped name; metadata.Namespace
+// is account-<accountID>.
+type ClusterSpec struct {
 	// DeleteProtection prevents accidental deletion when enabled.
 	// +hyperfleet:write-mode=mutable
 	// +optional
@@ -93,14 +91,28 @@ type ClusterSpec struct {
 	// +kubebuilder:validation:Pattern=`^arn:aws:`
 	CreatorARN string `json:"creatorARN,omitempty"`
 
-	// InternalID is a platform-assigned unique identifier.
+	// HostedClusterName is the internal HostedCluster name used on the
+	// management cluster. It is set by the platform/operator, not the customer.
+	// When a DNSReservation is supplied, it copies that record's
+	// status.internalHostedClusterName so networking and Cluster creation use
+	// the same value.
+	// Without a supplied reservation, it matches metadata.name.
+	// It is optional for legacy Clusters that fall back to metadata.name; remove
+	// +optional after those records are backfilled with an internal name.
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=service-set
 	// +optional
-	InternalID string `json:"internalId,omitempty"`
+	HostedClusterName string `json:"hostedClusterName,omitempty"`
 
-	// OidcConfigID selects the OidcConfig-backed issuer flow when set, or the
-	// legacy auto-generated issuer flow when empty. Immutable after creation.
+	// DNSReservationID is the UID of an account-scoped DNSReservation to bind to
+	// this Cluster. If omitted, the operator allocates and binds one automatically.
+	// Immutable after creation.
+	// +hyperfleet:write-mode=immutable
+	// +optional
+	DNSReservationID string `json:"dnsReservationId,omitempty"`
+
+	// OidcConfigID is the UID of the account-scoped OidcConfig to use for cluster
+	// identity. Empty selects the legacy managed issuer flow. Immutable after creation.
 	// +hyperfleet:write-mode=immutable
 	// +optional
 	OidcConfigID string `json:"oidcConfigId,omitempty"`
@@ -173,6 +185,7 @@ type PlacementReference struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,shortName=hfc
+// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 63 && self.metadata.name.matches('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')",message="metadata.name must be a DNS label of at most 63 characters"
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="MC",type=string,JSONPath=".status.placementRef.managementCluster"
 // +kubebuilder:printcolumn:name="Endpoint",type=string,JSONPath=".status.controlPlaneEndpoint.host",priority=1
@@ -181,8 +194,9 @@ type PlacementReference struct {
 
 // Cluster is the Schema for the clusters API.
 // It represents a ROSA HCP cluster whose lifecycle is managed by the hyperfleet-operator.
-// metadata.Name is the human-readable cluster name; metadata.Namespace is the cluster UUID.
-// The owning account is the label hyperfleet.io/account-id.
+// metadata.Name is a client-chosen DNS label of at most 63 characters;
+// metadata.Namespace is account-<accountID>. The owning account is recorded in
+// the hyperfleet.io/account-id label.
 type Cluster struct {
 	metav1.TypeMeta `json:",inline"`
 
