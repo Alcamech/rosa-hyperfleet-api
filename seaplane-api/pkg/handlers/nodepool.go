@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 
@@ -81,43 +82,10 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
-	clusterUID := r.URL.Query().Get("clusterUID")
-	clusterID := r.URL.Query().Get("clusterId")
-	if clusterUID != "" && clusterID != "" && clusterUID != clusterID {
-		writeAPIError(w, ErrNodePoolListInvalidClusterUID, h.logger)
+	clusterUID, apiErr := listClusterUID(r.URL.Query())
+	if apiErr != nil {
+		writeAPIError(w, *apiErr, h.logger)
 		return
-	}
-	if clusterUID == "" {
-		// The existing OpenAPI list parameter is named clusterId. Its value is
-		// now the parent Cluster UID and is applied as the cluster-uid label.
-		clusterUID = clusterID
-	}
-	if selector := r.URL.Query().Get("labelSelector"); selector != "" {
-		parsed, err := labels.Parse(selector)
-		if err != nil {
-			writeAPIError(w, ErrNodePoolListInvalidLabelSelector, h.logger)
-			return
-		}
-		requirements, selectable := parsed.Requirements()
-		if !selectable || len(requirements) != 1 || requirements[0].Key() != clusterUIDLabel ||
-			(requirements[0].Operator() != selection.Equals && requirements[0].Operator() != selection.DoubleEquals) ||
-			requirements[0].Values().Len() != 1 {
-			writeAPIError(w, ErrNodePoolListInvalidLabelSelector, h.logger)
-			return
-		}
-		selectedUID := requirements[0].Values().List()[0]
-		if clusterUID != "" && clusterUID != selectedUID {
-			writeAPIError(w, ErrNodePoolListInvalidLabelSelector, h.logger)
-			return
-		}
-		clusterUID = selectedUID
-	}
-	if clusterUID != "" {
-		parsedUID, err := uuid.Parse(clusterUID)
-		if err != nil || parsedUID.String() != clusterUID {
-			writeAPIError(w, ErrNodePoolListInvalidClusterUID, h.logger)
-			return
-		}
 	}
 
 	limit := 50
@@ -184,6 +152,45 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 	if err := api.Write(w, http.StatusOK, response); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
+}
+
+// listClusterUID resolves the optional parent Cluster UID filter from clusterUID,
+// clusterId, or a cluster-uid labelSelector.
+func listClusterUID(query url.Values) (string, *APIError) {
+	clusterUID := query.Get("clusterUID")
+	clusterID := query.Get("clusterId")
+	if clusterUID != "" && clusterID != "" && clusterUID != clusterID {
+		return "", &ErrNodePoolListInvalidClusterUID
+	}
+	if clusterUID == "" {
+		// The existing OpenAPI list parameter is named clusterId. Its value is
+		// now the parent Cluster UID and is applied as the cluster-uid label.
+		clusterUID = clusterID
+	}
+	if selector := query.Get("labelSelector"); selector != "" {
+		parsed, err := labels.Parse(selector)
+		if err != nil {
+			return "", &ErrNodePoolListInvalidLabelSelector
+		}
+		requirements, selectable := parsed.Requirements()
+		if !selectable || len(requirements) != 1 || requirements[0].Key() != clusterUIDLabel ||
+			(requirements[0].Operator() != selection.Equals && requirements[0].Operator() != selection.DoubleEquals) ||
+			requirements[0].Values().Len() != 1 {
+			return "", &ErrNodePoolListInvalidLabelSelector
+		}
+		selectedUID := requirements[0].Values().List()[0]
+		if clusterUID != "" && clusterUID != selectedUID {
+			return "", &ErrNodePoolListInvalidLabelSelector
+		}
+		clusterUID = selectedUID
+	}
+	if clusterUID != "" {
+		parsedUID, err := uuid.Parse(clusterUID)
+		if err != nil || parsedUID.String() != clusterUID {
+			return "", &ErrNodePoolListInvalidClusterUID
+		}
+	}
+	return clusterUID, nil
 }
 
 // Create handles POST /api/v0/nodepools
