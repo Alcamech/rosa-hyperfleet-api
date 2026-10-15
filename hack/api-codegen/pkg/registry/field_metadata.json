@@ -579,37 +579,37 @@
   },
   {
     "fieldPath": "spec.hostedCluster.networking.allocateNodeCIDRs",
-    "writeMode": "mutable",
+    "writeMode": "immutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
     "fieldPath": "spec.hostedCluster.networking.apiServer",
-    "writeMode": "mutable",
+    "writeMode": "immutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
     "fieldPath": "spec.hostedCluster.networking.clusterNetwork",
-    "writeMode": "mutable",
+    "writeMode": "immutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
     "fieldPath": "spec.hostedCluster.networking.machineNetwork",
-    "writeMode": "mutable",
+    "writeMode": "immutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
     "fieldPath": "spec.hostedCluster.networking.networkType",
-    "writeMode": "mutable",
+    "writeMode": "immutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
     "fieldPath": "spec.hostedCluster.networking.serviceNetwork",
-    "writeMode": "mutable",
+    "writeMode": "immutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
@@ -1094,37 +1094,37 @@
   },
   {
     "fieldPath": "allocateNodeCIDRs",
-    "writeMode": "mutable",
+    "writeMode": "immutable",
     "ownerType": "ClusterNetworking",
     "ownerGVK": ""
   },
   {
     "fieldPath": "apiServer",
-    "writeMode": "mutable",
+    "writeMode": "immutable",
     "ownerType": "ClusterNetworking",
     "ownerGVK": ""
   },
   {
     "fieldPath": "clusterNetwork",
-    "writeMode": "mutable",
+    "writeMode": "immutable",
     "ownerType": "ClusterNetworking",
     "ownerGVK": ""
   },
   {
     "fieldPath": "machineNetwork",
-    "writeMode": "mutable",
+    "writeMode": "immutable",
     "ownerType": "ClusterNetworking",
     "ownerGVK": ""
   },
   {
     "fieldPath": "networkType",
-    "writeMode": "mutable",
+    "writeMode": "immutable",
     "ownerType": "ClusterNetworking",
     "ownerGVK": ""
   },
   {
     "fieldPath": "serviceNetwork",
-    "writeMode": "mutable",
+    "writeMode": "immutable",
     "ownerType": "ClusterNetworking",
     "ownerGVK": ""
   },

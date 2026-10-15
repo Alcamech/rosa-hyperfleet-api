@@ -1593,3 +1593,112 @@ func TestClusterHandler_Create_SameNameDifferentAccount(t *testing.T) {
 		t.Fatalf("expected 201 (same name in different account is allowed), got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestClusterHandler_Create_NetworkCIDRValidation(t *testing.T) {
+	tests := []struct {
+		name           string
+		networking     map[string]any
+		expectError    bool
+		errorSubstring string
+	}{
+		{
+			name: "valid network configuration",
+			networking: map[string]any{
+				"machineNetwork": []map[string]any{
+					{"cidr": "10.0.0.0/16"},
+				},
+				"clusterNetwork": []map[string]any{
+					{"cidr": "10.128.0.0/14", "hostPrefix": 23},
+				},
+				"serviceNetwork": []map[string]any{
+					{"cidr": "172.30.0.0/16"},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "overlapping machine and service CIDRs",
+			networking: map[string]any{
+				"machineNetwork": []map[string]any{
+					{"cidr": "10.0.0.0/16"},
+				},
+				"serviceNetwork": []map[string]any{
+					{"cidr": "10.0.0.0/24"},
+				},
+			},
+			expectError:    true,
+			errorSubstring: "overlap",
+		},
+		{
+			name: "machine CIDR contains HyperShift API address",
+			networking: map[string]any{
+				"machineNetwork": []map[string]any{
+					{"cidr": "172.20.0.0/16"},
+				},
+			},
+			expectError:    true,
+			errorSubstring: "172.20.0.1",
+		},
+		{
+			name: "invalid host prefix",
+			networking: map[string]any{
+				"clusterNetwork": []map[string]any{
+					{"cidr": "10.128.0.0/14", "hostPrefix": 22},
+				},
+			},
+			expectError:    true,
+			errorSubstring: "Host Prefix",
+		},
+		{
+			name: "CIDR address inconsistent with prefix",
+			networking: map[string]any{
+				"machineNetwork": []map[string]any{
+					{"cidr": "10.0.0.5/16"},
+				},
+			},
+			expectError:    true,
+			errorSubstring: "isn't consistent with network prefix",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := newTestScheme()
+			fc := fake.NewClientBuilder().WithScheme(scheme).Build()
+			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+			handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+
+			spec := map[string]any{
+				"hostedCluster": map[string]any{
+					"release":    map[string]any{"image": ""},
+					"networking": tt.networking,
+					"platform":   map[string]any{"type": "AWS"},
+				},
+			}
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("test-cluster", spec)))
+			req = req.WithContext(testContext(testAccountID))
+
+			w := httptest.NewRecorder()
+			handler.Create(w, req)
+
+			if tt.expectError {
+				body := w.Body.String()
+				if w.Code != http.StatusUnprocessableEntity {
+					t.Errorf("expected 422, got %d: %s", w.Code, body)
+				}
+				if !strings.Contains(body, ErrClusterValidation.Code) {
+					t.Errorf("expected response to contain %s, got %q", ErrClusterValidation.Code, body)
+				}
+				// Check the full response body for the error substring
+				if tt.errorSubstring != "" && !strings.Contains(body, tt.errorSubstring) {
+					t.Errorf("expected response body to contain %q, got %q", tt.errorSubstring, body)
+				}
+			} else {
+				if w.Code != http.StatusCreated {
+					t.Errorf("expected 201, got %d: %s", w.Code, w.Body.String())
+				}
+			}
+		})
+	}
+}

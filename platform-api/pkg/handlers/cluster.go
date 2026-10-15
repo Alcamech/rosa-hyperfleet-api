@@ -271,6 +271,13 @@ func (h *ClusterHandler) decodeClusterCreateRequest(accountID string, body []byt
 		apiErr := ErrClusterValidation.WithErrors(errs)
 		return nil, &apiErr
 	}
+
+	cidrValidator := validation.NewNetworkCIDRValidator()
+	if errs := cidrValidator.ValidateNetworkCIDRs(&req.Spec.HostedCluster.Networking); errs != nil {
+		apiErr := ErrClusterValidation.WithErrors(errs)
+		return nil, &apiErr
+	}
+
 	return &req, nil
 }
 

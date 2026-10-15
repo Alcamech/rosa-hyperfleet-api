@@ -227,42 +227,34 @@ resources:
               goType: string
               operations:
                 - create
-                - update
             - path: spec.hostedCluster.networking.apiServer.advertiseAddress
               goType: string
               operations:
                 - create
-                - update
             - path: spec.hostedCluster.networking.apiServer.allowedCIDRBlocks
               goType: array(string)
               operations:
                 - create
-                - update
             - path: spec.hostedCluster.networking.apiServer.port
               goType: integer(int32)
               operations:
                 - create
-                - update
             - path: spec.hostedCluster.networking.clusterNetwork
               goType: array(object)
               operations:
                 - create
-                - update
             - path: spec.hostedCluster.networking.machineNetwork
               goType: array(object)
               operations:
                 - create
-                - update
             - path: spec.hostedCluster.networking.networkType
               goType: string
               operations:
                 - create
-                - update
             - path: spec.hostedCluster.networking.serviceNetwork
               goType: array(object)
               operations:
                 - create
-                - update
             - path: spec.hostedCluster.platform.aws.additionalAllowedPrincipals
               goType: array(string)
               operations:
