@@ -110,6 +110,7 @@ func resourceFixtures() []client.Object {
 		pool,
 		&v1.OidcConfig{ObjectMeta: metav1.ObjectMeta{Name: "config", Namespace: parent.Namespace, UID: "config-uid", Labels: labels}},
 		&v1.ManagementCluster{ObjectMeta: metav1.ObjectMeta{Name: "mc", Labels: map[string]string{"team": "blue"}}, Spec: v1.ManagementClusterSpec{AccountID: "222222222222", Region: "us-west-2"}},
+		&v1.DNSReservation{ObjectMeta: metav1.ObjectMeta{Name: "zone", Namespace: parent.Namespace, UID: "zone-uid", Labels: labels}},
 	}
 }
 func actionPermit(action string) string {
@@ -124,6 +125,7 @@ func TestImplementedRoutesActionSpecific(t *testing.T) {
 		{"ListClusters", "GET", "clusters", "", 200}, {"DescribeCluster", "GET", "clusters/parent", "", 200}, {"CreateCluster", "POST", "clusters", `{"metadata":{"name":"new"},"spec":{"properties":{"team":"new"}}}`, 201}, {"UpdateCluster", "PUT", "clusters/parent", `{"spec":{"properties":{"team":"new"}}}`, 200}, {"UpdateCluster", "PATCH", "clusters/parent", `{"spec":{"properties":{"team":"new"}}}`, 200}, {"DeleteCluster", "DELETE", "clusters/parent", "", 202},
 		{"ListNodePools", "GET", "nodepools", "", 200}, {"DescribeNodePool", "GET", "nodepools/parent.workers", "", 200}, {"CreateNodePool", "POST", "nodepools", `{"metadata":{"name":"parent.new"},"spec":{"nodePool":{"clusterName":"parent"}}}`, 201}, {"UpdateNodePool", "PUT", "nodepools/parent.workers", `{"spec":{"labels":{"team":"new"}}}`, 200}, {"DeleteNodePool", "DELETE", "nodepools/parent.workers", "", 202},
 		{"ListOIDCConfigs", "GET", "oidc_configs", "", 200}, {"DescribeOIDCConfig", "GET", "oidc_configs/config", "", 200}, {"CreateOIDCConfig", "POST", "oidc_configs", `{"metadata":{"name":"new"},"spec":{"type":"unmanaged","issuerUrl":"https://example.com","secretArn":"secret","installerRoleArn":"role"}}`, 201}, {"DeleteOIDCConfig", "DELETE", "oidc_configs/config", "", 202},
+		{"ListDNSReservations", "GET", "dns_reservations", "", 200}, {"DescribeDNSReservation", "GET", "dns_reservations/zone", "", 200}, {"CreateDNSReservation", "POST", "dns_reservations", `{"metadata":{"name":"new"}}`, 201}, {"DeleteDNSReservation", "DELETE", "dns_reservations/zone", "", 202},
 		{"ListManagementClusters", "GET", "management_clusters", "", 200}, {"DescribeManagementCluster", "GET", "management_clusters/mc", "", 200}, {"CreateManagementCluster", "POST", "management_clusters", `{"id":"new","accountId":"222222222222","region":"us-west-2"}`, 201},
 	} {
 		for _, grant := range []string{"matching", "wrong action", "unbound principal", "runtime error"} {

@@ -9,6 +9,8 @@ func actionResourceKind(action Action) ResourceKind {
 		return NodePool
 	case ListOIDCConfigs, DescribeOIDCConfig, CreateOIDCConfig, DeleteOIDCConfig:
 		return OIDCConfig
+	case ListDNSReservations, DescribeDNSReservation, CreateDNSReservation, DeleteDNSReservation:
+		return DNSReservation
 	case ListManagementClusters, DescribeManagementCluster, CreateManagementCluster:
 		return ManagementCluster
 	default:
@@ -19,7 +21,7 @@ func actionResourceKind(action Action) ResourceKind {
 // listAction reports whether the action authorizes a collection listing.
 func listAction(action Action) bool {
 	switch action {
-	case ListClusters, ListNodePools, ListOIDCConfigs, ListManagementClusters:
+	case ListClusters, ListNodePools, ListOIDCConfigs, ListDNSReservations, ListManagementClusters:
 		return true
 	default:
 		return false
@@ -35,6 +37,8 @@ func collectionName(kind ResourceKind) string {
 		return "nodepools"
 	case OIDCConfig:
 		return "oidc_configs"
+	case DNSReservation:
+		return "dns_reservations"
 	case ManagementCluster:
 		return "management_clusters"
 	default:

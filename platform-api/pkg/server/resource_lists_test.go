@@ -21,7 +21,7 @@ func TestResourceCollectionsListDetails(t *testing.T) {
 		path, list, describe string
 		index                int
 	}{
-		{"clusters", "ListClusters", "DescribeCluster", 0}, {"nodepools", "ListNodePools", "DescribeNodePool", 1}, {"oidc_configs", "ListOIDCConfigs", "DescribeOIDCConfig", 2}, {"management_clusters", "ListManagementClusters", "DescribeManagementCluster", 3},
+		{"clusters", "ListClusters", "DescribeCluster", 0}, {"nodepools", "ListNodePools", "DescribeNodePool", 1}, {"oidc_configs", "ListOIDCConfigs", "DescribeOIDCConfig", 2}, {"management_clusters", "ListManagementClusters", "DescribeManagementCluster", 3}, {"dns_reservations", "ListDNSReservations", "DescribeDNSReservation", 4},
 	} {
 		for _, mode := range []string{"filtered", "list-only", "describe-only", "late-error"} {
 			t.Run(tc.path+"/"+mode, func(t *testing.T) {

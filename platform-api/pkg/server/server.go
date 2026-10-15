@@ -47,7 +47,7 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, authorizer *authz.Au
 	clusterHandler := apphandlers.NewClusterHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, cfg.Regional.DefaultClusterExpiration, authorizer, logger)
 	nodePoolHandler := apphandlers.NewNodePoolHandler(dbClient, authorizer, logger)
 	oidcConfigHandler := apphandlers.NewOidcConfigHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, authorizer, logger)
-	dnsReservationHandler := apphandlers.NewDNSReservationHandler(dbClient, logger)
+	dnsReservationHandler := apphandlers.NewDNSReservationHandler(dbClient, authorizer, logger)
 
 	// Create API router
 	apiRouter := mux.NewRouter()

@@ -33,6 +33,10 @@ const (
 	DescribeOIDCConfig        Action = "DescribeOIDCConfig"
 	CreateOIDCConfig          Action = "CreateOIDCConfig"
 	DeleteOIDCConfig          Action = "DeleteOIDCConfig"
+	ListDNSReservations       Action = "ListDNSReservations"
+	DescribeDNSReservation    Action = "DescribeDNSReservation"
+	CreateDNSReservation      Action = "CreateDNSReservation"
+	DeleteDNSReservation      Action = "DeleteDNSReservation"
 	ListManagementClusters    Action = "ListManagementClusters"
 	DescribeManagementCluster Action = "DescribeManagementCluster"
 	CreateManagementCluster   Action = "CreateManagementCluster"
@@ -45,6 +49,7 @@ const (
 	Cluster           ResourceKind = "Cluster"
 	NodePool          ResourceKind = "NodePool"
 	OIDCConfig        ResourceKind = "OIDCConfig"
+	DNSReservation    ResourceKind = "DNSReservation"
 	ManagementCluster ResourceKind = "ManagementCluster"
 	ServiceCollection ResourceKind = "ServiceCollection"
 )

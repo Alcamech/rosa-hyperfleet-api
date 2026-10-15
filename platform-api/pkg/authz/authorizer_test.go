@@ -415,6 +415,8 @@ func TestResourceEntities(t *testing.T) {
 		{DescribeCluster, Resource{Kind: Cluster, ID: "cluster", AccountID: accountID}, "123456789012/us-west-2/cluster"},
 		{DescribeNodePool, Resource{Kind: NodePool, ID: "workers", AccountID: accountID, ParentCluster: &ParentCluster{ID: "parent", AccountID: accountID}}, "123456789012/us-west-2/parent/workers"},
 		{DescribeOIDCConfig, Resource{Kind: OIDCConfig, ID: "oidc", AccountID: accountID}, "123456789012/us-west-2/oidc"},
+		{ListDNSReservations, Resource{Kind: Collection, CollectionKind: DNSReservation, AccountID: accountID}, "123456789012/us-west-2/dns_reservations"},
+		{DescribeDNSReservation, Resource{Kind: DNSReservation, ID: "zone", AccountID: accountID}, "123456789012/us-west-2/zone"},
 		{ListManagementClusters, Resource{Kind: ServiceCollection}, "us-west-2/management_clusters"},
 		{DescribeManagementCluster, Resource{Kind: ManagementCluster, ID: "mc", AccountID: "210987654321", RegistrationRegion: "us-east-1"}, "us-west-2/mc"},
 	} {
