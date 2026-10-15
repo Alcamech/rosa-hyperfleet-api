@@ -11,9 +11,10 @@ import (
 )
 
 // PreserveServiceSet copies stored service-set values into a merged update
-// candidate. Validation already rejects changed values; this stops zero values,
-// which mean "not provided", from clearing platform-managed fields.
-// Structural containers are skipped so their mutable descendants stay editable.
+// candidate. Validation rejects changing or clearing a service-set field, but an
+// explicit null on a parent (e.g. configuration.proxy) is a structural container
+// it skips, and the merge would clear the platform-managed children with it.
+// Structural containers are skipped here too so their mutable descendants stay editable.
 func (v *FieldValidator) PreserveServiceSet(candidate, stored any, fs featuregate.FeatureSet) error {
 	want, err := specMap(stored)
 	if err != nil {

@@ -27,6 +27,7 @@ import (
 
 	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
 	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	configv1 "github.com/openshift/api/config/v1"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/clients/seaplanedb"
@@ -1486,15 +1487,41 @@ func TestClusterHandler_Update_AllowsUnchangedServiceManagedIssuerURL(t *testing
 	}
 }
 
+// A null parent clears its mutable children but never the platform-managed ones.
+func TestClusterHandler_Update_NullParentKeepsServiceSet(t *testing.T) {
+	for _, body := range []string{
+		`{"spec":{"hostedCluster":{"configuration":{"proxy":null}}}}`,
+		`{"spec":{"hostedCluster":{"configuration":null}}}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			cr := testClusterCR("uuid-1", "owned", testAccountID)
+			cr.Spec.HostedCluster.Configuration = &hypershiftv1beta1.ClusterConfiguration{Proxy: &configv1.ProxySpec{HTTPProxy: "http://proxy", TrustedCA: configv1.ConfigMapNameReference{Name: "platform-ca"}}}
+			fc := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(cr).Build()
+			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+			handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, lifecyclePermit), logger)
+			assertHandlerStatus(t, http.StatusOK, http.MethodPut, "/api/v0/clusters/"+cr.Name,
+				body, map[string]string{"id": cr.Name}, testAccountID, handler.Update)
+
+			var stored seaplanev1alpha1.Cluster
+			if err := fc.Get(context.Background(), client.ObjectKeyFromObject(cr), &stored); err != nil {
+				t.Fatal(err)
+			}
+			config := stored.Spec.HostedCluster.Configuration
+			if config == nil || config.Proxy == nil || config.Proxy.TrustedCA.Name != "platform-ca" || config.Proxy.HTTPProxy != "" {
+				t.Fatalf("want trustedCA kept and httpProxy cleared, got %+v", config)
+			}
+		})
+	}
+}
+
 // Wrong or clearing accountId must not change stored ownership (service-set on update).
-// Service-set accountId cannot change on update: a different value is rejected,
-// and a zero value is accepted as "not provided" while the stored value is kept.
+// Service-set accountId cannot change on update; clearing it is a change too.
 func TestClusterHandler_Update_ProtectsAccountID(t *testing.T) {
 	for _, tc := range []struct {
 		body string
 		want int
 	}{
-		{`{"spec":{"accountId":""}}`, http.StatusOK},
+		{`{"spec":{"accountId":""}}`, http.StatusUnprocessableEntity},
 		{`{"spec":{"accountId":"999999999999"}}`, http.StatusUnprocessableEntity},
 		{`{"spec":{"AccountId":"999999999999","properties":{"changed":"true"}}}`, http.StatusUnprocessableEntity},
 	} {

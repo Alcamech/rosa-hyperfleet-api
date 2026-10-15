@@ -345,16 +345,17 @@ func TestNodePoolHandler_List_InvalidSelector(t *testing.T) {
 	}
 }
 
-// Service-set fields cannot change on update. Zero values are accepted as "not
-// provided" (rosa edit machinepool zeroes management) and stored values are kept.
+// Service-set fields cannot change on update; clearing one is a change too.
+// rosa edit machinepool echoes the stored values from Get.
 func TestNodePoolHandler_Update_ProtectsServiceSet(t *testing.T) {
 	for _, tc := range []struct {
 		body string
 		want int
 	}{
 		{`{"spec":{"accountId":"999999999999","labels":{"changed":"true"}}}`, http.StatusUnprocessableEntity},
-		{`{"spec":{"AccountId":"","labels":{"changed":"true"}}}`, http.StatusOK},
-		{`{"spec":{"nodePool":{"replicas":3,"management":{"upgradeType":"","autoRepair":false}}}}`, http.StatusOK},
+		{`{"spec":{"AccountId":"","labels":{"changed":"true"}}}`, http.StatusUnprocessableEntity},
+		{`{"spec":{"nodePool":{"replicas":3,"management":{"upgradeType":"","autoRepair":false}}}}`, http.StatusUnprocessableEntity},
+		{`{"spec":{"nodePool":{"replicas":3,"management":{"upgradeType":"Replace","autoRepair":true}}}}`, http.StatusOK},
 		{`{"spec":{"nodePool":{"management":{"upgradeType":"InPlace","autoRepair":true}}}}`, http.StatusUnprocessableEntity},
 	} {
 		t.Run(tc.body, func(t *testing.T) {
@@ -376,7 +377,7 @@ func TestNodePoolHandler_Update_ProtectsServiceSet(t *testing.T) {
 			if stored.Spec.AccountID != testAccountID || stored.Spec.NodePool.Management != np.Spec.NodePool.Management {
 				t.Errorf("service-set values changed: accountId=%q management=%+v", stored.Spec.AccountID, stored.Spec.NodePool.Management)
 			}
-			if strings.Contains(tc.body, `"replicas":3`) && *stored.Spec.NodePool.Replicas != 3 {
+			if tc.want == http.StatusOK && strings.Contains(tc.body, `"replicas":3`) && *stored.Spec.NodePool.Replicas != 3 {
 				t.Errorf("replicas = %d, want 3", *stored.Spec.NodePool.Replicas)
 			}
 		})
