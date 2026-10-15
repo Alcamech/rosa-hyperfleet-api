@@ -1,5 +1,10 @@
 # Changes
 
+## 0.1.20 Oct 15 2026
+
+- ROSAENG-67909 | feat: identity-flip - client-supplied name + account namespace
+
+
 ## 0.1.19 Oct 13 2026
 
 - ROSAENG-68182 | fix: align custom root volumes with V1
