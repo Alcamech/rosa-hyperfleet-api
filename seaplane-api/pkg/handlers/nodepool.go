@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/client-go/util/retry"
 
 	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
 	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
@@ -358,56 +360,77 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Retry conflicts like upstream. Each attempt re-reads, re-validates, and
+	// re-authorizes, so no write uses a snapshot that was not checked.
+	var updated *seaplanev1alpha1.NodePool
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var attemptErr error
+		updated, attemptErr = h.updateOnce(w, r, nodepoolName, &req.Spec, rawSpec, envelope.Spec)
+		return attemptErr
+	})
+	if errors.Is(err, errResponded) {
+		return
+	}
+	if err != nil {
+		writeAPIError(w, ErrNodePoolUpdateConflict, h.logger)
+		return
+	}
+
+	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicNodePool(updated)); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
+}
+
+// updateOnce makes one checked update attempt; see ClusterHandler.updateOnce.
+func (h *NodePoolHandler) updateOnce(w http.ResponseWriter, r *http.Request, nodepoolName string, reqSpec *public.NodePoolSpec, rawSpec map[string]any, spec json.RawMessage) (*seaplanev1alpha1.NodePool, error) {
+	ctx := r.Context()
+	accountID := middleware.GetAccountID(ctx)
 	cr, err := h.db.GetNodePool(ctx, nodepoolName)
 	if err != nil {
 		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolUpdateNotFound, h.logger)
-			return
+			return nil, errResponded
 		}
 		h.logger.Error("failed to get nodepool for update", "error", err, "account_id", accountID, "nodepool_name", nodepoolName)
 		writeAPIError(w, ErrNodePoolUpdateFailed, h.logger)
-		return
+		return nil, errResponded
 	}
 
 	errs := h.validator.ValidateUpdate(rawSpec, &cr.Spec, featuregate.Default)
-	errs = append(errs, validateNodePoolReplicas(&req.Spec)...)
+	errs = append(errs, validateNodePoolReplicas(reqSpec)...)
 	if len(errs) > 0 {
 		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
-		return
+		return nil, errResponded
 	}
 	candidate := cr.DeepCopy()
-	if err := seaplanedb.MergeSpecJSON(&candidate.Spec, envelope.Spec); err != nil {
+	if err := seaplanedb.MergeSpecJSON(&candidate.Spec, spec); err != nil {
 		h.logger.Error("failed to merge nodepool spec", "error", err)
 		writeAPIError(w, ErrNodePoolUpdateInvalidSpec, h.logger)
-		return
+		return nil, errResponded
 	}
 	if err := h.validator.PreserveServiceSet(&candidate.Spec, &cr.Spec, featuregate.Default); err != nil {
 		h.logger.Error("failed to preserve service-set fields", "error", err, "account_id", accountID, "nodepool_name", nodepoolName)
 		writeAPIError(w, ErrNodePoolUpdateFailed, h.logger)
-		return
+		return nil, errResponded
 	}
 
 	// Authorize the stored snapshot and every changed-field action before its CAS write.
 	if !h.authorizeNodePool(w, r, authz.UpdateNodePool, cr, nodePoolUpdateActions(&cr.Spec, &candidate.Spec)...) {
-		return
+		return nil, errResponded
 	}
 	if err := h.db.UpdateNodePool(ctx, candidate); err != nil {
+		if seaplanedb.IsConflict(err) {
+			return nil, err
+		}
 		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolUpdateNotFound, h.logger)
-			return
-		}
-		if seaplanedb.IsConflict(err) {
-			writeAPIError(w, ErrResourceConflict, h.logger)
-			return
+			return nil, errResponded
 		}
 		h.logger.Error("failed to update nodepool", "error", err, "account_id", accountID, "nodepool_name", nodepoolName)
 		writeAPIError(w, ErrNodePoolUpdateFailed, h.logger)
-		return
+		return nil, errResponded
 	}
-
-	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicNodePool(candidate)); err != nil {
-		h.logger.Error("failed to write response", "error", err)
-	}
+	return candidate, nil
 }
 
 func (h *NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {

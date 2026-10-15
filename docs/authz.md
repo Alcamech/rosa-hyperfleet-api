@@ -107,8 +107,10 @@ Rules:
   required actions must allow before any write.
 - Service-set fields never change on update. An exact echo or a zero value is
   accepted and the stored value kept; any other value returns 422.
-- Updates and deletes write the checked `resourceVersion`. A conflict returns 409
-  with no retry.
+- Updates and deletes write the checked `resourceVersion`. On a conflict, updates
+  retry (up to 5 attempts), re-reading, re-validating, and re-authorizing each
+  attempt; exhausted retries return 409 `*-MGMT-UPDATE-006`. Deletes return 409
+  without retrying.
 - Denials return 403 `AUTHZ-DENIED-001`; authorization failures return 500
   `AUTHZ-FAILED-001`. Responses never include policy details.
 
@@ -220,7 +222,8 @@ forbid IDs when one matches). Logs never include policy content.
 | `authz_duration_seconds` | `operation`, `outcome` |
 | `authz_failures_total`   | `operation`, `stage`   |
 
-- One sample per request; `operation` is the request action.
+- One sample per request, plus one per update conflict retry; `operation` is the
+  request action.
 - `outcome`: `allow`, `deny`, `error`. `stage`: `resolution`, `parsing`,
   `binding`, `entity_validation`, `evaluation`, `resource_loading`.
 - Unauthenticated, unenrolled, rate-limited, and public requests record nothing.

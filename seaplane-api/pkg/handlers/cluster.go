@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -473,34 +474,64 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, ErrClusterUpdateMissingFields, h.logger)
 		return
 	}
+	// Retry conflicts like upstream. Each attempt re-reads, re-validates, and
+	// re-authorizes, so no write uses a snapshot that was not checked.
+	var updated *seaplanev1alpha1.Cluster
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var attemptErr error
+		updated, attemptErr = h.updateOnce(w, r, clusterName, rawSpec, envelope.Spec)
+		return attemptErr
+	})
+	if errors.Is(err, errResponded) {
+		return
+	}
+	if err != nil {
+		writeAPIError(w, ErrClusterUpdateConflict, h.logger)
+		return
+	}
+
+	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicCluster(updated)); err != nil {
+		h.logger.Error("failed to write response", "error", err)
+	}
+}
+
+// errResponded ends a retry after an attempt has already written its response.
+var errResponded = errors.New("response written")
+
+// updateOnce makes one checked update attempt. It writes its own error
+// response and returns errResponded, except for a write conflict, which it
+// returns unwritten so the caller can retry.
+func (h *ClusterHandler) updateOnce(w http.ResponseWriter, r *http.Request, clusterName string, rawSpec map[string]any, spec json.RawMessage) (*seaplanev1alpha1.Cluster, error) {
+	ctx := r.Context()
+	accountID := middleware.GetAccountID(ctx)
 	cr, err := h.db.GetCluster(ctx, clusterName)
 	if err != nil {
 		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrClusterUpdateNotFound, h.logger)
-			return
+			return nil, errResponded
 		}
 		h.logger.Error("failed to get cluster for update", "error", err, "account_id", accountID, "cluster_name", clusterName)
 		writeAPIError(w, ErrClusterUpdateFailed, h.logger)
-		return
+		return nil, errResponded
 	}
 	if errs := h.validator.ValidateUpdate(rawSpec, &cr.Spec, featuregate.Default); errs != nil {
 		writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
-		return
+		return nil, errResponded
 	}
 	candidate := cr.DeepCopy()
-	if err := seaplanedb.MergeSpecJSON(&candidate.Spec, envelope.Spec); err != nil {
+	if err := seaplanedb.MergeSpecJSON(&candidate.Spec, spec); err != nil {
 		h.logger.Error("failed to merge cluster spec", "error", err)
 		writeAPIError(w, ErrClusterUpdateInvalidSpec, h.logger)
-		return
+		return nil, errResponded
 	}
 	if err := h.validator.PreserveServiceSet(&candidate.Spec, &cr.Spec, featuregate.Default); err != nil {
 		h.logger.Error("failed to preserve service-set fields", "error", err, "account_id", accountID, "cluster_name", clusterName)
 		writeAPIError(w, ErrClusterUpdateFailed, h.logger)
-		return
+		return nil, errResponded
 	}
 	// Authorize the stored snapshot and every changed-field action before its CAS write.
 	if !authorizeResource(w, r, h.authorizer, h.logger, authz.UpdateCluster, h.clusterResource(cr), clusterUpdateActions(&cr.Spec, &candidate.Spec)...) {
-		return
+		return nil, errResponded
 	}
 
 	// Preserve queue uniqueness checks without writing before authorization.
@@ -529,22 +560,18 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.db.UpdateCluster(ctx, candidate); err != nil {
+		if seaplanedb.IsConflict(err) {
+			return nil, err
+		}
 		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrClusterUpdateNotFound, h.logger)
-			return
-		}
-		if seaplanedb.IsConflict(err) {
-			writeAPIError(w, ErrResourceConflict, h.logger)
-			return
+			return nil, errResponded
 		}
 		h.logger.Error("failed to update cluster", "error", err, "account_id", accountID, "cluster_name", clusterName)
 		writeAPIError(w, ErrClusterUpdateFailed, h.logger)
-		return
+		return nil, errResponded
 	}
-
-	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicCluster(candidate)); err != nil {
-		h.logger.Error("failed to write response", "error", err)
-	}
+	return candidate, nil
 }
 
 func requestedTerminationHandlerQueue(aws *hypershiftv1beta1.AWSPlatformSpec) (queueURL, region string) {
