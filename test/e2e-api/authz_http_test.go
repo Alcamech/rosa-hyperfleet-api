@@ -46,14 +46,15 @@ const (
 	authzStopTimeout  = 10 * time.Second
 )
 
+// id is the FleetDB-assigned UID, recorded by authzSeedClusters.
 var authzStoredClusters = []struct {
 	id, name, account, team string
 }{
-	{"00000000-0000-4000-8000-000000000001", "hidden-red", authzAccount, "red"},
-	{"00000000-0000-4000-8000-000000000002", "visible-blue-one", authzAccount, "blue"},
-	{"00000000-0000-4000-8000-000000000003", "hidden-missing", authzAccount, ""},
-	{"00000000-0000-4000-8000-000000000004", "visible-blue-two", authzAccount, "blue"},
-	{"00000000-0000-4000-8000-000000000005", "foreign-blue", authzOtherAccount, "blue"},
+	{name: "hidden-red", account: authzAccount, team: "red"},
+	{name: "visible-blue-one", account: authzAccount, team: "blue"},
+	{name: "hidden-missing", account: authzAccount},
+	{name: "visible-blue-two", account: authzAccount, team: "blue"},
+	{name: "foreign-blue", account: authzOtherAccount, team: "blue"},
 }
 
 type authzProcess struct {
@@ -120,7 +121,8 @@ func TestAuthzHTTP(t *testing.T) {
 	}
 	t.Cleanup(closeStore)
 	authzSeedClusters(t, store)
-	earlierID, faultID := authzMarkLateFault(t, store)
+	earlier, fault := authzMarkLateFault(t, store)
+	earlierID, faultID := string(earlier.UID), string(fault.UID)
 	process := start(t, "initial")
 	t.Cleanup(process.stop)
 	if !t.Run("infrastructure", func(t *testing.T) {
@@ -139,36 +141,36 @@ func TestAuthzHTTP(t *testing.T) {
 		return
 	}
 
-	blueOne := authzStoredClusters[1].id
+	blueOne, blueOneName := authzStoredClusters[1].id, authzStoredClusters[1].name
 	blueTwo := authzStoredClusters[3].id
-	foreign := authzStoredClusters[4].id
+	foreignName := authzStoredClusters[4].name
 	alice := authzUser("alice")
 	broad := authzUser("broad")
 	for _, tc := range []struct {
 		name, arn, account, path, outcome string
 		status                            int
 	}{
-		{"ARN-A matching stored label", alice, authzAccount, "/" + blueOne, "allow", http.StatusOK},
-		{"ARN-A different stored label", alice, authzAccount, "/" + authzStoredClusters[0].id, "deny", http.StatusForbidden},
-		{"ARN-A missing stored label", alice, authzAccount, "/" + authzStoredClusters[2].id, "deny", http.StatusForbidden},
+		{"ARN-A matching stored label", alice, authzAccount, "/" + blueOneName, "allow", http.StatusOK},
+		{"ARN-A different stored label", alice, authzAccount, "/" + authzStoredClusters[0].name, "deny", http.StatusForbidden},
+		{"ARN-A missing stored label", alice, authzAccount, "/" + authzStoredClusters[2].name, "deny", http.StatusForbidden},
 		{"ARN-B enrolled no grants list", "arn:aws:iam::222222222222:user/bob", authzOtherAccount, "", "deny", http.StatusForbidden},
-		{"ARN-B enrolled no grants describe", "arn:aws:iam::222222222222:user/bob", authzOtherAccount, "/" + foreign, "deny", http.StatusForbidden},
+		{"ARN-B enrolled no grants describe", "arn:aws:iam::222222222222:user/bob", authzOtherAccount, "/" + foreignName, "deny", http.StatusForbidden},
 		{"same account no grants", authzUser("bob"), authzAccount, "", "deny", http.StatusForbidden},
 		{"unregistered broad policy", "arn:aws:iam::333333333333:user/unregistered", "333333333333", "", "", http.StatusForbidden},
 		{"missing account", alice, "", "", "", http.StatusForbidden},
 		{"missing ARN", "", authzAccount, "", "", http.StatusForbidden},
 		{"missing identity", "", "", "", "", http.StatusForbidden},
 		{"identity account mismatch", alice, authzOtherAccount, "", "", http.StatusForbidden},
-		{"role session forbid", "arn:aws:sts::111111111111:assumed-role/readers/blocked", authzAccount, "/" + blueOne, "deny", http.StatusForbidden},
+		{"role session forbid", "arn:aws:sts::111111111111:assumed-role/readers/blocked", authzAccount, "/" + blueOneName, "deny", http.StatusForbidden},
 		{"role session forbid list", "arn:aws:sts::111111111111:assumed-role/readers/blocked", authzAccount, "", "deny", http.StatusForbidden},
-		{"path role other session permit", "arn:aws:sts::111111111111:assumed-role/readers/allowed", authzAccount, "/" + blueOne, "allow", http.StatusOK},
-		{"global forbid local permit", authzUser("regional"), authzAccount, "/" + blueOne, "deny", http.StatusForbidden},
+		{"path role other session permit", "arn:aws:sts::111111111111:assumed-role/readers/allowed", authzAccount, "/" + blueOneName, "allow", http.StatusOK},
+		{"global forbid local permit", authzUser("regional"), authzAccount, "/" + blueOneName, "deny", http.StatusForbidden},
 		{"global forbid local permit list", authzUser("regional"), authzAccount, "", "deny", http.StatusForbidden},
-		{"list-only cannot describe", authzUser("list-only"), authzAccount, "/" + blueOne, "deny", http.StatusForbidden},
+		{"list-only cannot describe", authzUser("list-only"), authzAccount, "/" + blueOneName, "deny", http.StatusForbidden},
 		{"describe-only cannot list", authzUser("describe-only"), authzAccount, "", "deny", http.StatusForbidden},
-		{"describe-only permit", authzUser("describe-only"), authzAccount, "/" + blueOne, "allow", http.StatusOK},
-		{"broad foreign get", broad, authzAccount, "/" + foreign, "deny", http.StatusNotFound},
-		{"broad missing get", broad, authzAccount, "/00000000-0000-4000-8000-000000000099", "deny", http.StatusNotFound},
+		{"describe-only permit", authzUser("describe-only"), authzAccount, "/" + blueOneName, "allow", http.StatusOK},
+		{"broad foreign get", broad, authzAccount, "/" + foreignName, "deny", http.StatusNotFound},
+		{"broad missing get", broad, authzAccount, "/missing-cluster", "deny", http.StatusNotFound},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			operation := "DescribeCluster"
@@ -187,7 +189,7 @@ func TestAuthzHTTP(t *testing.T) {
 	}
 
 	t.Run("runtime policy earlier item allow", func(t *testing.T) {
-		response := authzMeasuredGet(t, process, authzClustersPath+"/"+earlierID, authzUser("error-fixture"), authzAccount, "DescribeCluster", "allow")
+		response := authzMeasuredGet(t, process, authzClustersPath+"/"+earlier.Name, authzUser("error-fixture"), authzAccount, "DescribeCluster", "allow")
 		authzAssertStatus(t, response, http.StatusOK)
 		var cluster public.Cluster
 		if err := json.Unmarshal(response.Body, &cluster); err != nil || string(cluster.UID) != earlierID {
@@ -200,7 +202,7 @@ func TestAuthzHTTP(t *testing.T) {
 		}
 	})
 	for _, tc := range []struct{ name, path, operation string }{
-		{"runtime policy describe failure", "/" + faultID, "DescribeCluster"},
+		{"runtime policy describe failure", "/" + fault.Name, "DescribeCluster"},
 		{"runtime policy late list failure", "?limit=1", "ListClusters"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -240,7 +242,7 @@ func TestAuthzHTTP(t *testing.T) {
 	t.Run("list total and pagination", func(t *testing.T) {
 		response := authzMeasuredGet(t, process, authzClustersPath+"?limit=100", alice, authzAccount, "ListClusters", "allow")
 		full := authzReadList(t, response, 4, 100, 0)
-		if got := authzDetailedIDs(full); !slices.Equal(got, []string{blueOne, blueTwo}) {
+		if got := authzDetailedIDs(full); !slices.Equal(got, authzSorted(blueOne, blueTwo)) {
 			t.Errorf("detailed membership = %v, want describable %v", got, []string{blueOne, blueTwo})
 		}
 		for offset := 0; offset <= 5; offset++ {
@@ -265,14 +267,14 @@ func TestAuthzHTTP(t *testing.T) {
 	t.Run("broad list still excludes foreign account", func(t *testing.T) {
 		response := authzMeasuredGet(t, process, authzClustersPath, broad, authzAccount, "ListClusters", "allow")
 		items := authzReadList(t, response, 4, 50, 0)
-		want := []string{authzStoredClusters[0].id, blueOne, authzStoredClusters[2].id, blueTwo}
+		want := authzSorted(authzStoredClusters[0].id, blueOne, authzStoredClusters[2].id, blueTwo)
 		if got := authzClusterIDs(items); !slices.Equal(got, want) {
 			t.Errorf("account-scoped list = %v, want %v", got, want)
 		}
 	})
 	t.Run("request claims cannot replace stored labels or owner", func(t *testing.T) {
 		before := authzMetrics(t, process)
-		path := authzClustersPath + "/" + authzStoredClusters[0].id + "?accountId=111111111111&example.com%2Fteam=blue&labels=blue"
+		path := authzClustersPath + "/" + authzStoredClusters[0].name + "?accountId=111111111111&example.com%2Fteam=blue&labels=blue"
 		request, err := http.NewRequest(http.MethodGet, process.apiURL+path, strings.NewReader(`{"metadata":{"labels":{"example.com/team":"blue","seaplane.io/account-id":"111111111111"}},"spec":{"accountId":"111111111111"}}`))
 		if err != nil {
 			t.Fatal(err)
@@ -284,10 +286,10 @@ func TestAuthzHTTP(t *testing.T) {
 		response := authzRawRequest(t, request)
 		authzAssertStatus(t, response, http.StatusForbidden)
 		authzMetricDelta(t, before, authzMetrics(t, process), "DescribeCluster", "deny", "")
-		response = authzMeasuredGet(t, process, authzClustersPath+"/"+foreign+"?accountId="+authzAccount+"&example.com%2Fteam=blue", broad, authzAccount, "DescribeCluster", "deny")
+		response = authzMeasuredGet(t, process, authzClustersPath+"/"+foreignName+"?accountId="+authzAccount+"&example.com%2Fteam=blue", broad, authzAccount, "DescribeCluster", "deny")
 		authzAssertStatus(t, response, http.StatusNotFound)
 		var stored seaplanev1.Cluster
-		if err := store.Get(context.Background(), client.ObjectKey{Namespace: "cluster-" + authzStoredClusters[0].id, Name: authzStoredClusters[0].name}, &stored); err != nil || stored.Labels[authzTeamLabel] != "red" {
+		if err := store.Get(context.Background(), client.ObjectKey{Namespace: "account-" + authzAccount, Name: authzStoredClusters[0].name}, &stored); err != nil || stored.Labels[authzTeamLabel] != "red" {
 			t.Errorf("request changed stored labels: %+v (%v)", stored.Labels, err)
 		}
 	})
@@ -329,16 +331,16 @@ func TestAuthzHTTP(t *testing.T) {
 			t.Fatal(err)
 		}
 		authzWriteFile(t, configPath, content)
-		response := authzMeasuredGet(t, process, authzClustersPath+"/"+blueOne, alice, authzAccount, "DescribeCluster", "allow")
+		response := authzMeasuredGet(t, process, authzClustersPath+"/"+blueOneName, alice, authzAccount, "DescribeCluster", "allow")
 		authzAssertStatus(t, response, http.StatusOK)
 		process.stop()
 		restarted := start(t, "restarted")
 		defer restarted.stop()
 		authzWaitReady(t, restarted)
-		response = authzMeasuredGet(t, restarted, authzClustersPath+"/"+blueOne, alice, authzAccount, "", "")
+		response = authzMeasuredGet(t, restarted, authzClustersPath+"/"+blueOneName, alice, authzAccount, "", "")
 		authzAssertStatus(t, response, http.StatusForbidden)
 		authzWriteFile(t, configPath, []byte(`{"formatVersion":1,"registeredAccounts":["111111111111"],"policies":[],"attachments":[`))
-		response = authzMeasuredGet(t, restarted, authzClustersPath+"/"+blueOne, alice, authzAccount, "", "")
+		response = authzMeasuredGet(t, restarted, authzClustersPath+"/"+blueOneName, alice, authzAccount, "", "")
 		authzAssertStatus(t, response, http.StatusForbidden)
 	})
 	for _, invalid := range []struct{ name, content string }{
@@ -393,14 +395,14 @@ func authzSeedClusters(t *testing.T, store client.Client) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	for _, fixture := range authzStoredClusters {
+	for i, fixture := range authzStoredClusters {
 		labels := map[string]string{authzAccountLabel: fixture.account}
 		if fixture.team != "" {
 			labels[authzTeamLabel] = fixture.team
 		}
 		cluster := &seaplanev1.Cluster{
-			ObjectMeta: metav1.ObjectMeta{Namespace: "cluster-" + fixture.id, Name: fixture.name, Labels: labels},
-			Spec:       seaplanev1.ClusterSpec{AccountID: fixture.account, InternalID: fixture.id},
+			ObjectMeta: metav1.ObjectMeta{Namespace: "account-" + fixture.account, Name: fixture.name, Labels: labels},
+			Spec:       seaplanev1.ClusterSpec{AccountID: fixture.account},
 		}
 		cluster.Spec.HostedCluster.Platform = hypershiftv1.PlatformSpec{
 			Type: hypershiftv1.AWSPlatform,
@@ -411,10 +413,11 @@ func authzSeedClusters(t *testing.T, store client.Client) {
 		if err := store.Create(ctx, cluster); err != nil {
 			t.Fatalf("seed %s: %v", fixture.name, err)
 		}
+		authzStoredClusters[i].id = string(cluster.UID)
 	}
 }
 
-func authzMarkLateFault(t *testing.T, store client.Client) (string, string) {
+func authzMarkLateFault(t *testing.T, store client.Client) (earlier, fault *seaplanev1.Cluster) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -432,7 +435,7 @@ func authzMarkLateFault(t *testing.T, store client.Client) (string, string) {
 	if err := store.Update(ctx, last); err != nil {
 		t.Fatal(err)
 	}
-	return candidates.Items[0].Spec.InternalID, last.Spec.InternalID
+	return &candidates.Items[0], last
 }
 
 func authzStartProcess(t *testing.T, binary, config, dsn, output, name string) *authzProcess {
@@ -665,6 +668,12 @@ func authzDetailedIDs(clusters []public.Cluster) []string {
 			ids = append(ids, string(cluster.UID))
 		}
 	}
+	slices.Sort(ids)
+	return ids
+}
+
+// authzSorted orders FleetDB UIDs like the list helpers do.
+func authzSorted(ids ...string) []string {
 	slices.Sort(ids)
 	return ids
 }
