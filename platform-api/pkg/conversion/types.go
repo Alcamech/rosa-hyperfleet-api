@@ -30,8 +30,6 @@ type ServiceSetFieldsHostedCluster struct {
 	AllowedUnsafeSysctls string `json:"allowedUnsafeSysctls,omitempty"`
 	// AuditWebhook is service-set (platform-managed, hidden from API)
 	AuditWebhook *corev1.LocalObjectReference `json:"auditWebhook,omitempty"`
-	// Capabilities is service-set (platform-managed, hidden from API)
-	Capabilities *hypershiftv1beta1.Capabilities `json:"capabilities,omitempty"`
 	// ClusterID is service-set (platform-managed, hidden from API)
 	ClusterID string `json:"clusterID,omitempty"`
 	// ControlPlaneRelease is service-set (platform-managed, hidden from API)

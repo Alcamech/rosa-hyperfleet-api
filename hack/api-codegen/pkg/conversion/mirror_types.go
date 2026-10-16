@@ -43,6 +43,16 @@ var mirrorTypeMappings = []MirrorTypeMapping{
 		ConversionStrategy: "json-roundtrip",
 	},
 
+	// Capabilities: HyperFleet owns a mirror (api/v1alpha1/capabilities_types.go) so the public
+	// OpenAPI schema carries the upstream enum, maxItems, and immutability CEL rules instead of
+	// collapsing the field to an opaque object.
+	{
+		FieldName:          "Capabilities",
+		HyperFleetType:     "v1alpha1.Capabilities",
+		HyperShiftType:     "v1beta1.Capabilities",
+		ConversionStrategy: "json-roundtrip",
+	},
+
 	// NodePool Platform: same as above for node pool platform configuration.
 	{
 		FieldName:          "Platform",

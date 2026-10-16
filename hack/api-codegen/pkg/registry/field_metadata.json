@@ -78,6 +78,18 @@
     "ownerGVK": ""
   },
   {
+    "fieldPath": "disabled",
+    "writeMode": "immutable",
+    "ownerType": "Capabilities",
+    "ownerGVK": ""
+  },
+  {
+    "fieldPath": "enabled",
+    "writeMode": "immutable",
+    "ownerType": "Capabilities",
+    "ownerGVK": ""
+  },
+  {
     "fieldPath": "spec.accountId",
     "writeMode": "service-set",
     "hidden": true,
@@ -142,9 +154,14 @@
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },
   {
-    "fieldPath": "spec.hostedCluster.capabilities",
-    "writeMode": "service-set",
-    "hidden": true,
+    "fieldPath": "spec.hostedCluster.capabilities.disabled",
+    "writeMode": "immutable",
+    "ownerType": "Cluster",
+    "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
+  },
+  {
+    "fieldPath": "spec.hostedCluster.capabilities.enabled",
+    "writeMode": "immutable",
     "ownerType": "Cluster",
     "ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
   },

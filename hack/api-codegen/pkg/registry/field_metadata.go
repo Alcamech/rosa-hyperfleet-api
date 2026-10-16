@@ -102,6 +102,20 @@ var FieldRegistry = TypedFieldRegistry{
 			OwnerGVK:  "",
 		},
 	},
+	"Capabilities": {
+		"disabled": {
+			FieldPath: "disabled",
+			WriteMode: Immutable,
+			OwnerType: "Capabilities",
+			OwnerGVK:  "",
+		},
+		"enabled": {
+			FieldPath: "enabled",
+			WriteMode: Immutable,
+			OwnerType: "Capabilities",
+			OwnerGVK:  "",
+		},
+	},
 	"Cluster": {
 		"spec.accountId": {
 			FieldPath: "spec.accountId",
@@ -167,10 +181,15 @@ var FieldRegistry = TypedFieldRegistry{
 			OwnerType: "Cluster",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
 		},
-		"spec.hostedCluster.capabilities": {
-			FieldPath: "spec.hostedCluster.capabilities",
-			WriteMode: ServiceSet,
-			Hidden:    true,
+		"spec.hostedCluster.capabilities.disabled": {
+			FieldPath: "spec.hostedCluster.capabilities.disabled",
+			WriteMode: Immutable,
+			OwnerType: "Cluster",
+			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
+		},
+		"spec.hostedCluster.capabilities.enabled": {
+			FieldPath: "spec.hostedCluster.capabilities.enabled",
+			WriteMode: Immutable,
 			OwnerType: "Cluster",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.Cluster",
 		},
