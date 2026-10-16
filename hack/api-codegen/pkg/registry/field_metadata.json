@@ -7,7 +7,7 @@
   },
   {
     "fieldPath": "imageType",
-    "writeMode": "mutable",
+    "writeMode": "immutable",
     "ownerType": "AWSNodePoolPlatform",
     "ownerGVK": ""
   },
@@ -1493,7 +1493,7 @@
   },
   {
     "fieldPath": "spec.nodePool.platform.aws.imageType",
-    "writeMode": "mutable",
+    "writeMode": "immutable",
     "ownerType": "NodePool",
     "ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
   },
@@ -1602,7 +1602,7 @@
   },
   {
     "fieldPath": "aws.imageType",
-    "writeMode": "mutable",
+    "writeMode": "immutable",
     "ownerType": "NodePoolPlatform",
     "ownerGVK": ""
   },

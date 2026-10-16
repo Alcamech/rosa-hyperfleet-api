@@ -6,6 +6,7 @@ import (
 	rest "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
 	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/registry"
 	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/internal/codegen/featuregate"
+	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 )
 
 func newTestValidator(entries map[string]registry.FieldMeta) *FieldValidator {
@@ -620,5 +621,97 @@ func TestValidateCreate_FeatureGateAwareWriteMode(t *testing.T) {
 	errs = v.ValidateCreate(spec, featuregate.TechPreviewNoUpgrade)
 	if errs != nil {
 		t.Errorf("expected no errors with gate enabled, got %v", errs)
+	}
+}
+
+// A Windows pool is License Included: the image family is fixed at the AMI the
+// pool launches from, so it can be chosen on create but never changed.
+func TestValidateCreate_AllowsWindowsImageType(t *testing.T) {
+	v := NewFieldValidator("NodePool")
+
+	spec := &rest.NodePoolSpec{
+		NodePool: rest.NodePoolSpecPassthrough{
+			Platform: rest.NodePoolPlatform{
+				AWS: &rest.AWSNodePoolPlatform{
+					ImageType: hypershiftv1beta1.ImageTypeWindows,
+				},
+			},
+		},
+	}
+
+	errs := v.ValidateCreate(spec, featuregate.Default)
+	if errs != nil {
+		t.Errorf("expected no errors selecting Windows on create, got %v", errs)
+	}
+}
+
+func TestValidateUpdate_RejectsImageTypeChange(t *testing.T) {
+	v := NewFieldValidator("NodePool")
+
+	specWithImageType := func(imageType hypershiftv1beta1.ImageType) *rest.NodePoolSpec {
+		return &rest.NodePoolSpec{
+			NodePool: rest.NodePoolSpecPassthrough{
+				Platform: rest.NodePoolPlatform{
+					AWS: &rest.AWSNodePoolPlatform{
+						ImageType: imageType,
+					},
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name     string
+		existing *rest.NodePoolSpec
+		updated  *rest.NodePoolSpec
+	}{
+		{"linux to windows", specWithImageType(hypershiftv1beta1.ImageTypeLinux), specWithImageType(hypershiftv1beta1.ImageTypeWindows)},
+		{"windows to linux", specWithImageType(hypershiftv1beta1.ImageTypeWindows), specWithImageType(hypershiftv1beta1.ImageTypeLinux)},
+		// Unset means Linux, so adopting Windows later is still a conversion.
+		{"unset to windows", specWithImageType(""), specWithImageType(hypershiftv1beta1.ImageTypeWindows)},
+		// Blanking a Windows pool back to "" cannot be seen here: imageType is
+		// omitempty, so it drops out of the flattened spec entirely. The
+		// handler catches that case off the raw request body instead, see
+		// TestNodePoolHandlerUpdateRejectsBlankedImageType.
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := v.ValidateUpdate(tt.updated, tt.existing, featuregate.Default)
+			if errs == nil {
+				t.Fatal("expected validation error for changing imageType on update")
+			}
+			found := false
+			for _, e := range errs {
+				if e.Field == "spec.nodePool.platform.aws.imageType" {
+					found = true
+					if e.Reason != "field is immutable and cannot be changed after creation" {
+						t.Errorf("unexpected reason: %s", e.Reason)
+					}
+				}
+			}
+			if !found {
+				t.Errorf("expected error on spec.nodePool.platform.aws.imageType, got %v", errs)
+			}
+		})
+	}
+}
+
+func TestValidateUpdate_AllowsImageTypeUnchanged(t *testing.T) {
+	v := NewFieldValidator("NodePool")
+
+	spec := &rest.NodePoolSpec{
+		NodePool: rest.NodePoolSpecPassthrough{
+			Platform: rest.NodePoolPlatform{
+				AWS: &rest.AWSNodePoolPlatform{
+					ImageType: hypershiftv1beta1.ImageTypeWindows,
+				},
+			},
+		},
+	}
+
+	errs := v.ValidateUpdate(spec, spec, featuregate.Default)
+	if errs != nil {
+		t.Errorf("expected no errors when imageType is unchanged, got %v", errs)
 	}
 }

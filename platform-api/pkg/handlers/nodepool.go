@@ -84,6 +84,42 @@ func rootVolumeSizeImmutableError() validation.ValidationErrors {
 	}
 }
 
+// validateImageTypeClearedOnUpdate rejects an update that blanks imageType on a
+// pool that has one. imageType is omitempty, so an explicit "" or null is
+// dropped from the flattened spec and never reaches the FieldValidator's
+// immutable check, yet the spec merge would convert a Windows (License
+// Included) pool back to the Linux default. A differing non-empty value is
+// already rejected by the FieldValidator, so it is left alone here to avoid
+// reporting the same field twice.
+func validateImageTypeClearedOnUpdate(rawSpec map[string]any, existing *hyperfleetv1alpha1.NodePoolSpec) validation.ValidationErrors {
+	if existing == nil || existing.NodePool.Platform.AWS == nil || existing.NodePool.Platform.AWS.ImageType == "" {
+		return nil
+	}
+
+	node := rawSpec
+	for _, key := range []string{"nodePool", "platform", "aws"} {
+		next, ok := node[key].(map[string]any)
+		if !ok {
+			return nil
+		}
+		node = next
+	}
+
+	supplied, exists := node["imageType"]
+	if !exists {
+		return nil
+	}
+	if value, isString := supplied.(string); isString && value != "" {
+		return nil
+	}
+	return validation.ValidationErrors{
+		&validation.ValidationError{
+			Field:  "spec.nodePool.platform.aws.imageType",
+			Reason: "field is immutable and cannot be changed after creation",
+		},
+	}
+}
+
 func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
@@ -333,6 +369,7 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		errs := h.validator.ValidateUpdate(&req.Spec, &current.Spec, featuregate.Default)
 		errs = append(errs, validateNodePoolReplicas(&req.Spec)...)
 		errs = append(errs, validateRootVolumeNullOnUpdate(rawSpec, &current.Spec)...)
+		errs = append(errs, validateImageTypeClearedOnUpdate(rawSpec, &current.Spec)...)
 		if len(errs) > 0 {
 			validationErr = errs
 			return fmt.Errorf("invalid nodepool update: %w", errs)

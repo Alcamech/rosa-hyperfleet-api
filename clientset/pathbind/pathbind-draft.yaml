@@ -460,7 +460,6 @@ resources:
               goType: string
               operations:
                 - create
-                - update
             - path: spec.nodePool.platform.aws.instanceProfile
               goType: string
               operations:

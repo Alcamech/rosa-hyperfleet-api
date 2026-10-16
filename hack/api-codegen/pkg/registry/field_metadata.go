@@ -31,7 +31,7 @@ var FieldRegistry = TypedFieldRegistry{
 		},
 		"imageType": {
 			FieldPath: "imageType",
-			WriteMode: Mutable,
+			WriteMode: Immutable,
 			OwnerType: "AWSNodePoolPlatform",
 			OwnerGVK:  "",
 		},
@@ -1539,7 +1539,7 @@ var FieldRegistry = TypedFieldRegistry{
 		},
 		"spec.nodePool.platform.aws.imageType": {
 			FieldPath: "spec.nodePool.platform.aws.imageType",
-			WriteMode: Mutable,
+			WriteMode: Immutable,
 			OwnerType: "NodePool",
 			OwnerGVK:  "hyperfleet.io/v1alpha1.NodePool",
 		},
@@ -1650,7 +1650,7 @@ var FieldRegistry = TypedFieldRegistry{
 		},
 		"aws.imageType": {
 			FieldPath: "aws.imageType",
-			WriteMode: Mutable,
+			WriteMode: Immutable,
 			OwnerType: "NodePoolPlatform",
 			OwnerGVK:  "",
 		},
