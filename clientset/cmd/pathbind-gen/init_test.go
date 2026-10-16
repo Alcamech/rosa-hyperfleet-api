@@ -12,7 +12,7 @@ import (
 
 func TestRunInitIncludesMutableFieldsHiddenFromKubernetesOpenAPI(t *testing.T) {
 	registry := []pkg.RegistryEntry{
-		{FieldPath: "spec.nodePool.nodeLabels", WriteMode: "mutable", Hidden: true, OwnerType: "NodePool"},
+		{FieldPath: "spec.nodePool.nodeLabels", WriteMode: "mutable", Hidden: true, Resettable: true, OwnerType: "NodePool"},
 		{FieldPath: "spec.nodePool.serviceField", WriteMode: "service-set", Hidden: true, OwnerType: "NodePool"},
 		{FieldPath: "spec.nodePool.immutableField", WriteMode: "immutable", Hidden: true, OwnerType: "NodePool"},
 	}
@@ -37,6 +37,9 @@ func TestRunInitIncludesMutableFieldsHiddenFromKubernetesOpenAPI(t *testing.T) {
 	text := string(output)
 	if !strings.Contains(text, "spec.nodePool.nodeLabels") {
 		t.Errorf("mutable hidden field missing from pathbind draft:\n%s", text)
+	}
+	if !strings.Contains(text, "resettable: true") {
+		t.Errorf("resettable field metadata missing from pathbind draft:\n%s", text)
 	}
 	for _, excluded := range []string{"serviceField", "immutableField"} {
 		if strings.Contains(text, excluded) {

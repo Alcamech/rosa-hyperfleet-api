@@ -48,6 +48,9 @@ var FieldRegistry = TypedFieldRegistry{
 			{{- if $field.Hidden }}
 			Hidden: true,
 			{{- end }}
+			{{- if $field.Resettable }}
+			Resettable: true,
+			{{- end }}
 			{{- if $field.GatedWriteModes }}
 			FeatureGateAwareWriteModes: []FeatureGateWriteMode{
 				{{- range $gated := $field.GatedWriteModes }}
@@ -74,6 +77,7 @@ type templateField struct {
 	WriteMode       string
 	FeatureGate     string
 	Hidden          bool
+	Resettable      bool
 	GatedWriteModes []templateGatedWriteMode
 	OwnerType       string
 	OwnerGVK        string
@@ -122,6 +126,7 @@ func (s *MarkerScanner) Generate(outputFile string) error {
 				FieldPath:   meta.FieldPath,
 				FeatureGate: meta.FeatureGate,
 				Hidden:      meta.Hidden,
+				Resettable:  meta.Resettable,
 				OwnerType:   meta.OwnerType,
 				OwnerGVK:    meta.OwnerGVK,
 			}

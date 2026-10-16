@@ -2,6 +2,8 @@ package cobra
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"text/template"
@@ -177,6 +179,10 @@ func TestTemplatesUseFlatNodePoolClient(t *testing.T) {
 		InteractivePkg:   "example/interactive",
 		ResourceName:     "NodePool",
 		SDKShortType:     "NodePool",
+		UpdateFields: []pkg.MergedAlias{
+			{GoName: "Labels", Type: "map[string]string", Path: "spec.labels", Flag: "labels", HasFlag: true, Operations: []string{"update"}, Resettable: true},
+			{GoName: "Replicas", Type: "int32", Path: "spec.nodePool.replicas", Flag: "replicas", HasFlag: true, Operations: []string{"update"}},
+		},
 	}
 	tests := []struct {
 		name     string
@@ -184,7 +190,7 @@ func TestTemplatesUseFlatNodePoolClient(t *testing.T) {
 		wantCall string
 	}{
 		{name: "create", source: createTemplate, wantCall: ".NodePools().Create(ctx, obj,"},
-		{name: "update", source: updateTemplate, wantCall: ".NodePools().Update(ctx, obj,"},
+		{name: "update", source: updateTemplate, wantCall: ".NodePools().Patch(ctx, name, types.MergePatchType, payload,"},
 	}
 
 	for _, tt := range tests {
@@ -211,8 +217,84 @@ func TestTemplatesUseFlatNodePoolClient(t *testing.T) {
 				if strings.Contains(got, "uid string") || strings.Contains(got, "obj.Name = uid") {
 					t.Errorf("generated update must not route by metadata.uid: %s", got)
 				}
+				for _, required := range []string{
+					"Get(ctx, name, platform.GetOptions{})",
+					"pathbind.Flatten(ctx, current, &before)",
+					"pathbind.UpdateDocument(ctx, before, after, obj)",
+					"json.Marshal(document)",
+					"field %s cannot be reset",
+				} {
+					if !strings.Contains(got, required) {
+						t.Errorf("generated update is missing %q:\n%s", required, got)
+					}
+				}
 			}
 		})
+	}
+}
+
+func TestUpdateTemplateUsesSharedFlagChangedHelper(t *testing.T) {
+	if strings.Contains(updateTemplate, "func flagChanged(") {
+		t.Fatal("update template must not define flagChanged because it is generated once per package")
+	}
+	if strings.Count(helpersTemplate, "func flagChanged(") != 1 {
+		t.Fatal("helpers template must define flagChanged exactly once")
+	}
+}
+
+func TestUpdateFmtImportIsConditional(t *testing.T) {
+	data := pkg.CobraTemplateData{UpdateFields: []pkg.MergedAlias{
+		{GoName: "Labels", Resettable: true},
+	}}
+	if got := updateFmtImport(data); got != "" {
+		t.Fatalf("updateFmtImport() with only resettable fields = %q, want empty", got)
+	}
+
+	data.UpdateFields = append(data.UpdateFields, pkg.MergedAlias{GoName: "Replicas"})
+	if got := updateFmtImport(data); got != "\n\t\"fmt\"" {
+		t.Fatalf("updateFmtImport() with a non-resettable field = %q, want fmt import", got)
+	}
+}
+
+func TestEmitUpdateFileConditionalFmtImport(t *testing.T) {
+	tmpl := template.Must(template.New("update").Funcs(buildFuncMap()).Parse(updateTemplate))
+	data := pkg.CobraTemplateData{
+		Package:          "generated",
+		RuntimePkgImport: "example/runtime",
+		RuntimeAlias:     "runtime",
+		InteractivePkg:   "example/interactive",
+		ResourceName:     "NodePool",
+		SDKShortType:     "NodePool",
+		UpdateFields: []pkg.MergedAlias{
+			{GoName: "Labels", Type: "map[string]string", Path: "spec.labels", Flag: "labels", HasFlag: true, Operations: []string{"update"}, Resettable: true},
+		},
+	}
+
+	resettablePath := filepath.Join(t.TempDir(), "resettable_update_gen.go")
+	if err := emitFile(tmpl, data, resettablePath, false); err != nil {
+		t.Fatalf("emitFile() with only resettable fields: %v", err)
+	}
+	output, err := os.ReadFile(resettablePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(output, []byte("\t\"fmt\"\n")) {
+		t.Fatalf("generated update with only resettable fields should not import fmt:\n%s", output)
+	}
+
+	data.UpdateFields = append(data.UpdateFields, pkg.MergedAlias{
+		GoName: "Replicas", Type: "int32", Path: "spec.nodePool.replicas", Flag: "replicas", HasFlag: true, Operations: []string{"update"},
+	})
+	nonResettablePath := filepath.Join(t.TempDir(), "non_resettable_update_gen.go")
+	if err := emitFile(tmpl, data, nonResettablePath, false); err != nil {
+		t.Fatalf("emitFile() with a non-resettable field: %v", err)
+	}
+	output, err = os.ReadFile(nonResettablePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(output, []byte("\t\"fmt\"\n")) {
+		t.Fatalf("generated update with a non-resettable field should import fmt:\n%s", output)
 	}
 }
 

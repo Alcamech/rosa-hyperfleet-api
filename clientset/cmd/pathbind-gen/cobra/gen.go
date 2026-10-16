@@ -116,8 +116,9 @@ func emitFile(tmpl *template.Template, data pkg.CobraTemplateData, path string, 
 	var buf bytes.Buffer
 
 	if !withHeader {
-		fmt.Fprintf(&buf, "package %s\n\nimport (\n\t\"context\"\n\t\"github.com/spf13/cobra\"\n\t%s %q\n\tv1alpha1 \"github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public\"\n\tpathbind \"github.com/openshift-online/rosa-hyperfleet-api/clientset/pathbind\"\n\tplatform \"github.com/openshift-online/rosa-hyperfleet-api/clientset/platform\"\n\tinteractive %q\n)\n\n",
+		fmt.Fprintf(&buf, "package %s\n\nimport (\n\t\"context\"\n\t\"encoding/json\"%s\n\t\"github.com/spf13/cobra\"\n\t%s %q\n\tv1alpha1 \"github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public\"\n\tpathbind \"github.com/openshift-online/rosa-hyperfleet-api/clientset/pathbind\"\n\tplatform \"github.com/openshift-online/rosa-hyperfleet-api/clientset/platform\"\n\tinteractive %q\n\t\"k8s.io/apimachinery/pkg/types\"\n)\n\n",
 			data.Package,
+			updateFmtImport(data),
 			data.RuntimeAlias, data.RuntimePkgImport,
 			data.InteractivePkg,
 		)
@@ -141,6 +142,15 @@ func emitFile(tmpl *template.Template, data pkg.CobraTemplateData, path string, 
 	}
 	fmt.Printf("pathbind-gen: wrote %s\n", path)
 	return nil
+}
+
+func updateFmtImport(data pkg.CobraTemplateData) string {
+	for _, field := range data.UpdateFields {
+		if !field.Resettable {
+			return "\n\t\"fmt\""
+		}
+	}
+	return ""
 }
 
 func buildFuncMap() template.FuncMap {
@@ -210,7 +220,7 @@ func buildFuncMap() template.FuncMap {
 		},
 		"updateSDKCall": func(td pkg.CobraTemplateData) string {
 			return fmt.Sprintf(
-				"updated, err := r.HyperFleetClient.HyperfleetV1alpha1().%ss().Update(ctx, obj, platform.UpdateOptions{})",
+				"updated, err := r.HyperFleetClient.HyperfleetV1alpha1().%ss().Patch(ctx, name, types.MergePatchType, payload, platform.PatchOptions{})",
 				td.ResourceName,
 			)
 		},

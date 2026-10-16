@@ -181,6 +181,32 @@ func TestMarkerScanner_ScanPopulatesTypedRegistry(t *testing.T) {
 	}
 }
 
+func TestMarkerScanner_ResettableMarker(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() failed: %v", err)
+	}
+
+	scanner, err := NewScanner([]string{filepath.Join(wd, "../../../../api/v1alpha1")}, false)
+	if err != nil {
+		t.Fatalf("NewScanner() failed: %v", err)
+	}
+	if err := scanner.Scan(); err != nil {
+		t.Fatalf("Scan() failed: %v", err)
+	}
+
+	nodePoolFields, found := scanner.TypedRegistry["NodePool"]
+	if !found {
+		t.Fatal("NodePool owner not found in registry")
+	}
+	if meta := nodePoolFields["spec.labels"]; !meta.Resettable {
+		t.Fatalf("spec.labels Resettable = false, want true: %#v", meta)
+	}
+	if meta := nodePoolFields["spec.nodePool.taints"]; !meta.Resettable {
+		t.Fatalf("spec.nodePool.taints Resettable = false, want true: %#v", meta)
+	}
+}
+
 func TestMarkerScanner_UpstreamReducedTypesDetected(t *testing.T) {
 	// Integration test: verify upstream-reduced object markers are detected
 	wd, err := os.Getwd()

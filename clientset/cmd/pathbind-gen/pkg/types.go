@@ -13,10 +13,11 @@ import (
 
 // RegistryEntry is an entry from field_metadata.json.
 type RegistryEntry struct {
-	FieldPath string `json:"fieldPath"`
-	WriteMode string `json:"writeMode"`
-	Hidden    bool   `json:"hidden"`
-	OwnerType string `json:"ownerType"`
+	FieldPath  string `json:"fieldPath"`
+	WriteMode  string `json:"writeMode"`
+	Hidden     bool   `json:"hidden"`
+	Resettable bool   `json:"resettable"`
+	OwnerType  string `json:"ownerType"`
 }
 
 // Draft is the structure of pathbind-draft.yaml.
@@ -35,6 +36,7 @@ type DraftField struct {
 	Path       string   `yaml:"path"`
 	GoType     string   `yaml:"goType,omitempty"`
 	Operations []string `yaml:"operations"`
+	Resettable bool     `yaml:"resettable,omitempty"`
 }
 
 // Overrides is the structure of pathbind-overrides.yaml.
@@ -117,6 +119,7 @@ type MergedAlias struct {
 	Required    bool
 	Operations  []string
 	HasFlag     bool
+	Resettable  bool
 	// TF-specific:
 	Immutable         bool
 	Computed          bool
@@ -320,6 +323,7 @@ func mergeDraftField(df DraftField, ov OverrideAlias, hasOv bool, allDraftPaths 
 		Required:          required,
 		Operations:        ops,
 		HasFlag:           flag != "",
+		Resettable:        df.Resettable,
 		Immutable:         immutable,
 		Computed:          computed,
 		Sensitive:         sensitive,

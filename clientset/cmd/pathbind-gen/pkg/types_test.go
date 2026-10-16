@@ -24,6 +24,21 @@ func TestBuildMergedAliasesPreservesBundle(t *testing.T) {
 	}
 }
 
+func TestBuildMergedAliasesPreservesResettable(t *testing.T) {
+	path := "spec.labels"
+	draft := map[string]DraftField{
+		path: {Path: path, GoType: "map", Operations: []string{"create", "update"}, Resettable: true},
+	}
+
+	aliases, err := BuildMergedAliases(draft, []OverrideAlias{{Path: path}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aliases) != 1 || !aliases[0].Resettable {
+		t.Fatalf("resettable metadata was not preserved: %#v", aliases)
+	}
+}
+
 func TestBuildMergedAliasesListObjectElementSchema(t *testing.T) {
 	path := "spec.nodePool.config"
 	draft := map[string]DraftField{

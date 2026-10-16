@@ -41,6 +41,11 @@ type FieldMeta struct {
 	// HyperFleet's custom public API schema.
 	Hidden bool
 
+	// Resettable indicates whether an update may explicitly clear the field.
+	// Mutable means a field can be changed; resettable means an empty
+	// collection or null is a meaningful update rather than an invalid value.
+	Resettable bool `json:"resettable,omitempty"`
+
 	// FeatureGateAwareWriteModes allows write-mode to vary based on enabled feature gates
 	// Empty FeatureGate in an entry means "default" (when no gates are enabled)
 	FeatureGateAwareWriteModes []FeatureGateWriteMode `json:"featureGateAwareWriteModes,omitempty"`
