@@ -1,5 +1,11 @@
 # Changes
 
+## 0.1.22 Oct 16 2026
+
+- feat: add resettable pathbind updates
+- ROSAENG-68177: feat: expose capabilities via mirror type
+
+
 ## 0.1.21 Oct 16 2026
 
 - ROSAENG-68200 | feat: mark ipv4 subnet as immutable to match hypershift
