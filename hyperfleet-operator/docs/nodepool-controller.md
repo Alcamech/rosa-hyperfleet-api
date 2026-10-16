@@ -12,15 +12,15 @@ sequenceDiagram
     participant KA as kube-applier-aws
     participant MC as Management Cluster
 
-    API->>PG: Create NodePool CR (clusterRef=clusterID)
+    API->>PG: Create NodePool CR (ownerRef + cluster-uid label set by API)
     NPC->>PG: Watch detects new NodePool
     NPC->>PG: Add finalizer (hyperfleet.io/nodepool), requeue
-    NPC->>PG: Get parent Cluster → get PlacementRef
+    NPC->>PG: Resolve parent Cluster via ownerReference name, compare UID → get PlacementRef
     alt Cluster not found or no PlacementRef
         NPC->>PG: Set phase=WaitingForCluster, requeue
     else Cluster has Bound Placement
-        NPC->>NPC: Generate NodePool manifest
-        NPC->>DDB: Write ApplyDesire (nodepools/{clusterName}-{nodePoolName})
+        NPC->>NPC: Generate NodePool manifest (child portion of name)
+        NPC->>DDB: Write ApplyDesire (nodepools/{childName})
         NPC->>DDB: Write ReadDesire for NodePool status
         NPC->>PG: Set phase=Provisioning
         KA->>DDB: Read ApplyDesires
@@ -35,8 +35,8 @@ sequenceDiagram
 ### Reconcile Steps
 
 1. **Finalizer**: Adds `hyperfleet.io/nodepool` finalizer on first reconcile, requeues
-2. **Parent Cluster lookup**: Gets Cluster CR by `spec.clusterRef` in the same namespace (account ID), waits if not found or no `PlacementRef`
-3. **Manifest generation**: Generates a HyperShift NodePool manifest
+2. **Parent Cluster lookup**: Resolves the parent Cluster by the ownerReference name in the same account namespace, then compares UID. Waits if the Cluster is not found or has no `PlacementRef`
+3. **Manifest generation**: Extracts the child portion of the `<cluster>.<child>` name and generates a HyperShift NodePool manifest
 4. **ApplyDesire**: Writes one ApplyDesire to `{mc}-specs-applydesires`
 5. **ReadDesire**: Creates a ReadDesire for the NodePool to get status feedback (extracts "Ready" condition from the remote NodePool)
 6. **Status propagation**: Reads status from DynamoDB, updates NodePool CR conditions (Synced, Ready) and phase
@@ -44,11 +44,11 @@ sequenceDiagram
 
 ### Generated Resource
 
-The NodePool manifest name on the MC is `{clusterName}-{nodePoolName}` and lives in namespace `clusters-{clusterID}`.
+The NodePool manifest on the MC uses the child portion of the `<cluster>.<child>` name and lives in namespace `cluster-<Cluster UID>`.
 
-| Resource              | Name                           | Purpose                                   |
-| --------------------- | ------------------------------ | ----------------------------------------- |
-| NodePool (HyperShift) | `{clusterName}-{nodePoolName}` | Worker node set on the management cluster |
+| Resource              | Name          | Namespace               | Purpose                                   |
+| --------------------- | ------------- | ----------------------- | ----------------------------------------- |
+| NodePool (HyperShift) | `{childName}` | `cluster-<Cluster UID>` | Worker node set on the management cluster |
 
 ## Deletion Flow
 
@@ -64,21 +64,19 @@ sequenceDiagram
     User->>PG: Delete NodePool CR (sets DeletionTimestamp)
     NPC->>PG: Detect DeletionTimestamp, set phase=Deleting
     NPC->>PG: Look up parent Cluster → get PlacementRef
-    NPC->>DDB: Delete ApplyDesire spec for nodepools/{clusterName}-{nodePoolName}
-    NPC->>DDB: Write DeleteDesire for nodepools/{clusterName}-{nodePoolName}
-    NPC->>DDB: Poll status table for deletion confirmation
+    NPC->>DDB: Upsert ApplyDesire with Type=Delete (same document ID)
+    NPC->>DDB: Wait for kube-applier to confirm MC resource deletion
     NPC->>NPC: Requeue until confirmed
-    NPC->>DDB: Delete ReadDesire spec
+    NPC->>DDB: Delete ApplyDesire and ReadDesire specs
     NPC->>PG: Remove finalizer → CR deleted
 ```
 
 ### Deletion Steps
 
 1. **PlacementRef lookup**: Gets the parent Cluster's PlacementRef to determine the target MC
-2. **ApplyDesire cleanup**: Deletes the ApplyDesire spec from DynamoDB before writing the DeleteDesire, preventing kube-applier from racing and re-applying the resource being deleted
-3. **DeleteDesire**: Writes a DeleteDesire for the NodePool resource on the MC
-4. **Confirmation**: Polls `{mc}-status-deletedesires` until kube-applier-aws confirms the deletion
-5. **ReadDesire cleanup**: Deletes the ReadDesire spec from DynamoDB
-6. **Finalizer removal**: Removes finalizer, allowing the CR to be garbage-collected
+2. **ApplyDesire Type=Delete**: Upserts the existing ApplyDesire with `Type=Delete` using the same document ID. kube-applier sees a MODIFY event and deletes the NodePool from the MC
+3. **Confirmation**: Waits for kube-applier to confirm the MC resource deletion via the status table
+4. **DynamoDB cleanup**: Deletes the ApplyDesire and ReadDesire specs from DynamoDB
+5. **Finalizer removal**: Removes finalizer, allowing the CR to be garbage-collected
 
 The parent Cluster and Placement are unaffected by standalone NodePool deletion.

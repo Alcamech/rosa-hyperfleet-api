@@ -6,7 +6,7 @@ ROSA HCP regional cluster management — platform API, operator, and backing dat
 | ---------------------- | ------------------------------------------------------- |
 | `api/`                 | CRD types and API definitions (v1alpha1)                |
 | `platform-api/`        | REST gateway (SigV4 auth, Cedar/AVP authz)              |
-| `hyperfleet-operator/` | Kubernetes operator (Cluster, NodePool, Placement CRDs) |
+| `hyperfleet-operator/` | Kubernetes operator (cluster lifecycle controller for Cluster, NodePool, DNSReservation, OidcConfig, Placement, ManagementCluster, Manifest, and other CRDs) |
 | `hyperfleet-db/`       | PostgreSQL-backed controller-runtime library            |
 | `clientset/`           | Generated typed Kubernetes client for HyperFleet CRDs   |
 | `hack/`                | Code generation tools and dev tooling                   |

@@ -24,13 +24,16 @@ The operator uses [fleetdb](../../../hyperfleet-db/) to implement the controller
 
 ### CRDs
 
-CRDs are under API group `hyperfleet.io/v1alpha1`. Most are **namespace-scoped** — the namespace is the cluster ID, with the account ID stored as a label. **ManagementCluster** is the exception: it is **cluster-scoped** and declared as an `UnshardedGVK` so every operator pod sees all ManagementClusters regardless of its shard assignment.
+CRDs are under API group `hyperfleet.io/v1alpha1`. Most are **namespace-scoped** — the namespace is `account-<accountID>`, with the account ID also stored in the `hyperfleet.io/account-id` label. **ManagementCluster** is the exception: it is **cluster-scoped** and declared as an `UnshardedGVK` so every operator pod sees all ManagementClusters regardless of its shard assignment.
 
-- **Cluster** — represents a ROSA HCP cluster. Spec contains all the configuration needed to create a HostedCluster on a management cluster (networking, IAM roles, OIDC issuer, etc.).
-- **NodePool** — represents a set of worker nodes for a Cluster. References a parent Cluster via `spec.clusterRef`. Must be in the same namespace as its parent Cluster.
-- **Placement** — binds a Cluster to a management cluster. Created automatically by the Placement controller. Must be in the same namespace as its Cluster.
+- **Cluster** — represents a ROSA HCP cluster. `metadata.Name` is a client-chosen DNS label; `metadata.Namespace` is `account-<accountID>`. Spec contains all the configuration needed to create a HostedCluster on a management cluster.
+- **NodePool** — represents a set of worker nodes for a Cluster. Named `<cluster>.<child>` in the same account namespace. Parent ownership is tracked via an ownerReference and `hyperfleet.io/cluster-uid` label.
+- **Placement** — binds a Cluster to a management cluster. Created automatically by the Placement controller. In the same account namespace.
+- **DNSReservation** — customer-facing resource that reserves a DNS prefix and base domain. It can be created before a Cluster for shared-VPC flows. Claimed by a Cluster via the `hyperfleet.io/claimed-by-cluster-uid` label.
+- **OidcConfig** — represents an OIDC issuer configuration for cluster identity.
+- **Index** — internal uniqueness resource used for DNS prefix and OIDC issuer URL reservations.
 - **ManagementCluster** — represents a management cluster in the fleet. Stores region and account metadata.
-- **Manifest** — deploys arbitrary Kubernetes resources to a management cluster. A generic pass-through: raw manifests are written as-is to DynamoDB ApplyDesires. Resources with `watch: true` also get ReadDesires, mirroring their live state from the MC back into the CR status. Used for infrastructure resources (monitoring collectors, CRDs, RBAC, shared configs) that don't warrant a dedicated controller.
+- **Manifest** — deploys arbitrary Kubernetes resources to a management cluster. A generic pass-through: raw manifests are written as-is to DynamoDB ApplyDesires. Resources with `watch: true` also get ReadDesires, mirroring their live state from the MC back into the CR status.
 
 ### Controllers
 
@@ -102,4 +105,4 @@ Required configuration:
 
 ## Horizontal Scaling via Namespace-Hash Sharding
 
-The operator scales horizontally via namespace-hash sharding. The pgruntime cache partitions its List/Watch streams using `abs(hashtext(namespace)::bigint) % replicaCount`, giving cluster-level affinity — all resources for one cluster land in the same shard. Each StatefulSet replica owns a single shard equal to its pod ordinal. See [Sharding](sharding.md) for configuration and scaling details.
+The operator scales horizontally via namespace-hash sharding. The pgruntime cache partitions its List/Watch streams using `abs(hashtext(namespace)::bigint) % replicaCount`, giving account-level affinity — all account-namespaced resources for one AWS account land in the same shard (cluster-scoped resources like ManagementCluster are unsharded). Each StatefulSet replica owns a single shard equal to its pod ordinal. See [Sharding](sharding.md) for configuration and scaling details.
