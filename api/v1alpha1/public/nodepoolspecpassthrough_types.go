@@ -58,6 +58,7 @@ type NodePoolSpecPassthrough struct {
 	// taints if specified, propagates a list of taints to Nodes, only once on creation.
 	// +k8s:openapi-gen=false
 	// +hyperfleet:write-mode=mutable
+	// +hyperfleet:resettable=true
 	// +optional
 	Taints []hypershiftv1beta1.Taint `json:"taints,omitempty"`
 	// tuningConfig is a list of references to ConfigMaps containing serialized

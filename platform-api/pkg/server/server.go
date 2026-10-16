@@ -231,7 +231,7 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 	nodePoolRouter.HandleFunc("", nodePoolHandler.List).Methods(http.MethodGet)
 	nodePoolRouter.HandleFunc("", nodePoolHandler.Create).Methods(http.MethodPost)
 	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Get).Methods(http.MethodGet)
-	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Update).Methods(http.MethodPut)
+	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Update).Methods(http.MethodPatch, http.MethodPut)
 	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Delete).Methods(http.MethodDelete)
 
 	// OidcConfig routes (user-facing, require authz)

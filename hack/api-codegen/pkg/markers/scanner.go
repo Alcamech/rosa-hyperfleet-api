@@ -18,6 +18,7 @@ var (
 	// Marker patterns
 	openapiGenPattern                = regexp.MustCompile(`\+k8s:openapi-gen=false`)
 	writeModePattern                 = regexp.MustCompile(`\+hyperfleet:write-mode=(mutable|immutable|service-set)`)
+	resettablePattern                = regexp.MustCompile(`\+hyperfleet:resettable=(true|false)`)
 	featureGatePattern               = regexp.MustCompile(`\+openshift:enable:FeatureGate=(\w+)`)
 	featureGateAwareWriteModePattern = regexp.MustCompile(`\+hyperfleet:validation:FeatureGateAwareWriteMode:featureGate="([^"]*)",writeMode="(mutable|immutable|service-set)"`)
 	upstreamReducedObjectPattern     = regexp.MustCompile(`\+hyperfleet:upstream-reduced-object=([^\s]+)`)
@@ -308,7 +309,7 @@ func (s *MarkerScanner) processField(field *ast.Field, parentPath string, visite
 		// Upstream-reduced fields will be synth added via synthetic paths
 		meta.OwnerType = ownerKind
 		meta.OwnerGVK = ownerGVK
-		s.logf("    field: %s  owner=%s  write-mode=%s  hidden=%v  gate=%s", fieldPath, ownerKind, meta.WriteMode, meta.Hidden, meta.FeatureGate)
+		s.logf("    field: %s  owner=%s  write-mode=%s  hidden=%v  resettable=%v  gate=%s", fieldPath, ownerKind, meta.WriteMode, meta.Hidden, meta.Resettable, meta.FeatureGate)
 
 		// Add to typed registry
 		if s.TypedRegistry[ownerKind] == nil {
@@ -389,6 +390,11 @@ func (s *MarkerScanner) extractMarkers(field *ast.Field, fieldPath string) *Fiel
 		meta.WriteMode = WriteMode(matches[1])
 	}
 
+	// Extract reset support
+	if matches := resettablePattern.FindStringSubmatch(comments); len(matches) > 1 {
+		meta.Resettable = matches[1] == "true"
+	}
+
 	// Extract feature gate
 	if matches := featureGatePattern.FindStringSubmatch(comments); len(matches) > 1 {
 		meta.FeatureGate = matches[1]
@@ -410,7 +416,7 @@ func (s *MarkerScanner) extractMarkers(field *ast.Field, fieldPath string) *Fiel
 	}
 
 	// Only include in registry if at least one marker was found
-	if meta.Hidden || meta.WriteMode != "" || meta.FeatureGate != "" || len(meta.FeatureGateAwareWriteModes) > 0 {
+	if meta.Hidden || meta.WriteMode != "" || meta.Resettable || meta.FeatureGate != "" || len(meta.FeatureGateAwareWriteModes) > 0 {
 		return meta
 	}
 

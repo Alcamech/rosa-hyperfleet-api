@@ -407,6 +407,7 @@ resources:
               operations:
                 - create
                 - update
+              resettable: true
             - path: spec.maxSurge
               goType: string
               operations:
@@ -539,6 +540,7 @@ resources:
               operations:
                 - create
                 - update
+              resettable: true
             - path: spec.nodePool.tuningConfig
               goType: array(object)
               operations:

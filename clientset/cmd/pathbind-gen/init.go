@@ -111,6 +111,7 @@ func runInit(registryPath, openapiPath, outputPath string) error {
 						Path:       leaf.path,
 						GoType:     leaf.goType,
 						Operations: ops,
+						Resettable: e.Resettable,
 					})
 				}
 			} else {
@@ -120,6 +121,7 @@ func runInit(registryPath, openapiPath, outputPath string) error {
 					res.Fields = append(res.Fields, pkg.DraftField{
 						Path:       e.FieldPath,
 						Operations: ops,
+						Resettable: e.Resettable,
 					})
 				}
 			}

@@ -74,6 +74,42 @@ func normalize{{$res}}UpdateInput(cmd *cobra.Command, input *{{$res}}UpdateInput
 {{- end}}
 }
 
+// overlay{{$res}}UpdateInput starts from the current values and applies only
+// fields explicitly supplied by the caller or computed by PostExpand. An
+// explicitly empty value is allowed only for resettable fields.
+func overlay{{$res}}UpdateInput(cmd *cobra.Command, before, input, expanded *{{$res}}UpdateInput) ({{$res}}UpdateInput, error) {
+	after := *before
+{{- range .UpdateFields}}
+	if flagChanged(cmd, {{printf "%q" .Flag}}) && pathbind.IsUnset(input.{{.GoName}}) {
+	{{- if .Resettable}}
+		after.{{.GoName}} = input.{{.GoName}}
+	{{- else}}
+		return after, fmt.Errorf("field %s cannot be reset", {{printf "%q" .Path}})
+	{{- end}}
+	} else if !pathbind.IsUnset(expanded.{{.GoName}}) {
+		after.{{.GoName}} = expanded.{{.GoName}}
+	} else if !pathbind.IsUnset(input.{{.GoName}}) {
+		after.{{.GoName}} = input.{{.GoName}}
+	}
+{{- end}}
+	return after, nil
+}
+
+func build{{$res}}UpdateDocument(ctx context.Context, cmd *cobra.Command, current *v1alpha1.{{$sdk}}, input *{{$res}}UpdateInput, obj *v1alpha1.{{$sdk}}) (map[string]any, error) {
+	var before, expanded {{$res}}UpdateInput
+	if err := pathbind.Flatten(ctx, current, &before); err != nil {
+		return nil, err
+	}
+	if err := pathbind.Flatten(ctx, obj, &expanded); err != nil {
+		return nil, err
+	}
+	after, err := overlay{{$res}}UpdateInput(cmd, &before, input, &expanded)
+	if err != nil {
+		return nil, err
+	}
+	return pathbind.UpdateDocument(ctx, before, after, obj)
+}
+
 // RunUpdate{{$res}} executes the update dispatch. Generated; do not edit.
 // name is the account-scoped metadata.name used to address the resource in the Platform API.
 func RunUpdate{{$res}}(ctx context.Context, r {{$rt}}, cmd *cobra.Command, name string, input *{{$res}}UpdateInput, h {{$res}}UpdateHandler) error {
@@ -86,12 +122,27 @@ func RunUpdate{{$res}}(ctx context.Context, r {{$rt}}, cmd *cobra.Command, name 
 		return err
 	}
 	normalize{{$res}}UpdateInput(cmd, input)
+	current, err := r.HyperFleetClient.HyperfleetV1alpha1().{{$res}}s().Get(ctx, name, platform.GetOptions{})
+	if err != nil {
+		return err
+	}
 	obj := &v1alpha1.{{$sdk}}{}
 	if err := pathbind.Expand(ctx, *input, obj); err != nil {
 		return err
 	}
 	obj.Name = name
 	if err := h.PostExpand(ctx, r, input, obj); err != nil {
+		return err
+	}
+	document, err := build{{$res}}UpdateDocument(ctx, cmd, current, input, obj)
+	if err != nil {
+		return err
+	}
+	if len(document) == 0 {
+		return h.PostResponse(ctx, r, current)
+	}
+	payload, err := json.Marshal(document)
+	if err != nil {
 		return err
 	}
 	{{updateSDKCall .}}

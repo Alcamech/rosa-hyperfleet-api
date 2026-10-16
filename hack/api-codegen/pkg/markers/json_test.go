@@ -152,3 +152,29 @@ func TestLoadTypedRegistryFromJSON_WithFeatureGates(t *testing.T) {
 		t.Error("spec.etcd not found in Cluster fields")
 	}
 }
+
+func TestLoadTypedRegistryFromJSON_WithResettable(t *testing.T) {
+	tmpDir := t.TempDir()
+	resettableFile := filepath.Join(tmpDir, "resettable.json")
+	jsonContent := `[
+		{
+			"fieldPath": "spec.labels",
+			"writeMode": "mutable",
+			"resettable": true,
+			"ownerType": "NodePool",
+			"ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+		}
+	]`
+
+	if err := os.WriteFile(resettableFile, []byte(jsonContent), 0o600); err != nil {
+		t.Fatalf("write resettable registry: %v", err)
+	}
+
+	loaded, err := LoadTypedRegistryFromJSON(resettableFile)
+	if err != nil {
+		t.Fatalf("LoadTypedRegistryFromJSON() error = %v", err)
+	}
+	if meta := loaded["NodePool"]["spec.labels"]; !meta.Resettable {
+		t.Fatalf("spec.labels Resettable = false, want true: %#v", meta)
+	}
+}

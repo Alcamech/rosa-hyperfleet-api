@@ -218,6 +218,22 @@ func TestServer_IdentityMiddleware(t *testing.T) {
 	}
 }
 
+func TestServer_NodePoolUpdateRouteAcceptsPatch(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	server, err := New(config.NewConfig(), nil, logger)
+	if err != nil {
+		t.Fatalf("unexpected error creating server: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPatch, "/api/v0/nodepools/test-id", nil)
+	recorder := httptest.NewRecorder()
+	server.apiServer.Handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("PATCH nodepool status = %d, want %d (route matched and reached authorization)", recorder.Code, http.StatusForbidden)
+	}
+}
+
 func TestServer_MetricsRoute(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.NewConfig()

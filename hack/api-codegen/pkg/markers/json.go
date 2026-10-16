@@ -22,6 +22,7 @@ func (s *MarkerScanner) GenerateJSON(outputFile string) error {
 		WriteMode                  string                 `json:"writeMode,omitempty"`
 		FeatureGate                string                 `json:"featureGate,omitempty"`
 		Hidden                     bool                   `json:"hidden,omitempty"`
+		Resettable                 bool                   `json:"resettable,omitempty"`
 		FeatureGateAwareWriteModes []FeatureGateWriteMode `json:"featureGateAwareWriteModes,omitempty"`
 		OwnerType                  string                 `json:"ownerType"`
 		OwnerGVK                   string                 `json:"ownerGVK"`
@@ -56,6 +57,7 @@ func (s *MarkerScanner) GenerateJSON(outputFile string) error {
 				WriteMode:                  string(meta.WriteMode),
 				FeatureGate:                meta.FeatureGate,
 				Hidden:                     meta.Hidden,
+				Resettable:                 meta.Resettable,
 				FeatureGateAwareWriteModes: meta.FeatureGateAwareWriteModes,
 				OwnerType:                  meta.OwnerType,
 				OwnerGVK:                   meta.OwnerGVK,
@@ -94,6 +96,7 @@ func LoadTypedRegistryFromJSONBytes(data []byte) (TypedFieldRegistry, error) {
 		WriteMode                  string                 `json:"writeMode,omitempty"`
 		FeatureGate                string                 `json:"featureGate,omitempty"`
 		Hidden                     bool                   `json:"hidden,omitempty"`
+		Resettable                 bool                   `json:"resettable,omitempty"`
 		FeatureGateAwareWriteModes []FeatureGateWriteMode `json:"featureGateAwareWriteModes,omitempty"`
 		OwnerType                  string                 `json:"ownerType"`
 		OwnerGVK                   string                 `json:"ownerGVK"`
@@ -116,6 +119,7 @@ func LoadTypedRegistryFromJSONBytes(data []byte) (TypedFieldRegistry, error) {
 			WriteMode:                  WriteMode(field.WriteMode),
 			FeatureGate:                field.FeatureGate,
 			Hidden:                     field.Hidden,
+			Resettable:                 field.Resettable,
 			FeatureGateAwareWriteModes: field.FeatureGateAwareWriteModes,
 			OwnerType:                  field.OwnerType,
 			OwnerGVK:                   field.OwnerGVK,

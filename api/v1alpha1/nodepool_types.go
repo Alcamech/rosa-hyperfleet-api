@@ -74,6 +74,7 @@ type NodePoolSpec struct {
 
 	// Labels are customer-defined labels applied to nodes in this pool.
 	// +hyperfleet:write-mode=mutable
+	// +hyperfleet:resettable=true
 	// +kubebuilder:validation:MaxProperties=100
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`

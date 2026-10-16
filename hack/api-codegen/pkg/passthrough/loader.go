@@ -258,6 +258,10 @@ func (g *Generator) getMarkersForField(jsonTagName string) []string {
 				markers = append(markers, fmt.Sprintf("+hyperfleet:write-mode=%s", meta.WriteMode))
 			}
 
+			if meta.Resettable {
+				markers = append(markers, "+hyperfleet:resettable=true")
+			}
+
 			if meta.FeatureGate != "" {
 				markers = append(markers, fmt.Sprintf("+openshift:enable:FeatureGate=%s", meta.FeatureGate))
 			}
