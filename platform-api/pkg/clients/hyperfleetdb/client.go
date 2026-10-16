@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
+	"time"
 
 	hyperfleetdb "github.com/openshift-online/rosa-hyperfleet-api/hyperfleet-db"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,6 +19,9 @@ import (
 
 const accountIDLabel = "hyperfleet.io/account-id"
 const clusterUIDLabel = "hyperfleet.io/cluster-uid"
+
+const spotQueueClaimTimeout = 10 * time.Minute
+const spotQueueOwnerPrefix = "cluster-"
 
 // Client wraps a pgruntime client.Client for CRUD on hyperfleet resources.
 type Client struct {
@@ -104,6 +109,133 @@ func (c *Client) DeleteCluster(ctx context.Context, accountID, name string) erro
 // resourceVersion preconditions. It is used to compensate failed creates.
 func (c *Client) DeleteClusterObject(ctx context.Context, cluster *hyperfleetv1alpha1.Cluster) error {
 	return c.client.Delete(ctx, cluster)
+}
+
+// ClaimSpotTerminationQueue atomically reserves a customer SQS queue URL for a
+// Cluster. The bool reports whether this call created the reservation. An
+// existing reservation owned by the same Cluster is treated as success.
+func (c *Client) ClaimSpotTerminationQueue(ctx context.Context, accountID, queueURL, clusterName string) (bool, error) {
+	indexName := hyperfleetv1alpha1.SpotTerminationQueueIndexName(accountID, queueURL)
+	ownerKey := spotQueueOwnerKey(clusterName)
+	var lastConflict error
+
+	for range 5 {
+		reservation := &hyperfleetv1alpha1.Index{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: hyperfleetv1alpha1.SpotTerminationQueueReservationsNamespace,
+				Name:      indexName,
+				Labels: map[string]string{
+					hyperfleetv1alpha1.SpotTerminationQueueOwnerLabel: ownerKey,
+				},
+				Annotations: map[string]string{
+					hyperfleetv1alpha1.SpotTerminationQueueClaimedAtAnnotation: time.Now().UTC().Format(time.RFC3339Nano),
+				},
+			},
+		}
+		if err := c.client.Create(ctx, reservation); err == nil {
+			return true, nil
+		} else if !IsAlreadyExists(err) {
+			return false, err
+		} else {
+			createErr := err
+			lastConflict = createErr
+			var existing hyperfleetv1alpha1.Index
+			getErr := c.client.Get(ctx, k8stypes.NamespacedName{
+				Namespace: hyperfleetv1alpha1.SpotTerminationQueueReservationsNamespace,
+				Name:      indexName,
+			}, &existing)
+			if IsNotFound(getErr) {
+				continue
+			}
+			if getErr != nil {
+				return false, getErr
+			}
+			if existing.Labels[hyperfleetv1alpha1.SpotTerminationQueueOwnerLabel] == ownerKey {
+				if existing.Annotations == nil {
+					existing.Annotations = make(map[string]string)
+				}
+				existing.Annotations[hyperfleetv1alpha1.SpotTerminationQueueClaimedAtAnnotation] = time.Now().UTC().Format(time.RFC3339Nano)
+				if err := c.client.Update(ctx, &existing); err != nil {
+					if IsConflict(err) {
+						continue
+					}
+					return false, err
+				}
+				return false, nil
+			}
+
+			ownerName := strings.TrimPrefix(existing.Labels[hyperfleetv1alpha1.SpotTerminationQueueOwnerLabel], spotQueueOwnerPrefix)
+			if ownerName == existing.Labels[hyperfleetv1alpha1.SpotTerminationQueueOwnerLabel] || ownerName == "" {
+				return false, createErr
+			}
+			ownerCluster, err := c.GetCluster(ctx, accountID, ownerName)
+			if err == nil && clusterUsesSpotTerminationQueue(ownerCluster, queueURL) {
+				return false, createErr
+			}
+			if err != nil && !IsNotFound(err) {
+				return false, err
+			}
+			if !spotQueueClaimExpired(&existing) {
+				return false, createErr
+			}
+			if err := c.client.Delete(ctx, &existing); err != nil && !IsNotFound(err) {
+				if IsConflict(err) {
+					continue
+				}
+				return false, err
+			}
+		}
+	}
+
+	if lastConflict != nil {
+		return false, lastConflict
+	}
+	return false, fmt.Errorf("could not claim Spot termination queue after reclaiming stale reservations")
+}
+
+func spotQueueOwnerKey(clusterName string) string {
+	return spotQueueOwnerPrefix + clusterName
+}
+
+func spotQueueClaimExpired(index *hyperfleetv1alpha1.Index) bool {
+	claimedAt, err := time.Parse(time.RFC3339Nano, index.Annotations[hyperfleetv1alpha1.SpotTerminationQueueClaimedAtAnnotation])
+	return err == nil && time.Since(claimedAt) > spotQueueClaimTimeout
+}
+
+func clusterUsesSpotTerminationQueue(cluster *hyperfleetv1alpha1.Cluster, queueURL string) bool {
+	if cluster == nil || cluster.Spec.HostedCluster.Platform.AWS == nil {
+		return false
+	}
+	return cluster.Spec.HostedCluster.Platform.AWS.TerminationHandlerQueueURL == queueURL
+}
+
+// ReleaseSpotTerminationQueue releases a reservation only when it is still
+// owned by the given Cluster. A missing reservation is already released.
+func (c *Client) ReleaseSpotTerminationQueue(ctx context.Context, accountID, queueURL, clusterName string) error {
+	var reservation hyperfleetv1alpha1.Index
+	err := c.client.Get(ctx, k8stypes.NamespacedName{
+		Namespace: hyperfleetv1alpha1.SpotTerminationQueueReservationsNamespace,
+		Name:      hyperfleetv1alpha1.SpotTerminationQueueIndexName(accountID, queueURL),
+	}, &reservation)
+	if IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if reservation.Labels[hyperfleetv1alpha1.SpotTerminationQueueOwnerLabel] != spotQueueOwnerKey(clusterName) {
+		return fmt.Errorf("spot termination queue reservation is not owned by cluster %q", clusterName)
+	}
+	if ownerCluster, err := c.GetCluster(ctx, accountID, clusterName); err == nil && clusterUsesSpotTerminationQueue(ownerCluster, queueURL) {
+		return nil
+	} else if err != nil && !IsNotFound(err) {
+		return err
+	}
+	if err := c.client.Delete(ctx, &reservation); IsNotFound(err) {
+		return nil
+	} else {
+		return err
+	}
 }
 
 // --- NodePool operations ---

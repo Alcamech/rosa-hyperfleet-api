@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 
@@ -124,46 +125,12 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req public.Cluster
-	if err := json.Unmarshal(body, &req); err != nil {
-		writeAPIError(w, ErrClusterCreateInvalidBody, h.logger)
+	req, requestErr := h.decodeClusterCreateRequest(accountID, body)
+	if requestErr != nil {
+		writeAPIError(w, *requestErr, h.logger)
 		return
 	}
 
-	// Require both metadata.name and a non-empty, non-null spec key to be present.
-	var envelope struct {
-		Spec json.RawMessage `json:"spec"`
-	}
-	_ = json.Unmarshal(body, &envelope)
-	specStr := string(envelope.Spec)
-	if req.Name == "" || len(envelope.Spec) == 0 || specStr == "{}" || specStr == "null" {
-		writeAPIError(w, ErrClusterCreateMissingFields, h.logger)
-		return
-	}
-	// Reject semantically empty specs (nil, empty decoded maps, whitespace variants).
-	var rawSpec map[string]any
-	if err := json.Unmarshal(envelope.Spec, &rawSpec); err != nil {
-		writeAPIError(w, ErrClusterCreateInvalidBody, h.logger)
-		return
-	}
-	if len(rawSpec) == 0 {
-		writeAPIError(w, ErrClusterCreateMissingFields, h.logger)
-		return
-	}
-
-	if err := validation.ValidateClusterNameForDNSReservation(req.Name, req.Spec.DNSReservationID != ""); err != nil {
-		writeAPIError(w, ErrClusterCreateInvalidName, h.logger)
-		return
-	}
-	if err := validation.ValidateAccountNamespace(req.Namespace, accountID); err != nil {
-		writeAPIError(w, ErrClusterCreateNamespaceMismatch, h.logger)
-		return
-	}
-
-	if errs := h.validator.ValidateCreate(&req.Spec, featuregate.Default); errs != nil {
-		writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
-		return
-	}
 	var dnsReservation *hyperfleetv1alpha1.DNSReservation
 	var apiErr *APIError
 	if req.Spec.DNSReservationID != "" {
@@ -177,6 +144,34 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if apiErr != nil {
 		writeAPIError(w, *apiErr, h.logger)
 		return
+	}
+
+	queueURL, region := requestedTerminationHandlerQueue(req.Spec.HostedCluster.Platform.AWS)
+	if queueURL != "" {
+		existing, err := h.db.ListClusters(ctx, accountID)
+		if err != nil {
+			h.logger.Error("failed to check Spot termination handler queue URL uniqueness", "error", err, "account_id", accountID)
+			writeAPIError(w, ErrClusterCreateNameCheck, h.logger)
+			return
+		}
+		if errs := validation.ValidateSpotTerminationHandlerQueueURL(queueURL, region, terminationHandlerQueueURLs(existing.Items, "")); errs != nil {
+			writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
+			return
+		}
+	}
+
+	queueClaimCreated := false
+	if queueURL != "" {
+		queueClaimCreated, err = h.db.ClaimSpotTerminationQueue(ctx, accountID, queueURL, req.Name)
+		if err != nil {
+			if hyperfleetdb.IsAlreadyExists(err) {
+				writeAPIError(w, ErrClusterValidation.WithErrors(validation.SpotTerminationHandlerQueueAlreadyInUse()), h.logger)
+				return
+			}
+			h.logger.Error("failed to claim Spot termination handler queue URL", "error", err, "account_id", accountID)
+			writeAPIError(w, ErrClusterCreateFailed, h.logger)
+			return
+		}
 	}
 
 	h.logger.Info("creating cluster", "account_id", accountID, "cluster_name", req.Name)
@@ -193,7 +188,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if oidcConfig != nil {
 		req.Spec.OidcConfigID = string(oidcConfig.UID)
 	}
-	cr := hyperfleetdb.PublicToInternalCluster(&req, accountID)
+	cr := hyperfleetdb.PublicToInternalCluster(req, accountID)
 	cr.Spec.HostedClusterName = req.Name
 	if dnsReservation != nil {
 		cr.Spec.HostedClusterName = dnsReservation.Status.InternalHostedClusterName
@@ -216,6 +211,11 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.db.CreateCluster(ctx, accountID, cr); err != nil {
+		if queueClaimCreated {
+			if releaseErr := h.db.ReleaseSpotTerminationQueue(context.WithoutCancel(ctx), accountID, queueURL, req.Name); releaseErr != nil {
+				h.logger.Warn("failed to release Spot termination handler queue claim after cluster create failure", "error", releaseErr, "account_id", accountID)
+			}
+		}
 		if hyperfleetdb.IsAlreadyExists(err) {
 			writeAPIError(w, ErrClusterCreateNameConflict.WithReason(req.Name), h.logger)
 			return
@@ -226,12 +226,52 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	cr, apiErr = h.completeClusterCreate(ctx, accountID, req.Name, cr, dnsReservation, oidcConfig)
 	if apiErr != nil {
+		if queueClaimCreated {
+			if releaseErr := h.db.ReleaseSpotTerminationQueue(context.WithoutCancel(ctx), accountID, queueURL, req.Name); releaseErr != nil {
+				h.logger.Warn("failed to release Spot termination handler queue claim after cluster create completion failure", "error", releaseErr, "account_id", accountID)
+			}
+		}
 		writeAPIError(w, *apiErr, h.logger)
 		return
 	}
 	if err := api.Write(w, http.StatusCreated, hyperfleetdb.InternalToPublicCluster(cr)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
+}
+
+func (h *ClusterHandler) decodeClusterCreateRequest(accountID string, body []byte) (*public.Cluster, *APIError) {
+	var req public.Cluster
+	if err := json.Unmarshal(body, &req); err != nil {
+		return nil, &ErrClusterCreateInvalidBody
+	}
+
+	var envelope struct {
+		Spec json.RawMessage `json:"spec"`
+	}
+	_ = json.Unmarshal(body, &envelope)
+	specStr := string(envelope.Spec)
+	if req.Name == "" || len(envelope.Spec) == 0 || specStr == "{}" || specStr == "null" {
+		return nil, &ErrClusterCreateMissingFields
+	}
+
+	var rawSpec map[string]any
+	if err := json.Unmarshal(envelope.Spec, &rawSpec); err != nil {
+		return nil, &ErrClusterCreateInvalidBody
+	}
+	if len(rawSpec) == 0 {
+		return nil, &ErrClusterCreateMissingFields
+	}
+	if err := validation.ValidateClusterNameForDNSReservation(req.Name, req.Spec.DNSReservationID != ""); err != nil {
+		return nil, &ErrClusterCreateInvalidName
+	}
+	if err := validation.ValidateAccountNamespace(req.Namespace, accountID); err != nil {
+		return nil, &ErrClusterCreateNamespaceMismatch
+	}
+	if errs := h.validator.ValidateCreate(&req.Spec, featuregate.Default); errs != nil {
+		apiErr := ErrClusterValidation.WithErrors(errs)
+		return nil, &apiErr
+	}
+	return &req, nil
 }
 
 func (h *ClusterHandler) completeClusterCreate(ctx context.Context, accountID, clusterName string, cluster *hyperfleetv1alpha1.Cluster, reservation *hyperfleetv1alpha1.DNSReservation, oidcConfig *hyperfleetv1alpha1.OidcConfig) (*hyperfleetv1alpha1.Cluster, *APIError) {
@@ -393,9 +433,31 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 			validationErr = errs
 			return fmt.Errorf("invalid cluster update")
 		}
+		oldQueueURL, oldRegion := clusterTerminationHandlerQueue(current)
 		if err := hyperfleetdb.MergeSpecJSON(&current.Spec, envelope.Spec); err != nil {
 			mergeErr = err
 			return err
+		}
+		queueURL, region := clusterTerminationHandlerQueue(current)
+		queueChanged := queueURL != oldQueueURL || region != oldRegion
+		if queueChanged && queueURL != "" {
+			existing, err := h.db.ListClusters(ctx, accountID)
+			if err != nil {
+				return err
+			}
+			if errs := validation.ValidateSpotTerminationHandlerQueueURL(queueURL, region, terminationHandlerQueueURLs(existing.Items, current.Name)); errs != nil {
+				validationErr = errs
+				return fmt.Errorf("invalid cluster update")
+			}
+		}
+		if queueChanged && queueURL != "" {
+			if _, err := h.db.ClaimSpotTerminationQueue(ctx, accountID, queueURL, clusterName); err != nil {
+				if hyperfleetdb.IsAlreadyExists(err) {
+					validationErr = validation.SpotTerminationHandlerQueueAlreadyInUse()
+					return fmt.Errorf("invalid cluster update")
+				}
+				return err
+			}
 		}
 		if err := h.db.UpdateCluster(ctx, current); err != nil {
 			return err
@@ -429,6 +491,34 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if err := api.Write(w, http.StatusOK, hyperfleetdb.InternalToPublicCluster(updated)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
+}
+
+func requestedTerminationHandlerQueue(aws *hypershiftv1beta1.AWSPlatformSpec) (queueURL, region string) {
+	if aws == nil {
+		return "", ""
+	}
+	return aws.TerminationHandlerQueueURL, aws.Region
+}
+
+func clusterTerminationHandlerQueue(cluster *hyperfleetv1alpha1.Cluster) (queueURL, region string) {
+	if cluster == nil {
+		return "", ""
+	}
+	return requestedTerminationHandlerQueue(cluster.Spec.HostedCluster.Platform.AWS)
+}
+
+func terminationHandlerQueueURLs(clusters []hyperfleetv1alpha1.Cluster, excludeName string) []string {
+	var queueURLs []string
+	for i := range clusters {
+		cluster := &clusters[i]
+		if excludeName != "" && cluster.Name == excludeName {
+			continue
+		}
+		if queueURL, _ := clusterTerminationHandlerQueue(cluster); queueURL != "" {
+			queueURLs = append(queueURLs, queueURL)
+		}
+	}
+	return queueURLs
 }
 
 // Delete handles DELETE /api/v0/clusters/{id}

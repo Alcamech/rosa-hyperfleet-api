@@ -178,6 +178,22 @@ func clusterBody(name string, spec map[string]any) []byte {
 	return b
 }
 
+func spotQueueClusterBody(name, region, queueURL string) []byte {
+	return clusterBody(name, map[string]any{
+		"hostedCluster": map[string]any{
+			"release":    map[string]any{"image": ""},
+			"networking": map[string]any{},
+			"platform": map[string]any{
+				"type": "AWS",
+				"aws": map[string]any{
+					"region":                     region,
+					"terminationHandlerQueueURL": queueURL,
+				},
+			},
+		},
+	})
+}
+
 // decodeErrorMessage decodes a metav1.Status response and returns the message field.
 func decodeErrorMessage(t *testing.T, w *httptest.ResponseRecorder) string {
 	t.Helper()
@@ -300,6 +316,50 @@ func TestClusterHandler_Create_Success(t *testing.T) {
 	}
 	if name := metaField(result, "name"); name != "my-cluster" {
 		t.Errorf("expected metadata.name=my-cluster, got %v", name)
+	}
+}
+
+func TestClusterHandler_Create_RejectsSpotTerminationQueueRegionMismatch(t *testing.T) {
+	scheme := newTestScheme()
+	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+
+	const queueURL = "https://sqs.us-east-1.amazonaws.com/123456789012/spot-termination"
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(spotQueueClusterBody("my-cluster", "us-west-2", queueURL)))
+	req = req.WithContext(testContext(testAccountID))
+
+	w := httptest.NewRecorder()
+	handler.Create(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "same AWS region") {
+		t.Errorf("expected region validation error, got %q", w.Body.String())
+	}
+}
+
+func TestClusterHandler_Create_RejectsDuplicateSpotTerminationQueueURL(t *testing.T) {
+	scheme := newTestScheme()
+	existing := testClusterCR("existing", "existing-cluster", testAccountID)
+	const queueURL = "https://sqs.us-east-1.amazonaws.com/123456789012/spot-termination"
+	existing.Spec.HostedCluster.Platform.AWS.TerminationHandlerQueueURL = queueURL
+	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(spotQueueClusterBody("my-cluster", "us-east-1", queueURL)))
+	req = req.WithContext(testContext(testAccountID))
+
+	w := httptest.NewRecorder()
+	handler.Create(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "unique across clusters") {
+		t.Errorf("expected uniqueness validation error, got %q", w.Body.String())
 	}
 }
 
@@ -1179,6 +1239,114 @@ func TestClusterHandler_Update_Success(t *testing.T) {
 	properties, _ := spec["properties"].(map[string]any)
 	if properties["environment"] != "test" {
 		t.Errorf("expected spec.properties.environment=test, got %v", properties["environment"])
+	}
+}
+
+func TestClusterHandler_Update_RejectsDuplicateSpotTerminationQueueURL(t *testing.T) {
+	scheme := newTestScheme()
+	target := testClusterCR("target-uid", "target", testAccountID)
+	existing := testClusterCR("existing", "existing-cluster", testAccountID)
+	const queueURL = "https://sqs.us-east-1.amazonaws.com/123456789012/spot-termination"
+	existing.Spec.HostedCluster.Platform.AWS.TerminationHandlerQueueURL = queueURL
+	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(target, existing).Build()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+
+	body, err := json.Marshal(map[string]any{
+		"spec": map[string]any{
+			"hostedCluster": map[string]any{
+				"platform": map[string]any{
+					"aws": map[string]any{"terminationHandlerQueueURL": queueURL},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshaling update request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/api/v0/clusters/target", bytes.NewReader(body))
+	req = req.WithContext(testContext(testAccountID))
+	req = mux.SetURLVars(req, map[string]string{"id": "target"})
+
+	w := httptest.NewRecorder()
+	handler.Update(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "unique across clusters") {
+		t.Errorf("expected uniqueness validation error, got %q", w.Body.String())
+	}
+}
+
+func TestClusterHandler_Update_RejectsSpotTerminationQueueRegionMismatchWhenRegionChanges(t *testing.T) {
+	scheme := newTestScheme()
+	target := testClusterCR("target-uid", "target", testAccountID)
+	const queueURL = "https://sqs.us-east-1.amazonaws.com/123456789012/spot-termination"
+	target.Spec.HostedCluster.Platform.AWS.TerminationHandlerQueueURL = queueURL
+	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(target).Build()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+
+	body, err := json.Marshal(map[string]any{
+		"spec": map[string]any{
+			"hostedCluster": map[string]any{
+				"platform": map[string]any{
+					"aws": map[string]any{"region": "us-west-2"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshaling update request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/api/v0/clusters/target", bytes.NewReader(body))
+	req = req.WithContext(testContext(testAccountID))
+	req = mux.SetURLVars(req, map[string]string{"id": "target"})
+
+	w := httptest.NewRecorder()
+	handler.Update(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "same AWS region") {
+		t.Errorf("expected region validation error, got %q", w.Body.String())
+	}
+}
+
+func TestClusterHandler_Update_SkipsSpotTerminationQueueLookupWhenUnchanged(t *testing.T) {
+	scheme := newTestScheme()
+	target := testClusterCR("target-uid", "target", testAccountID)
+	target.Spec.HostedCluster.Platform.AWS.TerminationHandlerQueueURL = "https://sqs.us-east-1.amazonaws.com/123456789012/spot-termination"
+	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(target).WithInterceptorFuncs(interceptor.Funcs{
+		List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			listOptions := &client.ListOptions{}
+			for _, opt := range opts {
+				opt.ApplyToList(listOptions)
+			}
+			if listOptions.Namespace == "" {
+				return errors.New("unexpected account-wide list while the termination queue is unchanged")
+			}
+			return c.List(ctx, list, opts...)
+		},
+	}).Build()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+
+	body, err := json.Marshal(map[string]any{"spec": map[string]any{"displayName": "updated-display"}})
+	if err != nil {
+		t.Fatalf("marshaling update request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/api/v0/clusters/target", bytes.NewReader(body))
+	req = req.WithContext(testContext(testAccountID))
+	req = mux.SetURLVars(req, map[string]string{"id": "target"})
+
+	w := httptest.NewRecorder()
+	handler.Update(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
