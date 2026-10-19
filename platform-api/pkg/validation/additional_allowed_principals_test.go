@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/internal/codegen/featuregate"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/internal/codegen/featuregate"
 )
 
 func TestValidateAdditionalAllowedPrincipals(t *testing.T) {

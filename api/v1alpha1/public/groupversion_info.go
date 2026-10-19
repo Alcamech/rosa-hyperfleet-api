@@ -1,5 +1,5 @@
 // +kubebuilder:object:generate=true
-// +groupName=hyperfleet.io
+// +groupName=seaplane.io
 package public
 
 import (
@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	SchemeGroupVersion = schema.GroupVersion{Group: "hyperfleet.io", Version: "v1alpha1"}
+	SchemeGroupVersion = schema.GroupVersion{Group: "seaplane.io", Version: "v1alpha1"}
 
 	GroupVersion = SchemeGroupVersion
 

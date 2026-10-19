@@ -45,7 +45,7 @@ func (a *Adapter) RoundTrip(req *http.Request) (*http.Response, error) {
 // the platform API's ?offset=N parameter for GET (list) requests.
 //
 // The Kubernetes generated client serializes metav1.ListOptions.Continue as the
-// "continue" query parameter. The Hyperfleet platform API uses offset-based
+// "continue" query parameter. The Seaplane platform API uses offset-based
 // pagination instead, accepting an integer "offset" parameter. platform.ListOptions
 // encodes the integer offset as a numeric string in ListOptions.Continue before
 // calling the inner client; this method rewrites the parameter accordingly.

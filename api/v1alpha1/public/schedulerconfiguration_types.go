@@ -7,10 +7,10 @@ import (
 )
 
 // SchedulerConfiguration specifies the cluster-wide scheduler settings.
-// +hyperfleet:upstream-reduced-object=configv1.SchedulerSpec
+// +seaplane:upstream-reduced-object=configv1.SchedulerSpec
 type SchedulerConfiguration struct {
 	// profile configures how the scheduler makes pod placement decisions.
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +kubebuilder:validation:Enum=LowNodeUtilization;HighNodeUtilization;NoScoring
 	// +optional
 	Profile configv1.SchedulerProfile `json:"profile,omitempty"`

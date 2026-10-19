@@ -27,7 +27,7 @@ UPLOAD_ARGS=(
     --enterprise-url "${CODECOV_ENTERPRISE_URL}"
     upload-process
     --fail-on-error
-    --slug="openshift-online/rosa-hyperfleet-api"
+    --slug="openshift-online/rosa-seaplane-api"
     --git-service github
     --commit-sha "${GIT_COMMIT}"
     --branch "${GIT_BRANCH}"
@@ -41,7 +41,7 @@ fi
 
 for coverage in \
     "platform-api:coverage-platform-api.out" \
-    "hyperfleet-operator:coverage-hyperfleet-operator.out" \
+    "seaplane-operator:coverage-seaplane-operator.out" \
     "api-codegen:coverage-api-codegen.out" \
     "clientset:coverage-clientset.out"; do
     flag="${coverage%%:*}"

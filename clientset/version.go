@@ -14,6 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package hyperfleet
+package seaplane
 
 const Version = "0.1.20"

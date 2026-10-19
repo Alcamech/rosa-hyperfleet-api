@@ -19,9 +19,9 @@ limitations under the License.
 package fake
 
 import (
-	clientset "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated"
-	v1alpha1public "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated/typed/v1alpha1/public"
-	fakev1alpha1public "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated/typed/v1alpha1/public/fake"
+	clientset "github.com/openshift-online/rosa-seaplane-api/clientset/generated"
+	v1alpha1public "github.com/openshift-online/rosa-seaplane-api/clientset/generated/typed/v1alpha1/public"
+	fakev1alpha1public "github.com/openshift-online/rosa-seaplane-api/clientset/generated/typed/v1alpha1/public/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"

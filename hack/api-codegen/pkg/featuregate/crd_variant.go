@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/registry"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/registry"
 )
 
 // CRDVariantGenerator generates feature-set-specific CRD variants

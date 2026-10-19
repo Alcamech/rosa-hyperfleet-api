@@ -5,9 +5,9 @@ package v1alpha1
 import (
 	"encoding/json"
 
-	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	rest "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/conversion"
+	v1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	rest "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/conversion"
 )
 
 // ProjectDNSReservation converts CRD DNSReservation to REST (visible fields only).

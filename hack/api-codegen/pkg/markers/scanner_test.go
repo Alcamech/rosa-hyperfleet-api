@@ -29,7 +29,7 @@ func TestMarkerScanner_DiscoverCRDTypes(t *testing.T) {
 			t.Errorf("discovered type %q has empty GVK", kind)
 		}
 
-		// GVK format should be: group/version.kind (e.g., "hyperfleet.io/v1alpha1.Cluster")
+		// GVK format should be: group/version.kind (e.g., "seaplane.io/v1alpha1.Cluster")
 		parts := strings.Split(gvk, "/")
 		if len(parts) != 2 {
 			t.Errorf("GVK format invalid for %q: %s (expected group/version.kind)", kind, gvk)

@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Hyperfleet Platform API
+  title: Seaplane Platform API
   description: Platform API for ROSA HCP regional cluster management
   version: 0.0.1
   license:
@@ -1578,7 +1578,7 @@ components:
 
     ManagementCluster:
       type: object
-      description: A management cluster registered on hyperfleet-db
+      description: A management cluster registered on seaplane-db
       required:
         - id
       properties:
@@ -2265,10 +2265,10 @@ components:
     Cluster:
       description: |-
           Cluster is the Schema for the clusters API.
-          It represents a ROSA HCP cluster whose lifecycle is managed by the hyperfleet-operator.
+          It represents a ROSA HCP cluster whose lifecycle is managed by the seaplane-operator.
           metadata.Name is a client-chosen DNS label of at most 63 characters;
           metadata.Namespace is account-<accountID>. The owning account is recorded in
-          the hyperfleet.io/account-id label.
+          the seaplane.io/account-id label.
       properties:
           apiVersion:
               description: |-
@@ -5457,10 +5457,10 @@ components:
               items:
                   description: |-
                       Cluster is the Schema for the clusters API.
-                      It represents a ROSA HCP cluster whose lifecycle is managed by the hyperfleet-operator.
+                      It represents a ROSA HCP cluster whose lifecycle is managed by the seaplane-operator.
                       metadata.Name is a client-chosen DNS label of at most 63 characters;
                       metadata.Namespace is account-<accountID>. The owning account is recorded in
-                      the hyperfleet.io/account-id label.
+                      the seaplane.io/account-id label.
                   properties:
                       apiVersion:
                           description: |-
@@ -10488,7 +10488,7 @@ components:
     ClusterConfiguration:
       description: |-
           ClusterConfiguration specifies configuration for individual OCP components in the cluster.
-          This is a HyperFleet-owned mirror of hypershiftv1beta1.ClusterConfiguration that allows
+          This is a Seaplane-owned mirror of hypershiftv1beta1.ClusterConfiguration that allows
           us to add granular markers to nested fields like kubelet config.
       properties:
           authentication:
@@ -12200,7 +12200,7 @@ components:
       description: |-
           PlatformSpec mirrors PlatformSpec from upstream HyperShift, exposing only the AWS
           platform. Azure, GCP, OpenStack, and other platforms are intentionally omitted —
-          HyperFleet only supports AWS-backed clusters.
+          Seaplane only supports AWS-backed clusters.
       properties:
           aws:
               description: aws specifies AWS-specific configuration for the cluster.
@@ -12886,8 +12886,8 @@ components:
           domain and internal HostedCluster name are reported in status. metadata.name
           is customer-selected.
           Labels:
-            - hyperfleet.io/account-id: AWS account that owns this reservation (always set).
-            - hyperfleet.io/claimed-by-cluster-uid: set when a Cluster claims the reservation.
+            - seaplane.io/account-id: AWS account that owns this reservation (always set).
+            - seaplane.io/claimed-by-cluster-uid: set when a Cluster claims the reservation.
       properties:
           apiVersion:
               description: |-
@@ -13015,8 +13015,8 @@ components:
                       domain and internal HostedCluster name are reported in status. metadata.name
                       is customer-selected.
                       Labels:
-                        - hyperfleet.io/account-id: AWS account that owns this reservation (always set).
-                        - hyperfleet.io/claimed-by-cluster-uid: set when a Cluster claims the reservation.
+                        - seaplane.io/account-id: AWS account that owns this reservation (always set).
+                        - seaplane.io/claimed-by-cluster-uid: set when a Cluster claims the reservation.
                   properties:
                       apiVersion:
                           description: |-

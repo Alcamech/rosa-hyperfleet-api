@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/featuregate"
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/registry"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/featuregate"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/registry"
 )
 
 func TestValidator_Validate_WriteMode(t *testing.T) {
@@ -126,22 +126,22 @@ func TestValidator_Validate_FeatureGates(t *testing.T) {
 		{
 			name:        "gated field with Default feature set - blocked",
 			fieldPath:   "spec.tags",
-			featureGate: "HyperFleetAutoScaling",
+			featureGate: "SeaplaneAutoScaling",
 			featureSet:  featuregate.Default,
 			wantErr:     true,
-			errContains: "requires feature gate HyperFleetAutoScaling",
+			errContains: "requires feature gate SeaplaneAutoScaling",
 		},
 		{
 			name:        "gated field with TechPreview feature set - allowed",
 			fieldPath:   "spec.tags",
-			featureGate: "HyperFleetAutoScaling",
+			featureGate: "SeaplaneAutoScaling",
 			featureSet:  featuregate.TechPreviewNoUpgrade,
 			wantErr:     false,
 		},
 		{
 			name:        "gated field with DevPreview feature set - allowed",
 			fieldPath:   "spec.tags",
-			featureGate: "HyperFleetAutoScaling",
+			featureGate: "SeaplaneAutoScaling",
 			featureSet:  featuregate.DevPreviewNoUpgrade,
 			wantErr:     false,
 		},
@@ -206,7 +206,7 @@ func TestValidator_Validate_MultipleErrors(t *testing.T) {
 				"spec.tags": {
 					FieldPath:   "spec.tags",
 					WriteMode:   registry.Mutable,
-					FeatureGate: "HyperFleetAutoScaling",
+					FeatureGate: "SeaplaneAutoScaling",
 					OwnerType:   "Cluster",
 				},
 			},
@@ -256,7 +256,7 @@ func TestValidator_ValidateFieldAccess(t *testing.T) {
 				"spec.tags": {
 					FieldPath:   "spec.tags",
 					WriteMode:   registry.Mutable,
-					FeatureGate: "HyperFleetAutoScaling",
+					FeatureGate: "SeaplaneAutoScaling",
 					OwnerType:   "Cluster",
 				},
 				"spec.displayName": {

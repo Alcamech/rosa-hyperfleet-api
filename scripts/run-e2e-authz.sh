@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BINARY="./rosa-hyperfleet-api"
+BINARY="./rosa-seaplane-api"
 PIDFILE="$(mktemp)"
-LOGFILE="./rosa-hyperfleet-api.log"
+LOGFILE="./rosa-seaplane-api.log"
 BASE_URL="http://localhost:8000"
 READY_URL="${BASE_URL}/api/v0/ready"
 MAX_WAIT=30

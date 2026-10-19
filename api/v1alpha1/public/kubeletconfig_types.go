@@ -7,37 +7,37 @@ import (
 )
 
 // KubeletConfig specifies kubelet configuration with granular markers for customer control.
-// +hyperfleet:upstream-reduced-object=hypershiftv1beta1.KubeletConfig
+// +seaplane:upstream-reduced-object=hypershiftv1beta1.KubeletConfig
 type KubeletConfig struct {
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	MaxPods *int32 `json:"maxPods,omitempty"`
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	PodPidsLimit *int64 `json:"podPidsLimit,omitempty"`
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +kubebuilder:validation:MaxProperties=32
 	SystemReserved map[string]string `json:"systemReserved,omitempty"`
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +kubebuilder:validation:MaxProperties=32
 	KubeReserved map[string]string `json:"kubeReserved,omitempty"`
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	ImageGCHighThresholdPercent *int32 `json:"imageGCHighThresholdPercent,omitempty"`
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	ImageGCLowThresholdPercent *int32 `json:"imageGCLowThresholdPercent,omitempty"`
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	ImageMinimumGCAge *metav1.Duration `json:"imageMinimumGCAge,omitempty"`
-	// +openshift:enable:FeatureGate=HyperFleetKubeletAdvanced
-	// +hyperfleet:write-mode=mutable
+	// +openshift:enable:FeatureGate=SeaplaneKubeletAdvanced
+	// +seaplane:write-mode=mutable
 	SerializeImagePulls *bool `json:"serializeImagePulls,omitempty"`
-	// +openshift:enable:FeatureGate=HyperFleetKubeletAdvanced
-	// +hyperfleet:write-mode=mutable
+	// +openshift:enable:FeatureGate=SeaplaneKubeletAdvanced
+	// +seaplane:write-mode=mutable
 	RegistryPullQPS *int32 `json:"registryPullQPS,omitempty"`
-	// +openshift:enable:FeatureGate=HyperFleetKubeletAdvanced
-	// +hyperfleet:write-mode=mutable
+	// +openshift:enable:FeatureGate=SeaplaneKubeletAdvanced
+	// +seaplane:write-mode=mutable
 	RegistryBurst *int32 `json:"registryBurst,omitempty"`
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	StreamingConnectionIdleTimeout *metav1.Duration `json:"streamingConnectionIdleTimeout,omitempty"`
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	ContainerLogMaxSize *string `json:"containerLogMaxSize,omitempty"`
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	ContainerLogMaxFiles *int32 `json:"containerLogMaxFiles,omitempty"`
 }

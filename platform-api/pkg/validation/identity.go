@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
 	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 )
 
@@ -23,7 +23,7 @@ func ValidateClusterNameForDNSReservation(name string, hasDNSReservation bool) e
 	if err := ValidateClusterName(name); err != nil {
 		return err
 	}
-	maxNameLength := hyperfleetv1alpha1.MaxClusterNameLengthWithoutDNSReservation()
+	maxNameLength := seaplanev1alpha1.MaxClusterNameLengthWithoutDNSReservation()
 	if !hasDNSReservation && len(name) > maxNameLength {
 		return fmt.Errorf("must be at most %d characters when dnsReservationId is omitted", maxNameLength)
 	}

@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/openapi"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/openapi"
 )
 
 func main() {
@@ -22,7 +22,7 @@ func main() {
 	flag.StringVar(&inputDirs, "input-dirs", "", "Comma-separated list of directories to scan for Go types")
 	flag.StringVar(&inputPackage, "input-package", "", "Go import path to load (e.g., ./api/v1alpha1)")
 	flag.StringVar(&outputFile, "output-file", "", "Output file for OpenAPI schema (required)")
-	flag.StringVar(&title, "title", "HyperFleet API", "API title")
+	flag.StringVar(&title, "title", "Seaplane API", "API title")
 	flag.StringVar(&version, "version", "v1alpha1", "API version")
 	flag.Parse()
 

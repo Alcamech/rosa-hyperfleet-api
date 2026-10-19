@@ -8,14 +8,14 @@ import (
 // be enabled or disabled at cluster install time. Validation markers are
 // copied from upstream so the public OpenAPI schema carries the same enum,
 // size, and immutability constraints.
-// +hyperfleet:upstream-reduced-object=hypershiftv1beta1.Capabilities
+// +seaplane:upstream-reduced-object=hypershiftv1beta1.Capabilities
 // +k8s:openapi-gen=true
 // +kubebuilder:validation:XValidation:rule="has(self.enabled) && has(self.disabled) ? self.enabled.all(e, !(e in self.disabled)) : true",message="Capabilities can not be both enabled and disabled at once."
 type Capabilities struct {
 	// enabled when specified, explicitly enables the specified capabilities on the hosted cluster.
 	// Once set, this field cannot be changed.
 	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +listType=atomic
 	// +optional
 	// +kubebuilder:validation:MaxItems=25
@@ -27,7 +27,7 @@ type Capabilities struct {
 	//
 	// Note: Disabling 'openshift-samples','Insights', 'Console', 'NodeTuning', 'Ingress' are only supported in OpenShift versions 4.20 and above.
 	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +listType=atomic
 	// +optional
 	// +kubebuilder:validation:MaxItems=25

@@ -3,7 +3,7 @@ package passthrough
 import (
 	"go/ast"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/markers"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/markers"
 )
 
 // Generator generates passthrough types from upstream types

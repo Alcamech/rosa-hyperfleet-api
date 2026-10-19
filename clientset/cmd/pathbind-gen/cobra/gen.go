@@ -9,7 +9,7 @@ import (
 	"strings"
 	"text/template"
 
-	pkg "github.com/openshift-online/rosa-hyperfleet-api/clientset/cmd/pathbind-gen/pkg"
+	pkg "github.com/openshift-online/rosa-seaplane-api/clientset/cmd/pathbind-gen/pkg"
 	"gopkg.in/yaml.v3"
 )
 
@@ -116,7 +116,7 @@ func emitFile(tmpl *template.Template, data pkg.CobraTemplateData, path string, 
 	var buf bytes.Buffer
 
 	if !withHeader {
-		fmt.Fprintf(&buf, "package %s\n\nimport (\n\t\"context\"\n\t\"encoding/json\"%s\n\t\"github.com/spf13/cobra\"\n\t%s %q\n\tv1alpha1 \"github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public\"\n\tpathbind \"github.com/openshift-online/rosa-hyperfleet-api/clientset/pathbind\"\n\tplatform \"github.com/openshift-online/rosa-hyperfleet-api/clientset/platform\"\n\tinteractive %q\n\t\"k8s.io/apimachinery/pkg/types\"\n)\n\n",
+		fmt.Fprintf(&buf, "package %s\n\nimport (\n\t\"context\"\n\t\"encoding/json\"%s\n\t\"github.com/spf13/cobra\"\n\t%s %q\n\tv1alpha1 \"github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public\"\n\tpathbind \"github.com/openshift-online/rosa-seaplane-api/clientset/pathbind\"\n\tplatform \"github.com/openshift-online/rosa-seaplane-api/clientset/platform\"\n\tinteractive %q\n\t\"k8s.io/apimachinery/pkg/types\"\n)\n\n",
 			data.Package,
 			updateFmtImport(data),
 			data.RuntimeAlias, data.RuntimePkgImport,
@@ -214,13 +214,13 @@ func buildFuncMap() template.FuncMap {
 		},
 		"createSDKCall": func(td pkg.CobraTemplateData) string {
 			return fmt.Sprintf(
-				"created, err := r.HyperFleetClient.HyperfleetV1alpha1().%ss().Create(ctx, obj, platform.CreateOptions{})",
+				"created, err := r.SeaplaneClient.SeaplaneV1alpha1().%ss().Create(ctx, obj, platform.CreateOptions{})",
 				td.ResourceName,
 			)
 		},
 		"updateSDKCall": func(td pkg.CobraTemplateData) string {
 			return fmt.Sprintf(
-				"updated, err := r.HyperFleetClient.HyperfleetV1alpha1().%ss().Patch(ctx, name, types.MergePatchType, payload, platform.PatchOptions{})",
+				"updated, err := r.SeaplaneClient.SeaplaneV1alpha1().%ss().Patch(ctx, name, types.MergePatchType, payload, platform.PatchOptions{})",
 				td.ResourceName,
 			)
 		},

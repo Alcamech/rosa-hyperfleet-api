@@ -8,7 +8,7 @@ import (
 	"testing"
 	"text/template"
 
-	pkg "github.com/openshift-online/rosa-hyperfleet-api/clientset/cmd/pathbind-gen/pkg"
+	pkg "github.com/openshift-online/rosa-seaplane-api/clientset/cmd/pathbind-gen/pkg"
 )
 
 // TestFlagCall verifies that flagCall emits the correct cobra registration

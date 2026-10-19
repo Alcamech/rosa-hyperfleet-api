@@ -1,11 +1,11 @@
-# Hyperfleet SDK — Architecture
+# Seaplane SDK — Architecture
 
 ## Overview
 
-The SDK provides a typed Go client for the Hyperfleet platform API, using the same interface style as `client-go`:
+The SDK provides a typed Go client for the Seaplane platform API, using the same interface style as `client-go`:
 
 ```go
-cs.HyperfleetV1alpha1().Clusters().Get(ctx, "my-cluster", platform.GetOptions{})
+cs.SeaplaneV1alpha1().Clusters().Get(ctx, "my-cluster", platform.GetOptions{})
 ```
 
 It is built in two parts:
@@ -34,7 +34,7 @@ type Cluster struct { ... }
 type NodePool struct { ... }
 ```
 
-The `// +groupName=hyperfleet.io` doc comment on the package tells `client-gen` the API group name.
+The `// +groupName=seaplane.io` doc comment on the package tells `client-gen` the API group name.
 
 ### Running generation
 
@@ -87,7 +87,7 @@ The generated `scheme/register.go` imports `api/v1alpha1/install`, which does no
 package install
 
 import (
-    v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
+    v1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
     "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -146,7 +146,7 @@ not provide an account namespace. SigV4 supplies the configured account identity
 platform-api stores the object in that account namespace. The `<cluster>.<child>`
 name prefix identifies the parent name; platform-api resolves it within the account
 namespace, then sets the owner UID on the ownerReference and
-`hyperfleet.io/cluster-uid` label.
+`seaplane.io/cluster-uid` label.
 
 The remaining adapter concern is pagination. `platform.ListOptions.Offset` is
 encoded as a numeric string in `metav1.ListOptions.Continue`, because that is
@@ -174,7 +174,7 @@ resource-specific list option containing the parent UID (for NodePool,
 `NodePoolListOptions.ClusterUID`). It translates that option to the declared
 owner-label selector; no parent identity is inferred from namespace.
 
-### `hyperfleet.go` — entry point and transport chain
+### `seaplane.go` — entry point and transport chain
 
 `NewForConfig` wires the two transports together and constructs the REST client:
 
@@ -197,7 +197,7 @@ HTTP call flow:
 
 The generated `NewForConfigAndClient` calls `setConfigDefaults()`, which overwrites `APIPath` to `/apis` and resets `GroupVersion` to Kubernetes defaults. The platform API uses `/api/v0`, so the generated constructor cannot be used directly.
 
-Instead, `hyperfleet.go` constructs the REST client manually:
+Instead, `seaplane.go` constructs the REST client manually:
 
 ```go
 // APIPath="/api" + GroupVersion.Version="v0" → versionedAPIPath=/api/v0
@@ -217,7 +217,7 @@ restCfg := &k8srest.Config{
 httpClient := &http.Client{Transport: transport.NewAdapter(sigv4)}
 restClient, err := k8srest.RESTClientForConfigAndClient(restCfg, httpClient)
 if err != nil {
-    return nil, fmt.Errorf("hyperfleet: building REST client: %w", err)
+    return nil, fmt.Errorf("seaplane: building REST client: %w", err)
 }
 return &Clientset{generated: generatedclientset.New(restClient)}, nil
 ```
@@ -228,12 +228,12 @@ Using `generatedclientset.New(restClient)` (not `NewForConfigAndClient`) injects
 
 An empty version string causes `metav1.AddToGroupVersion` to panic when registering well-known types. Setting `Version: "v0"` with an empty `Group` satisfies the scheme while producing the correct `/api/v0` URL path when combined with `APIPath: "/api"`.
 
-**Why `HyperfleetV1alpha1()` instead of `V1alpha1()`**
+**Why `SeaplaneV1alpha1()` instead of `V1alpha1()`**
 
-`client-gen` derives the method name from the directory structure. Because the types live directly under `v1alpha1/` with no parent group directory, it generates `V1alpha1()` (not `HyperfleetV1alpha1()`). The `hyperfleet.go` wrapper renames it and wraps it with the generated wrappers client:
+`client-gen` derives the method name from the directory structure. Because the types live directly under `v1alpha1/` with no parent group directory, it generates `V1alpha1()` (not `SeaplaneV1alpha1()`). The `seaplane.go` wrapper renames it and wraps it with the generated wrappers client:
 
 ```go
-func (c *Clientset) HyperfleetV1alpha1() platform.V1alpha1PublicInterface {
+func (c *Clientset) SeaplaneV1alpha1() platform.V1alpha1PublicInterface {
     return platform.NewV1alpha1PublicClient(c.generated.V1alpha1Public())
 }
 ```
@@ -242,7 +242,7 @@ func (c *Clientset) HyperfleetV1alpha1() platform.V1alpha1PublicInterface {
 
 ### `platform/bridge_wrappers_generated.go` — platform interface + WaitUntil
 
-The Hyperfleet platform API does not support the Kubernetes watch stream protocol. The `platform` package provides generated wrapper types that:
+The Seaplane platform API does not support the Kubernetes watch stream protocol. The `platform` package provides generated wrapper types that:
 
 1. Expose only the operations the platform API supports, using platform-specific option types from `platform/options.go`.
 2. Route `Update` calls by UID — the wrapper deep-copies the object and sets `Name = UID` before calling the inner client, so the generated client builds the PUT URL with the UID regardless of what the caller has in `metadata.name`.
@@ -275,7 +275,7 @@ func (c *clusterClient) WaitUntil(
 **Example — wait for deletion**
 
 ```go
-err := cs.HyperfleetV1alpha1().Clusters().WaitUntil(
+err := cs.SeaplaneV1alpha1().Clusters().WaitUntil(
     ctx, clusterID,
     func(c *v1alpha1.Cluster) bool { return c == nil },
     10*time.Second, 5*time.Minute,
@@ -285,7 +285,7 @@ err := cs.HyperfleetV1alpha1().Clusters().WaitUntil(
 **Example — wait for Ready phase**
 
 ```go
-err := cs.HyperfleetV1alpha1().Clusters().WaitUntil(
+err := cs.SeaplaneV1alpha1().Clusters().WaitUntil(
     ctx, clusterID,
     func(c *v1alpha1.Cluster) bool {
         return c != nil && c.Status.Phase == v1alpha1.ClusterPhaseReady

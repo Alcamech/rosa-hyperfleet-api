@@ -8,17 +8,17 @@ import (
 
 // NodePoolPlatform mirrors NodePoolPlatform from upstream HyperShift, exposing only
 // the AWS platform. Other platforms are intentionally omitted.
-// +hyperfleet:upstream-reduced-object=hypershiftv1beta1.NodePoolPlatform
+// +seaplane:upstream-reduced-object=hypershiftv1beta1.NodePoolPlatform
 // +k8s:openapi-gen=true
 type NodePoolPlatform struct {
 	// type specifies the platform type for this NodePool.
 	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +required
 	Type hypershiftv1beta1.PlatformType `json:"type"`
 	// aws specifies the platform-specific AWS configuration for this NodePool.
 	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +optional
 	AWS *AWSNodePoolPlatform `json:"aws,omitempty"`
 }

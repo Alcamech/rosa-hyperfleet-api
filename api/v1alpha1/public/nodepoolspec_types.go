@@ -13,7 +13,7 @@ import (
 // +kubebuilder:validation:XValidation:rule="!has(self.maxSurge) || !has(self.nodePool) || !has(self.nodePool.management) || self.nodePool.management.upgradeType == 'Replace'",message="maxSurge is only valid when the upgrade type is Replace: InPlace upgrades never provision additional nodes"
 type NodePoolSpec struct {
 	// AutoRepair controls whether unhealthy nodes are automatically replaced.
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +optional
 	AutoRepair *bool `json:"autoRepair,omitempty"`
 	// EC2InstanceMetadataHttpTokens configures the HTTP token requirement for
@@ -21,12 +21,12 @@ type NodePoolSpec struct {
 	// "optional" permits IMDSv1. If omitted when creating a NodePool, it defaults
 	// to "required".
 	// +kubebuilder:default="required"
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +optional
 	EC2InstanceMetadataHttpTokens EC2InstanceMetadataHttpTokens `json:"ec2InstanceMetadataHttpTokens,omitempty"`
 	// Labels are customer-defined labels applied to nodes in this pool.
-	// +hyperfleet:write-mode=mutable
-	// +hyperfleet:resettable=true
+	// +seaplane:write-mode=mutable
+	// +seaplane:resettable=true
 	// +kubebuilder:validation:MaxProperties=100
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
@@ -39,7 +39,7 @@ type NodePoolSpec struct {
 	// Omitting the field means 0, the behavior node pools had before the
 	// field existed: no node is taken out of service until its replacement is
 	// ready.
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +kubebuilder:validation:XValidation:rule="type(self) == int ? self >= 0 : self.matches('^(0|[1-9][0-9]?|100)%$')",message="maxUnavailable must be a non-negative whole number of nodes or a percentage from 0% to 100%"
 	// +optional
 	MaxUnavailable *intstr.IntOrString `json:"maxUnavailable,omitempty"`
@@ -52,7 +52,7 @@ type NodePoolSpec struct {
 	// rounded up.
 	// Omitting the field means 1, the behavior node pools had before the
 	// field existed: one replacement node is built at a time.
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +kubebuilder:validation:XValidation:rule="type(self) == int ? self >= 0 : self.matches('^(0|[1-9][0-9]*)%$')",message="maxSurge must be a non-negative whole number of nodes or a percentage"
 	// +optional
 	MaxSurge *intstr.IntOrString `json:"maxSurge,omitempty"`

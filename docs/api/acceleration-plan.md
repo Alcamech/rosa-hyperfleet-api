@@ -6,7 +6,7 @@ Plan: Accelerated delivery of V2 passthrough features
 
 ## TL;DR
 
-We have to deliver ~70 `complexity:passthrough` + `ROSAHyperfleet:APIv1` features against the V2 Platform API. Instead of implementing them one at a time, we build a **pipeline that delivers the whole batch in one pass**, and we track the pipeline, not 70 tickets. The deliverable is the tool that delivers the features, run once.
+We have to deliver ~70 `complexity:passthrough` + `ROSASeaplane:APIv1` features against the V2 Platform API. Instead of implementing them one at a time, we build a **pipeline that delivers the whole batch in one pass**, and we track the pipeline, not 70 tickets. The deliverable is the tool that delivers the features, run once.
 
 ## Why a new Epic (not a story)
 
@@ -109,9 +109,9 @@ flowchart TD
 
 From the brainstorm, the per-batch rollout the orchestrator (stage 7) automates:
 
-- **PR1 (hyperfleet-api):** update API and clientset SDK. Unit tests pass, on-demand-e2e clean.
-- Local ephemeral env points hyperfleet at locally built API images (not merged).
-- **PR2 (hyperfleet):** bump Konflux-built API images, rolls out to integration and staging.
+- **PR1 (seaplane-api):** update API and clientset SDK. Unit tests pass, on-demand-e2e clean.
+- Local ephemeral env points seaplane at locally built API images (not merged).
+- **PR2 (seaplane):** bump Konflux-built API images, rolls out to integration and staging.
 - **PR3 (rosa CLI):** update CLI and e2e tests.
 - **PR4 (terraform):** update provider and e2e tests.
 - Konflux renovate auto-bumps downstream on change. Integration and stage promotion gate the client PRs.
@@ -120,7 +120,7 @@ From the brainstorm, the per-batch rollout the orchestrator (stage 7) automates:
 
 **Issue type:** Epic
 **Project:** ROSAENG &middot; **Parent (Feature):** ROSA-848
-**Team:** [ROSA] HyperFleet (`customfield_10001` = `0c538cd9-152b-49f6-ad7c-e2fa2f865809`)
+**Team:** [ROSA] Seaplane (`customfield_10001` = `0c538cd9-152b-49f6-ad7c-e2fa2f865809`)
 **Relates to:** ROSAENG-62084 (V2 SDK bootstrap)
 
 **Summary:** Accelerated delivery of V2 passthrough features (pipeline + ~70 features)
@@ -149,5 +149,5 @@ From the brainstorm, the per-batch rollout the orchestrator (stage 7) automates:
 
 ## References
 
-- Passthrough feature query: `labels = complexity:passthrough and labels = ROSAHyperfleet:APIv1 and status != Closed`
+- Passthrough feature query: `labels = complexity:passthrough and labels = ROSASeaplane:APIv1 and status != Closed`
 - JIRA-to-ROSA-CLI test-case mapping spreadsheet

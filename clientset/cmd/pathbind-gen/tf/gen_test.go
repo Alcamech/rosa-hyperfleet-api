@@ -8,7 +8,7 @@ import (
 	"testing"
 	"text/template"
 
-	pkg "github.com/openshift-online/rosa-hyperfleet-api/clientset/cmd/pathbind-gen/pkg"
+	pkg "github.com/openshift-online/rosa-seaplane-api/clientset/cmd/pathbind-gen/pkg"
 )
 
 func TestRunGeneratesBundledTerraformObject(t *testing.T) {
@@ -338,11 +338,11 @@ resources:
 	}
 	resourceText := string(resource)
 	for _, want := range []string{
-		`HyperfleetV1alpha1().NodePools().Create`,
-		`HyperfleetV1alpha1().NodePools().Get`,
-		`HyperfleetV1alpha1().NodePools().Update`,
-		`HyperfleetV1alpha1().NodePools().Delete`,
-		`HyperfleetV1alpha1().NodePools().Get(ctx, req.ID`,
+		`SeaplaneV1alpha1().NodePools().Create`,
+		`SeaplaneV1alpha1().NodePools().Get`,
+		`SeaplaneV1alpha1().NodePools().Update`,
+		`SeaplaneV1alpha1().NodePools().Delete`,
+		`SeaplaneV1alpha1().NodePools().Get(ctx, req.ID`,
 	} {
 		if !strings.Contains(resourceText, want) {
 			t.Errorf("generated NodePool resource missing unnamespaced client call %q", want)

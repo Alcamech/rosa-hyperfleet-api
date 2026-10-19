@@ -8,12 +8,12 @@
 //	--mode=cobra  reads pathbind-draft.yaml + pathbind-overrides.yaml and writes
 //	              Go source (input struct, RegisterXxxFlags, XxxHandler interface,
 //	              GeneratedXxxPrompt, RunXxx) into the consumer's package.
-//	              Run by the consumer's make generate-hyperfleet target.
+//	              Run by the consumer's make generate-seaplane target.
 //
 //	--mode=tf     reads pathbind-draft.yaml + pathbind-overrides.yaml and writes
 //	              Go source (input struct, handler interface, resource scaffolding)
 //	              into the consumer's package.
-//	              Run by the consumer's make generate-hyperfleet target.
+//	              Run by the consumer's make generate-seaplane target.
 package main
 
 import (
@@ -22,8 +22,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/clientset/cmd/pathbind-gen/cobra"
-	"github.com/openshift-online/rosa-hyperfleet-api/clientset/cmd/pathbind-gen/tf"
+	"github.com/openshift-online/rosa-seaplane-api/clientset/cmd/pathbind-gen/cobra"
+	"github.com/openshift-online/rosa-seaplane-api/clientset/cmd/pathbind-gen/tf"
 )
 
 func main() {

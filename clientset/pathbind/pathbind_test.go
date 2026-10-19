@@ -11,10 +11,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
+	v1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/clientset/pathbind"
+	"github.com/openshift-online/rosa-seaplane-api/clientset/pathbind"
 )
 
 // clusterInput is a flat consumer struct representing cluster creation inputs.

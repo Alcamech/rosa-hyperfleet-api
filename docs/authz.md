@@ -1,6 +1,6 @@
 # ROSA Authorization Service
 
-This document describes the Cedar-based authorization service for the ROSA HyperFleet API.
+This document describes the Cedar-based authorization service for the ROSA Seaplane API.
 
 ## Overview
 
@@ -24,7 +24,7 @@ A Red Hat user with a valid RH token links the AWS account to the RH organizatio
 ```mermaid
 sequenceDiagram
     actor Admin as IAM Principal + RH Token
-    participant API as ROSA HyperFleet API
+    participant API as ROSA Seaplane API
     participant DB as DynamoDB
 
     Admin->>API: account linking request
@@ -41,7 +41,7 @@ Policy management requires the AWS account to be linked. Access is granted eithe
 ```mermaid
 sequenceDiagram
     actor User as IAM Principal
-    participant API as ROSA HyperFleet API
+    participant API as ROSA Seaplane API
     participant DB as DynamoDB
 
     User->>API: Policy management request (create, attach, etc.)
@@ -71,7 +71,7 @@ All non-administrative API requests follow this flow. Linked admin principals ar
 ```mermaid
 sequenceDiagram
     actor User as IAM Principal
-    participant API as ROSA HyperFleet API
+    participant API as ROSA Seaplane API
     participant DB as DynamoDB
 
     User->>API: API request (e.g. create cluster)
@@ -101,13 +101,13 @@ Admin access grants policy and attachment management permissions within the link
 
 > **Note:** Policy management is not restricted to administrative users. A regular IAM principal can be granted a Cedar policy that authorizes policy and attachment management (e.g., via a `ManagePolicies` action). This allows delegated policy administration without requiring principal linking or an RBAC role.
 
-Policy management operates at global scope — both for RH administrators and for IAM principals with delegated policy management permissions. Because ROSA policies are global, restricting an administrator to a single region would be inconsistent: a regionally-scoped admin who creates a policy would lose management authority over it if that policy is later updated to apply across multiple regions. For this reason, HyperFleet does not support regionally-scoped _policy_ administrators. Attachment management, however, can be regional: a principal can be granted only the `*AttachmentRegional` actions, making them a regionally-scoped attachment administrator without any authority over global policies.
+Policy management operates at global scope — both for RH administrators and for IAM principals with delegated policy management permissions. Because ROSA policies are global, restricting an administrator to a single region would be inconsistent: a regionally-scoped admin who creates a policy would lose management authority over it if that policy is later updated to apply across multiple regions. For this reason, Seaplane does not support regionally-scoped _policy_ administrators. Attachment management, however, can be regional: a principal can be granted only the `*AttachmentRegional` actions, making them a regionally-scoped attachment administrator without any authority over global policies.
 
 ## Principal Linking
 
 IAM principals can be linked to a Red Hat user via `rosactl link account` (which also links the AWS account to the RH organization) or `rosactl link principal` (which links only the calling IAM principal). Multiple IAM principals can be linked to the same Red Hat user.
 
-Account linking is subject to export control verification. When a Red Hat user is banned, their linked AWS principals are also banned, and they can no longer use the ROSA HyperFleet API to lifecycle clusters, nor access cluster APIs via aws-iam-authenticator. The clusters themselves continue to operate normally.
+Account linking is subject to export control verification. When a Red Hat user is banned, their linked AWS principals are also banned, and they can no longer use the ROSA Seaplane API to lifecycle clusters, nor access cluster APIs via aws-iam-authenticator. The clusters themselves continue to operate normally.
 
 Principal linking grants administrative access when the linked Red Hat user holds Org Admin privileges or an RBAC role such as `ROSAAdmin`. This is the mechanism by which RH administrators gain policy and attachment management permissions without requiring a Cedar policy. Principal linking is not required for IAM principals whose access is determined solely by Cedar policies, including Cedar-based delegated policy management.
 
@@ -200,7 +200,7 @@ Attachments bind a ROSA policy to an IAM principal ARN (user or role). Attachmen
 
 ## ROSA Policy Types
 
-ROSA policies are distinct from AWS IAM policies — they are ROSA-specific policy definitions stored and managed through the HyperFleet API.
+ROSA policies are distinct from AWS IAM policies — they are ROSA-specific policy definitions stored and managed through the Seaplane API.
 
 ### Managed ROSA Policies
 
@@ -519,7 +519,7 @@ rosactl policy attach \
 
 In this example the principal is `arn:aws:iam::777788889999:role/DeveloperRole` from the example above.
 
-Note that regular users do not have to run `rosactl link principal`. Their permissions must be explicitly granted within HyperFleet itself by Red Hat admins (see examples above).
+Note that regular users do not have to run `rosactl link principal`. Their permissions must be explicitly granted within Seaplane itself by Red Hat admins (see examples above).
 
 ```bash
 # 1. Configure AWS credentials and region

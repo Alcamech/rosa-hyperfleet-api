@@ -12,8 +12,8 @@ import (
 // domain and internal HostedCluster name are reported in status. metadata.name
 // is customer-selected.
 // Labels:
-//   - hyperfleet.io/account-id: AWS account that owns this reservation (always set).
-//   - hyperfleet.io/claimed-by-cluster-uid: set when a Cluster claims the reservation.
+//   - seaplane.io/account-id: AWS account that owns this reservation (always set).
+//   - seaplane.io/claimed-by-cluster-uid: set when a Cluster claims the reservation.
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced

@@ -1,4 +1,4 @@
-module github.com/openshift-online/rosa-hyperfleet-api/test
+module github.com/openshift-online/rosa-seaplane-api/test
 
 go 1.26.5
 
@@ -12,8 +12,8 @@ require (
 	github.com/aws/smithy-go v1.28.1
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
-	github.com/openshift-online/rosa-hyperfleet-api/api v0.0.0
-	github.com/openshift-online/rosa-hyperfleet-api/clientset v0.0.0
+	github.com/openshift-online/rosa-seaplane-api/api v0.0.0
+	github.com/openshift-online/rosa-seaplane-api/clientset v0.0.0
 	github.com/openshift/hypershift/api v0.0.0-20260625052409-9acec4759a16
 	k8s.io/apimachinery v0.36.3
 )
@@ -85,6 +85,6 @@ require (
 )
 
 replace (
-	github.com/openshift-online/rosa-hyperfleet-api/api => ../api
-	github.com/openshift-online/rosa-hyperfleet-api/clientset => ../clientset
+	github.com/openshift-online/rosa-seaplane-api/api => ../api
+	github.com/openshift-online/rosa-seaplane-api/clientset => ../clientset
 )

@@ -1,6 +1,6 @@
 # E2E Tests
 
-End-to-end integration and functional tests for the Hyperfleet Platform API.
+End-to-end integration and functional tests for the Seaplane Platform API.
 
 ## Prerequisites
 

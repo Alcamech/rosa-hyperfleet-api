@@ -40,21 +40,21 @@ func TestLoadTypedRegistryFromJSON_ValidFile(t *testing.T) {
 			"writeMode": "immutable",
 			"hidden": false,
 			"ownerType": "Cluster",
-			"ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
+			"ownerGVK": "seaplane.io/v1alpha1.Cluster"
 		},
 		{
 			"fieldPath": "spec.accountId",
 			"writeMode": "service-set",
 			"hidden": true,
 			"ownerType": "Cluster",
-			"ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
+			"ownerGVK": "seaplane.io/v1alpha1.Cluster"
 		},
 		{
 			"fieldPath": "spec.accountId",
 			"writeMode": "mutable",
 			"hidden": false,
 			"ownerType": "NodePool",
-			"ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+			"ownerGVK": "seaplane.io/v1alpha1.NodePool"
 		}
 	]`
 
@@ -122,10 +122,10 @@ func TestLoadTypedRegistryFromJSON_WithFeatureGates(t *testing.T) {
 		{
 			"fieldPath": "spec.etcd",
 			"writeMode": "mutable",
-			"featureGate": "HyperFleetEtcdConfig",
+			"featureGate": "SeaplaneEtcdConfig",
 			"hidden": false,
 			"ownerType": "Cluster",
-			"ownerGVK": "hyperfleet.io/v1alpha1.Cluster"
+			"ownerGVK": "seaplane.io/v1alpha1.Cluster"
 		}
 	]`
 
@@ -145,8 +145,8 @@ func TestLoadTypedRegistryFromJSON_WithFeatureGates(t *testing.T) {
 	}
 
 	if meta, exists := clusterFields["spec.etcd"]; exists {
-		if meta.FeatureGate != "HyperFleetEtcdConfig" {
-			t.Errorf("spec.etcd FeatureGate = %s, want HyperFleetEtcdConfig", meta.FeatureGate)
+		if meta.FeatureGate != "SeaplaneEtcdConfig" {
+			t.Errorf("spec.etcd FeatureGate = %s, want SeaplaneEtcdConfig", meta.FeatureGate)
 		}
 	} else {
 		t.Error("spec.etcd not found in Cluster fields")
@@ -162,7 +162,7 @@ func TestLoadTypedRegistryFromJSON_WithResettable(t *testing.T) {
 			"writeMode": "mutable",
 			"resettable": true,
 			"ownerType": "NodePool",
-			"ownerGVK": "hyperfleet.io/v1alpha1.NodePool"
+			"ownerGVK": "seaplane.io/v1alpha1.NodePool"
 		}
 	]`
 

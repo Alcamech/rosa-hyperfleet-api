@@ -42,17 +42,17 @@ func TestIsGateEnabled(t *testing.T) {
 		featureSet FeatureSet
 		want       bool
 	}{
-		{"GA gate in Default", "HyperFleetEtcdConfig", Default, true},
-		{"GA gate in TechPreview", "HyperFleetEtcdConfig", TechPreviewNoUpgrade, true},
-		{"GA gate in DevPreview", "HyperFleetEtcdConfig", DevPreviewNoUpgrade, true},
+		{"GA gate in Default", "SeaplaneEtcdConfig", Default, true},
+		{"GA gate in TechPreview", "SeaplaneEtcdConfig", TechPreviewNoUpgrade, true},
+		{"GA gate in DevPreview", "SeaplaneEtcdConfig", DevPreviewNoUpgrade, true},
 
-		{"TechPreview gate in Default", "HyperFleetAutoScaling", Default, false},
-		{"TechPreview gate in TechPreview", "HyperFleetAutoScaling", TechPreviewNoUpgrade, true},
-		{"TechPreview gate in DevPreview", "HyperFleetAutoScaling", DevPreviewNoUpgrade, true},
+		{"TechPreview gate in Default", "SeaplaneAutoScaling", Default, false},
+		{"TechPreview gate in TechPreview", "SeaplaneAutoScaling", TechPreviewNoUpgrade, true},
+		{"TechPreview gate in DevPreview", "SeaplaneAutoScaling", DevPreviewNoUpgrade, true},
 
-		{"DevPreview gate in Default", "HyperFleetCustomDNS", Default, false},
-		{"DevPreview gate in TechPreview", "HyperFleetCustomDNS", TechPreviewNoUpgrade, false},
-		{"DevPreview gate in DevPreview", "HyperFleetCustomDNS", DevPreviewNoUpgrade, true},
+		{"DevPreview gate in Default", "SeaplaneCustomDNS", Default, false},
+		{"DevPreview gate in TechPreview", "SeaplaneCustomDNS", TechPreviewNoUpgrade, false},
+		{"DevPreview gate in DevPreview", "SeaplaneCustomDNS", DevPreviewNoUpgrade, true},
 
 		{"Unknown gate is disabled", "NonExistentGate", DevPreviewNoUpgrade, false},
 	}

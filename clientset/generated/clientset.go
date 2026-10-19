@@ -22,7 +22,7 @@ import (
 	fmt "fmt"
 	http "net/http"
 
-	v1alpha1public "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated/typed/v1alpha1/public"
+	v1alpha1public "github.com/openshift-online/rosa-seaplane-api/clientset/generated/typed/v1alpha1/public"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"

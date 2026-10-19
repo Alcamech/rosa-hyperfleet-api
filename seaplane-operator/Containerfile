@@ -1,0 +1,50 @@
+FROM registry.access.redhat.com/ubi9/go-toolset:9.8-1792010711 AS builder
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+USER 0
+RUN mkdir -p /workspace && chown 1001:0 /workspace
+USER 1001
+
+WORKDIR /workspace
+ENV GOCACHE=/workspace/.cache/go-build
+
+COPY seaplane-db/go.mod seaplane-db/go.sum ./seaplane-db/
+COPY api/go.mod api/go.sum ./api/
+COPY seaplane-operator/go.mod seaplane-operator/go.sum ./seaplane-operator/
+RUN cd seaplane-operator && go mod download
+
+COPY api/ ./api/
+COPY seaplane-db/ ./seaplane-db/
+COPY seaplane-operator/ ./seaplane-operator/
+
+RUN cd seaplane-operator && \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -o /workspace/manager ./cmd/manager
+RUN cd seaplane-operator && \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -a -o /workspace/compactor ./cmd/compactor
+
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8-1791898448
+
+ARG VERSION=0.0.1
+ARG RELEASE=1
+
+LABEL name="rosa-seaplane-operator" \
+      vendor="Red Hat, Inc." \
+      version="${VERSION}" \
+      release="${RELEASE}" \
+      summary="ROSA Seaplane operator" \
+      description="ROSA Seaplane operator (manager + compactor)" \
+      io.k8s.display-name="rosa-seaplane-operator" \
+      io.k8s.description="ROSA Seaplane operator (manager + compactor)" \
+      com.redhat.component="rosa-seaplane-operator-container" \
+      distribution-scope="public" \
+      url="https://github.com/openshift-online/rosa-seaplane-api"
+
+WORKDIR /app
+
+COPY --from=builder /workspace/manager /app/manager
+COPY --from=builder /workspace/compactor /app/compactor
+
+USER 65534:65534
+
+ENTRYPOINT ["/app/manager"]

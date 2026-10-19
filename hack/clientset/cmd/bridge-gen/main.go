@@ -86,7 +86,7 @@ type {{.Name}}ListOptions struct {
 }
 {{end}}
 // {{.Name}}Interface is the platform-scoped client for {{.Name}} resources.
-// Only operations and options supported by the Hyperfleet platform API are exposed.
+// Only operations and options supported by the Seaplane platform API are exposed.
 // Watch is intentionally absent — the platform API does not support the Kubernetes
 // watch stream protocol; use WaitUntil for polling-based synchronization instead.
 type {{.Name}}Interface interface {
@@ -204,7 +204,7 @@ func (c *{{.LowerName}}Client) WaitUntil(ctx context.Context, id string, conditi
 }
 {{- end}}
 {{end}}
-// {{.TypedClientPrefix}}Interface is the platform-scoped typed client for the hyperfleet.io/v1alpha1 group.
+// {{.TypedClientPrefix}}Interface is the platform-scoped typed client for the seaplane.io/v1alpha1 group.
 type {{.TypedClientPrefix}}Interface interface {
 	RESTClient() rest.Interface
 {{- range .Types}}

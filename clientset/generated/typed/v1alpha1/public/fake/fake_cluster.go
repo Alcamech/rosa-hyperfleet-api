@@ -19,8 +19,8 @@ limitations under the License.
 package fake
 
 import (
-	public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	v1alpha1public "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated/typed/v1alpha1/public"
+	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	v1alpha1public "github.com/openshift-online/rosa-seaplane-api/clientset/generated/typed/v1alpha1/public"
 	gentype "k8s.io/client-go/gentype"
 )
 

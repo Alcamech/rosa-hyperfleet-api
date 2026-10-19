@@ -181,7 +181,7 @@ var _ = Describe("OIDC Config Lifecycle: Managed", Ordered, Label("oidcconfig", 
 
 		By("verifying it starts Pending (AwaitingCluster) with no cluster bound yet")
 		fetched := waitForOidcConfigPhase(apiClient, accountID, configName, "Pending", 30*time.Second)
-		Expect(clusterLabel(fetched, "hyperfleet.io/cluster-namespace")).To(BeEmpty())
+		Expect(clusterLabel(fetched, "seaplane.io/cluster-namespace")).To(BeEmpty())
 
 		By("creating a cluster referencing the config")
 		clusterName := uniqueClusterName("m")
@@ -205,7 +205,7 @@ var _ = Describe("OIDC Config Lifecycle: Managed", Ordered, Label("oidcconfig", 
 		By("deleting the cluster and confirming the claim releases")
 		deleteClusterAndWait(apiClient, accountID, clusterName)
 		unbound := waitForOidcConfigPhase(apiClient, accountID, configName, "Pending", 1*time.Minute)
-		Expect(clusterLabel(unbound, "hyperfleet.io/cluster-namespace")).To(BeEmpty())
+		Expect(clusterLabel(unbound, "seaplane.io/cluster-namespace")).To(BeEmpty())
 	})
 })
 
@@ -265,7 +265,7 @@ var _ = Describe("OIDC Config Lifecycle: Reusability", Ordered, Label("oidcconfi
 		By("deleting cluster A releases the claim without deleting the config")
 		deleteClusterAndWait(apiClient, accountID, clusterAName)
 		released := waitForOidcConfigPhase(apiClient, accountID, configName, "Pending", 1*time.Minute)
-		Expect(clusterLabel(released, "hyperfleet.io/cluster-namespace")).To(BeEmpty())
+		Expect(clusterLabel(released, "seaplane.io/cluster-namespace")).To(BeEmpty())
 
 		By("cluster B can now claim the same, still-existing config")
 		respB2, err := apiClient.Post("/api/v0/clusters", map[string]any{

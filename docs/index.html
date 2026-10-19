@@ -49,7 +49,7 @@
       "/management_clusters": {
         "post": {
           "summary": "Create a new management cluster",
-          "description": "Creates a new management cluster by storing a ManagementCluster custom resource in the hyperfleet-db.\nRequires privileged access (admin AWS account).\n",
+          "description": "Creates a new management cluster by storing a ManagementCluster custom resource in the seaplane-db.\nRequires privileged access (admin AWS account).\n",
           "operationId": "createManagementCluster",
           "tags": [
             "ManagementClusters"
@@ -2406,7 +2406,7 @@
         },
         "ManagementCluster": {
           "type": "object",
-          "description": "A management cluster registered in the hyperfleet-db",
+          "description": "A management cluster registered in the seaplane-db",
           "required": [
             "id",
             "kind",

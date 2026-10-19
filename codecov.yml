@@ -30,7 +30,7 @@ ignore:
 flags:
   platform-api:
     carryforward: true
-  hyperfleet-operator:
+  seaplane-operator:
     carryforward: true
   api-codegen:
     carryforward: true

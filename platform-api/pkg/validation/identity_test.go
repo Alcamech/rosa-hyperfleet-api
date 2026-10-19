@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
 )
 
 func TestValidateClusterName(t *testing.T) {
@@ -37,9 +37,9 @@ func TestValidateClusterNameForDNSReservation(t *testing.T) {
 		wantErr           bool
 	}{
 		{name: "my-cluster"},
-		{name: strings.Repeat("a", hyperfleetv1alpha1.MaxClusterNameLengthWithoutDNSReservation())},
-		{name: strings.Repeat("a", hyperfleetv1alpha1.MaxClusterNameLengthWithoutDNSReservation()+1), wantErr: true},
-		{name: strings.Repeat("a", hyperfleetv1alpha1.MaxClusterNameLengthWithoutDNSReservation()+1), hasDNSReservation: true},
+		{name: strings.Repeat("a", seaplanev1alpha1.MaxClusterNameLengthWithoutDNSReservation())},
+		{name: strings.Repeat("a", seaplanev1alpha1.MaxClusterNameLengthWithoutDNSReservation()+1), wantErr: true},
+		{name: strings.Repeat("a", seaplanev1alpha1.MaxClusterNameLengthWithoutDNSReservation()+1), hasDNSReservation: true},
 		{name: strings.Repeat("a", 63), hasDNSReservation: true},
 		{name: strings.Repeat("a", 64), hasDNSReservation: true, wantErr: true},
 	}
