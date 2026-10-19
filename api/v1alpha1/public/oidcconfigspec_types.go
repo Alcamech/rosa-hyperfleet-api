@@ -12,24 +12,24 @@ package public
 type OidcConfigSpec struct {
 	// Type is the OIDC configuration mode.
 	// +kubebuilder:validation:Enum=managed;unmanaged
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	Type string `json:"type"`
 	// IssuerUrl is the OIDC issuer URL.
 	// Required for both types; computed by platform-api for managed configs,
 	// customer-supplied for unmanaged configs.
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	IssuerUrl string `json:"issuerUrl"`
 	// SecretArn is the ARN of the customer's Secrets Manager secret containing the RSA private key.
 	// Required for unmanaged configs; must be empty for managed configs.
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +optional
 	// +kubebuilder:validation:Pattern=`^(arn:aws:secretsmanager:.*)?$`
 	SecretArn string `json:"secretArn"`
 	// InstallerRoleArn is the ARN of the cross-account IAM role used to read the customer's secret.
 	// Required for unmanaged configs; must be empty for managed configs.
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +optional
 	// +kubebuilder:validation:Pattern=`^(arn:aws:iam::.*)?$`
 	InstallerRoleArn string `json:"installerRoleArn"`

@@ -1,10 +1,10 @@
-# V2 SDK Initiative: HyperFleet Platform API Client SDK
+# V2 SDK Initiative: Seaplane Platform API Client SDK
 
 **Last Updated Date**: 2026-07-28
 
 ## Summary
 
-Build a **v2 Go SDK** (`clientset/`, a new module in this monorepo) that exposes the same HCP cluster lifecycle operations currently served by `ocm-sdk-go` (v1), but backed by the new HyperFleet Platform API instead of the OCM API.
+Build a **v2 Go SDK** (`clientset/`, a new module in this monorepo) that exposes the same HCP cluster lifecycle operations currently served by `ocm-sdk-go` (v1), but backed by the new Seaplane Platform API instead of the OCM API.
 
 The v2 SDK will be validated by running existing FVT/e2e tests against both the v1 and v2 SDK, proving that consumers (rosa CLI, terraform provider, CAPA) can switch backends without functional regression.
 
@@ -17,7 +17,7 @@ Requires:
 
 ## Motivation
 
-The HyperFleet Platform API (see [api-management.md](api-management.md)) introduces a new REST API surface generated from HyperFleet CRD types. Today, consumers like `rosa` CLI and `terraform-provider-rhcs` interact with cluster management through `ocm-sdk-go` against the OCM API (`api.openshift.com`). To complete the HyperFleet story, these consumers need a client SDK that talks to the new regional Platform API endpoints.
+The Seaplane Platform API (see [api-management.md](api-management.md)) introduces a new REST API surface generated from Seaplane CRD types. Today, consumers like `rosa` CLI and `terraform-provider-rhcs` interact with cluster management through `ocm-sdk-go` against the OCM API (`api.openshift.com`). To complete the Seaplane story, these consumers need a client SDK that talks to the new regional Platform API endpoints.
 
 ## V1 SDK Architecture (ocm-sdk-go)
 
@@ -70,7 +70,7 @@ Key facts:
 - **Output**: ~1600 generated files in `clustersmgmt/v1/` alone
 - **Precedent**: The `arohcp/` package follows the exact same generated pattern at `v1alpha1`
 
-The v2 SDK intentionally drops this proprietary DSL. Instead, it generates directly from the OpenAPI spec that the HyperFleet codegen pipeline already produces (see [V2 SDK Design](#v2-sdk-design)).
+The v2 SDK intentionally drops this proprietary DSL. Instead, it generates directly from the OpenAPI spec that the Seaplane codegen pipeline already produces (see [V2 SDK Design](#v2-sdk-design)).
 
 ### Consumer Usage Pattern
 
@@ -116,12 +116,12 @@ The minimum surface the v2 SDK must cover:
 | Hibernate         | `Cluster(id).Hibernate()`                                  | `POST .../hibernate`                         |
 | Resume            | `Cluster(id).Resume()`                                     | `POST .../resume`                            |
 
-## HyperFleet Platform API Surface
+## Seaplane Platform API Surface
 
-The v1 SDK exposes 12 service areas through the OCM API. The HyperFleet Platform API replaces a subset of these with a smaller, focused surface.
-The v2 SDK only needs to cover the HyperFleet equivalents.
+The v1 SDK exposes 12 service areas through the OCM API. The Seaplane Platform API replaces a subset of these with a smaller, focused surface.
+The v2 SDK only needs to cover the Seaplane equivalents.
 
-| V1 OCM Service            | V1 Path                    | V2 HyperFleet Equivalent                                             | Phase     |
+| V1 OCM Service            | V1 Path                    | V2 Seaplane Equivalent                                             | Phase     |
 | ------------------------- | -------------------------- | -------------------------------------------------------------------- | --------- |
 | ClustersMgmt (clusters)   | `/api/clusters_mgmt`       | **Cluster** CRD                                                      | Immediate |
 | ClustersMgmt (node pools) | `/api/clusters_mgmt`       | **NodePool** CRD                                                     | Immediate |
@@ -140,7 +140,7 @@ The v1 SDK is generated from a proprietary metamodel DSL (`ocm-api-model`). The 
 
 The v2 SDK exposes its generated interface directly — there is no v1-compatibility adapter. Consumers migrate to the new interface (see [Interface Decision](#interface-decision)).
 
-**Generated core**: Auto-generated from the HyperFleet CRD types (`api/v1alpha1/`) using `client-gen` (from `k8s.io/code-generator`), the same tool that generates typed clientsets for any Kubernetes operator. This produces typed verb clients (`Create`, `Get`, `List`, `Update`, `Delete`) that match the CRD types exactly. A custom `bridge-gen` tool extends the generated clients with platform-specific behavior (watch suppression, `WaitUntil` polling).
+**Generated core**: Auto-generated from the Seaplane CRD types (`api/v1alpha1/`) using `client-gen` (from `k8s.io/code-generator`), the same tool that generates typed clientsets for any Kubernetes operator. This produces typed verb clients (`Create`, `Get`, `List`, `Update`, `Delete`) that match the CRD types exactly. A custom `bridge-gen` tool extends the generated clients with platform-specific behavior (watch suppression, `WaitUntil` polling).
 
 ### SDK Release Cadence and Strategy
 
@@ -189,7 +189,7 @@ Goal: the v2 SDK generation is fully automated as part of the `make generate-cli
 
 The v2 SDK adopts a **Kubernetes-style interface**, modeled on `client-go`. Consumers (rosa CLI, terraform provider) migrate to it directly; a migration guide + helper functions assist in switching. This is more work upfront than a drop-in v1-compatible layer, but cleaner long-term.
 
-This shape is a natural fit: the HyperFleet resources are already CRD-backed types (`ObjectMeta` / `Spec` / `Status`), so the SDK simply exposes them the same way you'd work with them in Kubernetes. There are no fluent builders to generate or maintain — callers construct a typed struct literal and pass it to a verb method on a typed client.
+This shape is a natural fit: the Seaplane resources are already CRD-backed types (`ObjectMeta` / `Spec` / `Status`), so the SDK simply exposes them the same way you'd work with them in Kubernetes. There are no fluent builders to generate or maintain — callers construct a typed struct literal and pass it to a verb method on a typed client.
 
 **Resource construction** — a plain struct literal, not a builder chain:
 
@@ -230,7 +230,7 @@ Because the generated core already produces the typed `Spec`/`Status` models fro
 
 | Client                                           | Priority | Rationale                                                              |
 | ------------------------------------------------ | -------- | ---------------------------------------------------------------------- |
-| **rosa CLI** (`rosa-hyperfleet-cli` / `rosactl`) | P0       | Primary user-facing tool, exercises full lifecycle                     |
+| **rosa CLI** (`rosa-seaplane-cli` / `rosactl`) | P0       | Primary user-facing tool, exercises full lifecycle                     |
 | **terraform-provider-rhcs**                      | P1       | Key IaC consumer, many enterprise customers depend on it               |
 | **CAPA** (Cluster API Provider AWS)              | P2       | Lower priority for initial initiative; evaluate after rosa + terraform |
 
@@ -267,7 +267,7 @@ These tests in `rosa/tests/e2e/` exercise HCP cluster lifecycle through the CLI,
 | `e2e_setup_test.go`         | Cluster provisioning (precondition)                     | setup                             |
 | `e2e_tear_down_test.go`     | Cluster deletion (cleanup)                              | cleanup                           |
 
-### HyperFleet CLI E2E Tests (this repo)
+### Seaplane CLI E2E Tests (this repo)
 
 These tests in `test/e2e-cli/` exercise the full lifecycle through `rosactl`:
 
@@ -281,7 +281,7 @@ These tests in `test/e2e-cli/` exercise the full lifecycle through `rosactl`:
 | Cluster update | `hcp-patch`                                                 | `rosactl cluster patch`      |
 | Cleanup        | `bundles-delete`, `oidc-delete`, `iam-delete`, `vpc-delete` | Full teardown                |
 
-### HyperFleet Platform API E2E Tests (this repo)
+### Seaplane Platform API E2E Tests (this repo)
 
 The `test/e2e-api/` tests exercise the Platform API directly:
 
@@ -297,27 +297,27 @@ Each test suite below must pass against **both** the v1 SDK (ocm-sdk-go, baselin
 | #   | Test suite                                                                                                                                                                           | v1 SDK (baseline)                                                           | v2 SDK                                                                            |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | 1   | **Rosa CLI HCP tests** (`hcp_cluster_test.go`, `hcp_machine_pool_test.go`): create HCP cluster, CRUD node pools, delete cluster                                                      | Must pass against ocm-sdk-go to establish baseline behavior                 | Must pass against `clientset/` with identical observable outcomes                 |
-| 2   | **HyperFleet CLI lifecycle** (`test/e2e-cli/cluster_test.go` labels: `setup`, `create`, `monitor`, `cleanup`): full VPC → IAM → cluster → node pool → teardown cycle through rosactl | Must pass against ocm-sdk-go to establish baseline behavior                 | Must pass against `clientset/` with identical observable outcomes                 |
+| 2   | **Seaplane CLI lifecycle** (`test/e2e-cli/cluster_test.go` labels: `setup`, `create`, `monitor`, `cleanup`): full VPC → IAM → cluster → node pool → teardown cycle through rosactl | Must pass against ocm-sdk-go to establish baseline behavior                 | Must pass against `clientset/` with identical observable outcomes                 |
 | 3   | **Terraform basic lifecycle**: `terraform apply` + `terraform destroy` of an HCP cluster with node pools                                                                             | Must pass with provider backed by ocm-sdk-go to establish baseline behavior | Must pass with provider backed by `clientset/` with identical observable outcomes |
 
 **Behavioral-parity validation**: For each test suite, the v1 and v2 runs must produce the same observable outcomes — identical resource states, API response codes, and CLI/Terraform output (excluding endpoint URLs and auth-mechanism differences). Any behavioral divergence must be documented and justified before the initiative is declared complete.
 
 ## Work Breakdown
 
-### Epic: V2 SDK — HyperFleet Platform API Client
+### Epic: V2 SDK — Seaplane Platform API Client
 
 #### Story 1: V2 SDK Skeleton and Authentication
 
 Set up the `clientset/` module with:
 
-- Connection builder with AWS SigV4 authentication (the HyperFleet API uses IAM auth, not OCM SSO tokens)
-- Regional Platform API endpoint (required; each region has its own endpoint, e.g. `https://hyperfleet.us-east-1.api.example.com`)
+- Connection builder with AWS SigV4 authentication (the Seaplane API uses IAM auth, not OCM SSO tokens)
+- Regional Platform API endpoint (required; each region has its own endpoint, e.g. `https://seaplane.us-east-1.api.example.com`)
 - AWS signing region (required; must match the region of the Platform API endpoint, e.g. `us-east-1`)
 - AWS signing service set to `execute-api` (the Platform API is fronted by API Gateway)
 - `X-Amz-Account-Id` header (required on every request; the AWS account ID of the calling principal)
 - `X-Amz-Caller-Arn` header (optional; the ARN of the IAM role or user making the request, passed when available for audit/authorization)
 - Transport wrapper stack (SigV4 signing, retry, logging)
-- Basic HTTP round-tripper that talks to the HyperFleet Platform API
+- Basic HTTP round-tripper that talks to the Seaplane Platform API
 
 **Acceptance**:
 
@@ -336,20 +336,20 @@ Set up the generation pipeline:
 - Use `bridge-gen --mode=bridge` to generate wire↔metadata field name mappings from `+bridge:field` markers
 - Use `bridge-gen --mode=platform` to generate Watch overrides and `WaitUntil` polling helpers from `+bridge:watch=disabled` / `+bridge:wait` markers
 - Wire the generated client into the SDK's transport layer (`clientset/transport`)
-- Expose the wrapped clientset through `clientset/hyperfleet.go`
+- Expose the wrapped clientset through `clientset/seaplane.go`
 
 **Acceptance**: Generated types exist for Cluster and NodePool resources. Can create a cluster via the generated client. Watch returns `ErrWatchNotSupported`. `WaitUntil` polls until a caller-supplied condition is met or the timeout elapses (condition receives `nil` on 404 — caller decides whether absence is terminal).
 
 #### Story 3: Integrate V2 SDK into Rosa CLI
 
-The rosa CLI supports **both** SDKs side by side — v1 (`ocm-sdk-go`) remains the default; the v2 SDK is selected per-invocation via a flag (e.g. `--hyperfleet` or `--v2`; exact name TBD).
+The rosa CLI supports **both** SDKs side by side — v1 (`ocm-sdk-go`) remains the default; the v2 SDK is selected per-invocation via a flag (e.g. `--seaplane` or `--v2`; exact name TBD).
 
 - Fork or branch the rosa CLI (or rosactl)
 - Add the v2 SDK as an additional backend for cluster/node pool operations, alongside the existing `ocm-sdk-go` path (do not remove v1)
 - Route to v1 or v2 based on the backend-selection flag
 - Preserve all CLI flags and output formats identically across both backends
 
-**Acceptance**: `rosa create cluster --hosted-cp --hyperfleet` (or `rosactl cluster create --hyperfleet`) works against the HyperFleet Platform API via the v2 SDK, while the same command without the flag continues to use the v1 SDK unchanged.
+**Acceptance**: `rosa create cluster --hosted-cp --seaplane` (or `rosactl cluster create --seaplane`) works against the Seaplane Platform API via the v2 SDK, while the same command without the flag continues to use the v1 SDK unchanged.
 
 #### Story 4: Integrate V2 SDK into Terraform Provider
 
@@ -357,12 +357,12 @@ The rosa CLI supports **both** SDKs side by side — v1 (`ocm-sdk-go`) remains t
 - Replace cluster/node pool resource implementations to use v2 SDK
 - Preserve terraform state compatibility
 
-**Acceptance**: `terraform apply` of an HCP cluster + node pool plan works against HyperFleet Platform API.
+**Acceptance**: `terraform apply` of an HCP cluster + node pool plan works against Seaplane Platform API.
 
 #### Story 5: FVT Test Execution and Validation
 
 - Run identified rosa CLI HCP e2e tests against v2 SDK-backed CLI
-- Run HyperFleet CLI lifecycle tests
+- Run Seaplane CLI lifecycle tests
 - Run terraform lifecycle test
 - Document results and any behavior differences
 
@@ -379,7 +379,7 @@ The rosa CLI supports **both** SDKs side by side — v1 (`ocm-sdk-go`) remains t
 ## Decisions Made
 
 1. **Generation approach**: CRD-types-first. Drop the proprietary OCM metamodel DSL. Generate the v2 SDK directly from the CRD type definitions using `client-gen` (standard Kubernetes tooling) plus a custom `bridge-gen` for platform-specific extensions (watch suppression, `WaitUntil` polling). This avoids the OpenAPI intermediary step and keeps generation aligned with the operator's type definitions as the single source of truth.
-2. **Auth model**: AWS SigV4 (IAM auth), not OCM SSO tokens. The HyperFleet API authenticates all requests via AWS IAM credentials.
+2. **Auth model**: AWS SigV4 (IAM auth), not OCM SSO tokens. The Seaplane API authenticates all requests via AWS IAM credentials.
 3. **Initial surface**: Cluster + NodePool only. Tenancy and authz (account linking, policies, attachments, authorization check) are deferred to a future iteration, along with access transparency, service logs, etc.
 4. **Interface style**: Kubernetes-style, modeled on `client-go` — typed resource structs (`ObjectMeta`/`Spec`/`Status`) constructed as struct literals, and a typed client exposing `Create`/`Get`/`List`/`Update`/`Patch`/`Delete` verbs. No fluent builders.
 
@@ -409,7 +409,7 @@ dynamic client.)
 
 ## Open Questions
 
-1. ~~**Module location**~~: Resolved — the SDK lives in this monorepo as `clientset/` with its own `go.mod`, following the same pattern as `platform-api/`, `hyperfleet-operator/`, and `hyperfleet-db/`.
+1. ~~**Module location**~~: Resolved — the SDK lives in this monorepo as `clientset/` with its own `go.mod`, following the same pattern as `platform-api/`, `seaplane-operator/`, and `seaplane-db/`.
 2. **CAPA timing**: Should CAPA integration be part of this initiative or deferred?
-3. **Type compatibility**: How much do the HyperFleet CRD types (Cluster, NodePool) diverge from the OCM API model types? The migration effort for consumers depends on this.
-4. **Service logs**: Logs appear to be per-cluster in HyperFleet. How will the SDK expose them — as a sub-resource of Cluster, or as a separate top-level surface?
+3. **Type compatibility**: How much do the Seaplane CRD types (Cluster, NodePool) diverge from the OCM API model types? The migration effort for consumers depends on this.
+4. **Service logs**: Logs appear to be per-cluster in Seaplane. How will the SDK expose them — as a sub-resource of Cluster, or as a separate top-level surface?

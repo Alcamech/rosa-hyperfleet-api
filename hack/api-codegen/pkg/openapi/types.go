@@ -23,7 +23,7 @@ func NewGenerator(inputDirs []string, outputFile string) *Generator {
 	return &Generator{
 		InputDirs:  inputDirs,
 		OutputFile: outputFile,
-		Title:      "HyperFleet API",
+		Title:      "Seaplane API",
 		Version:    "v1alpha1",
 	}
 }

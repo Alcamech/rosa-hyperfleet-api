@@ -3,7 +3,7 @@ package featuregate
 import (
 	"fmt"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/registry"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/registry"
 )
 
 // FilterCRDFields returns a list of field paths that should be included in the CRD

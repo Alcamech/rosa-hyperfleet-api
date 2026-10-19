@@ -2,7 +2,7 @@
 
 ## Overview
 
-The passthrough codegen pipeline generates Go struct types that mirror upstream HyperShift API types (`HostedClusterSpec`, `NodePoolSpec`) into the HyperFleet `api/v1alpha1` package. Each mirrored struct (e.g., `HostedClusterSpecPassthrough`) carries curated markers that control field visibility, mutability, and feature gating. These markers drive all downstream codegen: OpenAPI schemas, REST types, conversion functions, and CRD variants.
+The passthrough codegen pipeline generates Go struct types that mirror upstream HyperShift API types (`HostedClusterSpec`, `NodePoolSpec`) into the Seaplane `api/v1alpha1` package. Each mirrored struct (e.g., `HostedClusterSpecPassthrough`) carries curated markers that control field visibility, mutability, and feature gating. These markers drive all downstream codegen: OpenAPI schemas, REST types, conversion functions, and CRD variants.
 
 ## Goals
 
@@ -71,7 +71,7 @@ The loop is closed: the committed file feeds the registry, and the registry feed
 2. Run `make codegen-registry` (unchanged — scans existing committed file).
 3. Run `make codegen-passthrough` — new fields appear with safe defaults:
    - `+k8s:openapi-gen=false` (hidden from public API)
-   - `+hyperfleet:write-mode=service-set` (not customer-writable)
+   - `+seaplane:write-mode=service-set` (not customer-writable)
 4. Review the diff. Curate markers on any new fields that should be visible or mutable.
 5. Re-run `make codegen-registry && make codegen-passthrough` to verify round-trip.
 6. Run downstream codegen and commit.
@@ -86,10 +86,10 @@ The registry captures the following marker categories from the passthrough file:
 
 | Marker                                                   | Registry field               | Purpose                                                                                                        |
 | -------------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `+k8s:openapi-gen=false`                                 | `hidden: true`               | Suppresses automatic Kubernetes OpenAPI generation; mutable fields remain in HyperFleet's custom public schema |
-| `+hyperfleet:write-mode=mutable\|immutable\|service-set` | `writeMode`                  | Controls customer mutability                                                                                   |
+| `+k8s:openapi-gen=false`                                 | `hidden: true`               | Suppresses automatic Kubernetes OpenAPI generation; mutable fields remain in Seaplane's custom public schema |
+| `+seaplane:write-mode=mutable\|immutable\|service-set` | `writeMode`                  | Controls customer mutability                                                                                   |
 | `+openshift:enable:FeatureGate=X`                        | `featureGate`                | Field gated behind a feature flag                                                                              |
-| `+hyperfleet:validation:FeatureGateAwareWriteMode:...`   | `featureGateAwareWriteModes` | Write-mode varies by active feature gates                                                                      |
+| `+seaplane:validation:FeatureGateAwareWriteMode:...`   | `featureGateAwareWriteModes` | Write-mode varies by active feature gates                                                                      |
 
 Upstream markers like `+optional` and `+required` are propagated directly from HyperShift source by `passthrough-gen` via `isForwardedMarker()` — they do not go through the registry.
 
@@ -98,7 +98,7 @@ Upstream markers like `+optional` and `+required` are propagated directly from H
 When `passthrough-gen` encounters a field from HyperShift that has no entry in the registry (i.e., a newly added field), it applies safe defaults:
 
 - `+k8s:openapi-gen=false` — hidden from the public API until explicitly curated
-- `+hyperfleet:write-mode=service-set` — not customer-writable until explicitly allowed
+- `+seaplane:write-mode=service-set` — not customer-writable until explicitly allowed
 
 This ensures new upstream fields don't accidentally become visible or mutable.
 

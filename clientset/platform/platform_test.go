@@ -22,12 +22,12 @@ import (
 	"testing"
 	"time"
 
-	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
+	v1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 
-	typedclient "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated/typed/v1alpha1/public"
+	typedclient "github.com/openshift-online/rosa-seaplane-api/clientset/generated/typed/v1alpha1/public"
 )
 
 func TestNodePoolJSONDecodesObservedReplicas(t *testing.T) {
@@ -209,7 +209,7 @@ func TestNodePoolList_UsesParentUIDSelector(t *testing.T) {
 	if _, err := c.List(context.Background(), NodePoolListOptions{ClusterUID: uid}); err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if got.LabelSelector != "hyperfleet.io/cluster-uid="+uid {
+	if got.LabelSelector != "seaplane.io/cluster-uid="+uid {
 		t.Fatalf("LabelSelector = %q, want parent UID selector", got.LabelSelector)
 	}
 }

@@ -65,7 +65,7 @@ func main() {
 			if field.Doc != nil {
 				for _, comment := range field.Doc.List {
 					text := comment.Text
-					if strings.Contains(text, "+hyperfleet:write-mode=") {
+					if strings.Contains(text, "+seaplane:write-mode=") {
 						hasWriteMode = true
 					}
 					if strings.Contains(text, "+k8s:openapi-gen=") {
@@ -78,7 +78,7 @@ func main() {
 			if field.Comment != nil {
 				for _, comment := range field.Comment.List {
 					text := comment.Text
-					if strings.Contains(text, "+hyperfleet:write-mode=") {
+					if strings.Contains(text, "+seaplane:write-mode=") {
 						hasWriteMode = true
 					}
 					if strings.Contains(text, "+k8s:openapi-gen=") {
@@ -89,7 +89,7 @@ func main() {
 
 			// Fields should have write-mode marker
 			if !hasWriteMode {
-				errors = append(errors, fmt.Sprintf("%s.%s: missing +hyperfleet:write-mode marker", typeName, fieldName))
+				errors = append(errors, fmt.Sprintf("%s.%s: missing +seaplane:write-mode marker", typeName, fieldName))
 			}
 
 			// Note: Visibility markers are optional
@@ -107,7 +107,7 @@ func main() {
 		for _, err := range errors {
 			fmt.Printf("  ❌ %s\n", err)
 		}
-		fmt.Println("\nAll fields in configuration types must have +hyperfleet:write-mode markers.")
+		fmt.Println("\nAll fields in configuration types must have +seaplane:write-mode markers.")
 		fmt.Println("Add one of: mutable, immutable, service-set")
 		os.Exit(1)
 	}

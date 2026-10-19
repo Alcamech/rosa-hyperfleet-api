@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/authz"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/authz"
 )
 
 // mockChecker implements authz.Checker for testing

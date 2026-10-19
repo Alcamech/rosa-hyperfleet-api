@@ -1,36 +1,36 @@
 package featuregate
 
-// HyperFleetFeatureGates is the registry of all feature gates
+// SeaplaneFeatureGates is the registry of all feature gates
 // Each gate controls access to specific fields or capabilities
-var HyperFleetFeatureGates = map[string]FeatureGateInfo{
+var SeaplaneFeatureGates = map[string]FeatureGateInfo{
 	// Example gates - these would be populated based on actual product requirements
 
-	"HyperFleetEtcdConfig": {
+	"SeaplaneEtcdConfig": {
 		Stage:       GA,
 		Description: "Allows customers to configure etcd settings",
 	},
 
-	"HyperFleetAutoScaling": {
+	"SeaplaneAutoScaling": {
 		Stage:       TechPreview,
 		Description: "Enables cluster autoscaling configuration",
 	},
 
-	"HyperFleetSecretEncryption": {
+	"SeaplaneSecretEncryption": {
 		Stage:       TechPreview,
 		Description: "Allows customers to configure secret encryption",
 	},
 
-	"HyperFleetCustomDNS": {
+	"SeaplaneCustomDNS": {
 		Stage:       DevPreview,
 		Description: "Enables custom DNS configuration for development/testing",
 	},
 
-	"HyperFleetKubeletAdvanced": {
+	"SeaplaneKubeletAdvanced": {
 		Stage:       TechPreview,
 		Description: "Enables advanced kubelet configuration (serializeImagePulls, registryPullQPS, etc.)",
 	},
 
-	"HyperFleetMachineConfig": {
+	"SeaplaneMachineConfig": {
 		Stage:       TechPreview,
 		Description: "Allows customers to request approved kernel parameters via allowlist",
 	},
@@ -38,7 +38,7 @@ var HyperFleetFeatureGates = map[string]FeatureGateInfo{
 
 // IsGateEnabled returns true if the given gate is enabled for the feature set
 func IsGateEnabled(gate string, featureSet FeatureSet) bool {
-	info, exists := HyperFleetFeatureGates[gate]
+	info, exists := SeaplaneFeatureGates[gate]
 	if !exists {
 		// Unknown gates are disabled by default
 		return false
@@ -52,7 +52,7 @@ func GatesForFeatureSet(featureSet FeatureSet) []string {
 	var gates []string
 	maxStage := featureSet.MaxStage()
 
-	for gate, info := range HyperFleetFeatureGates {
+	for gate, info := range SeaplaneFeatureGates {
 		if info.Stage <= maxStage {
 			gates = append(gates, gate)
 		}

@@ -3,9 +3,9 @@ package validation
 import (
 	"testing"
 
-	rest "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/registry"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/internal/codegen/featuregate"
+	rest "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/registry"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/internal/codegen/featuregate"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 )
 
@@ -202,7 +202,7 @@ func TestValidateCreate_FeatureGateIgnoresEmptyValue(t *testing.T) {
 		"spec.autoscaling": {
 			FieldPath:   "spec.autoscaling",
 			WriteMode:   registry.Mutable,
-			FeatureGate: "HyperFleetAutoScaling",
+			FeatureGate: "SeaplaneAutoScaling",
 		},
 	})
 
@@ -219,7 +219,7 @@ func TestValidateCreate_FeatureGateRejectsConfiguredValue(t *testing.T) {
 		"spec.autoscaling": {
 			FieldPath:   "spec.autoscaling",
 			WriteMode:   registry.Mutable,
-			FeatureGate: "HyperFleetAutoScaling",
+			FeatureGate: "SeaplaneAutoScaling",
 		},
 	})
 
@@ -242,7 +242,7 @@ func TestValidateCreate_FeatureGateRejectsScalarZeroValues(t *testing.T) {
 				"spec.setting": {
 					FieldPath:   "spec.setting",
 					WriteMode:   registry.Mutable,
-					FeatureGate: "HyperFleetKubeletAdvanced",
+					FeatureGate: "SeaplaneKubeletAdvanced",
 				},
 			})
 
@@ -259,7 +259,7 @@ func TestValidateCreate_FeatureGateRejectsObjectContainingZeroValue(t *testing.T
 		"spec.kubelet": {
 			FieldPath:   "spec.kubelet",
 			WriteMode:   registry.Mutable,
-			FeatureGate: "HyperFleetKubeletAdvanced",
+			FeatureGate: "SeaplaneKubeletAdvanced",
 		},
 	})
 
@@ -498,7 +498,7 @@ func TestValidateUpdate_RejectsImmutableFieldChangeFromOmittedZeroValue(t *testi
 
 func TestValidateCreate_RejectsFeatureGatedField(t *testing.T) {
 	v := newTestValidator(map[string]registry.FieldMeta{
-		"spec.tags": {FieldPath: "spec.tags", WriteMode: registry.Mutable, FeatureGate: "HyperFleetAutoScaling"},
+		"spec.tags": {FieldPath: "spec.tags", WriteMode: registry.Mutable, FeatureGate: "SeaplaneAutoScaling"},
 	})
 
 	spec := map[string]any{
@@ -517,7 +517,7 @@ func TestValidateCreate_RejectsFeatureGatedField(t *testing.T) {
 
 func TestValidateCreate_AllowsFeatureGatedFieldWhenEnabled(t *testing.T) {
 	v := newTestValidator(map[string]registry.FieldMeta{
-		"spec.tags": {FieldPath: "spec.tags", WriteMode: registry.Mutable, FeatureGate: "HyperFleetAutoScaling"},
+		"spec.tags": {FieldPath: "spec.tags", WriteMode: registry.Mutable, FeatureGate: "SeaplaneAutoScaling"},
 	})
 
 	spec := map[string]any{
@@ -763,7 +763,7 @@ func TestValidateCreate_FeatureGateAwareWriteMode(t *testing.T) {
 			FieldPath: "spec.maxPods",
 			WriteMode: registry.ServiceSet,
 			FeatureGateAwareWriteModes: []registry.FeatureGateWriteMode{
-				{FeatureGate: "HyperFleetKubeletAdvanced", WriteMode: registry.Mutable},
+				{FeatureGate: "SeaplaneKubeletAdvanced", WriteMode: registry.Mutable},
 				{FeatureGate: "", WriteMode: registry.ServiceSet},
 			},
 		},

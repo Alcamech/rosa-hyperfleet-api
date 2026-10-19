@@ -122,7 +122,7 @@ func RunUpdate{{$res}}(ctx context.Context, r {{$rt}}, cmd *cobra.Command, name 
 		return err
 	}
 	normalize{{$res}}UpdateInput(cmd, input)
-	current, err := r.HyperFleetClient.HyperfleetV1alpha1().{{$res}}s().Get(ctx, name, platform.GetOptions{})
+	current, err := r.SeaplaneClient.SeaplaneV1alpha1().{{$res}}s().Get(ctx, name, platform.GetOptions{})
 	if err != nil {
 		return err
 	}

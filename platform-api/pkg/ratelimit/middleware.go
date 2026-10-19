@@ -13,8 +13,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/api"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/middleware"
 )
 
 var requestsTotal = promauto.NewCounterVec(

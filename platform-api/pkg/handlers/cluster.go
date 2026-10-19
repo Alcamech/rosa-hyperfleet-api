@@ -16,18 +16,18 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/internal/codegen/featuregate"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/validation"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/internal/codegen/featuregate"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/api"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/clients/seaplanedb"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/middleware"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/validation"
 )
 
 const (
-	clusterUIDLabel         = "hyperfleet.io/cluster-uid"
-	clusterCleanupFinalizer = "hyperfleet.io/cluster" // keep in sync with the operator's Cluster finalizer
+	clusterUIDLabel         = "seaplane.io/cluster-uid"
+	clusterCleanupFinalizer = "seaplane.io/cluster" // keep in sync with the operator's Cluster finalizer
 )
 
 // clusterCreateCleanupTimeout bounds a detached best-effort delete after a create failure.
@@ -35,7 +35,7 @@ const clusterCreateCleanupTimeout = 5 * time.Second
 
 // ClusterHandler handles cluster-related HTTP requests
 type ClusterHandler struct {
-	db                       *hyperfleetdb.Client
+	db                       *seaplanedb.Client
 	oidcIssuerBaseURL        string
 	defaultClusterExpiration time.Duration
 	validator                *validation.FieldValidator
@@ -43,7 +43,7 @@ type ClusterHandler struct {
 }
 
 // NewClusterHandler creates a new cluster handler
-func NewClusterHandler(db *hyperfleetdb.Client, oidcIssuerBaseURL string, defaultClusterExpiration time.Duration, logger *slog.Logger) *ClusterHandler {
+func NewClusterHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, defaultClusterExpiration time.Duration, logger *slog.Logger) *ClusterHandler {
 	return &ClusterHandler{
 		db:                       db,
 		oidcIssuerBaseURL:        oidcIssuerBaseURL,
@@ -87,7 +87,7 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	clusters := make([]*public.Cluster, 0, len(list.Items))
 	for i := range list.Items {
-		clusters = append(clusters, hyperfleetdb.InternalToPublicCluster(&list.Items[i]))
+		clusters = append(clusters, seaplanedb.InternalToPublicCluster(&list.Items[i]))
 	}
 
 	total := len(clusters)
@@ -131,7 +131,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var dnsReservation *hyperfleetv1alpha1.DNSReservation
+	var dnsReservation *seaplanev1alpha1.DNSReservation
 	var apiErr *APIError
 	if req.Spec.DNSReservationID != "" {
 		dnsReservation, apiErr = h.resolveDNSReservation(ctx, accountID, req.Spec.DNSReservationID)
@@ -164,7 +164,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if queueURL != "" {
 		queueClaimCreated, err = h.db.ClaimSpotTerminationQueue(ctx, accountID, queueURL, req.Name)
 		if err != nil {
-			if hyperfleetdb.IsAlreadyExists(err) {
+			if seaplanedb.IsAlreadyExists(err) {
 				writeAPIError(w, ErrClusterValidation.WithErrors(validation.SpotTerminationHandlerQueueAlreadyInUse()), h.logger)
 				return
 			}
@@ -188,7 +188,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if oidcConfig != nil {
 		req.Spec.OidcConfigID = string(oidcConfig.UID)
 	}
-	cr := hyperfleetdb.PublicToInternalCluster(req, accountID)
+	cr := seaplanedb.PublicToInternalCluster(req, accountID)
 	cr.Spec.HostedClusterName = req.Name
 	if dnsReservation != nil {
 		cr.Spec.HostedClusterName = dnsReservation.Status.InternalHostedClusterName
@@ -216,7 +216,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 				h.logger.Warn("failed to release Spot termination handler queue claim after cluster create failure", "error", releaseErr, "account_id", accountID)
 			}
 		}
-		if hyperfleetdb.IsAlreadyExists(err) {
+		if seaplanedb.IsAlreadyExists(err) {
 			writeAPIError(w, ErrClusterCreateNameConflict.WithReason(req.Name), h.logger)
 			return
 		}
@@ -234,7 +234,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, *apiErr, h.logger)
 		return
 	}
-	if err := api.Write(w, http.StatusCreated, hyperfleetdb.InternalToPublicCluster(cr)); err != nil {
+	if err := api.Write(w, http.StatusCreated, seaplanedb.InternalToPublicCluster(cr)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }
@@ -281,7 +281,7 @@ func (h *ClusterHandler) decodeClusterCreateRequest(accountID string, body []byt
 	return &req, nil
 }
 
-func (h *ClusterHandler) completeClusterCreate(ctx context.Context, accountID, clusterName string, cluster *hyperfleetv1alpha1.Cluster, reservation *hyperfleetv1alpha1.DNSReservation, oidcConfig *hyperfleetv1alpha1.OidcConfig) (*hyperfleetv1alpha1.Cluster, *APIError) {
+func (h *ClusterHandler) completeClusterCreate(ctx context.Context, accountID, clusterName string, cluster *seaplanev1alpha1.Cluster, reservation *seaplanev1alpha1.DNSReservation, oidcConfig *seaplanev1alpha1.OidcConfig) (*seaplanev1alpha1.Cluster, *APIError) {
 	clusterUID := string(cluster.UID)
 	deleteClusterForCleanup := func() {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), clusterCreateCleanupTimeout)
@@ -289,7 +289,7 @@ func (h *ClusterHandler) completeClusterCreate(ctx context.Context, accountID, c
 		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			current, err := h.db.GetCluster(cleanupCtx, accountID, clusterName)
 			if err != nil {
-				if hyperfleetdb.IsNotFound(err) {
+				if seaplanedb.IsNotFound(err) {
 					return nil
 				}
 				return err
@@ -359,7 +359,7 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	cr, err := h.db.GetCluster(ctx, accountID, clusterName)
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrClusterGetNotFound, h.logger)
 			return
 		}
@@ -368,7 +368,7 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := api.Write(w, http.StatusOK, hyperfleetdb.InternalToPublicCluster(cr)); err != nil {
+	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicCluster(cr)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }
@@ -428,7 +428,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, ErrClusterUpdateMissingFields, h.logger)
 		return
 	}
-	var updated *hyperfleetv1alpha1.Cluster
+	var updated *seaplanev1alpha1.Cluster
 	var validationErr validation.ValidationErrors
 	var mergeErr error
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -441,7 +441,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 			return fmt.Errorf("invalid cluster update")
 		}
 		oldQueueURL, oldRegion := clusterTerminationHandlerQueue(current)
-		if err := hyperfleetdb.MergeSpecJSON(&current.Spec, envelope.Spec); err != nil {
+		if err := seaplanedb.MergeSpecJSON(&current.Spec, envelope.Spec); err != nil {
 			mergeErr = err
 			return err
 		}
@@ -459,7 +459,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 		if queueChanged && queueURL != "" {
 			if _, err := h.db.ClaimSpotTerminationQueue(ctx, accountID, queueURL, clusterName); err != nil {
-				if hyperfleetdb.IsAlreadyExists(err) {
+				if seaplanedb.IsAlreadyExists(err) {
 					validationErr = validation.SpotTerminationHandlerQueueAlreadyInUse()
 					return fmt.Errorf("invalid cluster update")
 				}
@@ -482,11 +482,11 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrClusterUpdateNotFound, h.logger)
 			return
 		}
-		if hyperfleetdb.IsConflict(err) {
+		if seaplanedb.IsConflict(err) {
 			writeAPIError(w, ErrClusterUpdateConflict, h.logger)
 			return
 		}
@@ -495,7 +495,7 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := api.Write(w, http.StatusOK, hyperfleetdb.InternalToPublicCluster(updated)); err != nil {
+	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicCluster(updated)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }
@@ -507,14 +507,14 @@ func requestedTerminationHandlerQueue(aws *hypershiftv1beta1.AWSPlatformSpec) (q
 	return aws.TerminationHandlerQueueURL, aws.Region
 }
 
-func clusterTerminationHandlerQueue(cluster *hyperfleetv1alpha1.Cluster) (queueURL, region string) {
+func clusterTerminationHandlerQueue(cluster *seaplanev1alpha1.Cluster) (queueURL, region string) {
 	if cluster == nil {
 		return "", ""
 	}
 	return requestedTerminationHandlerQueue(cluster.Spec.HostedCluster.Platform.AWS)
 }
 
-func terminationHandlerQueueURLs(clusters []hyperfleetv1alpha1.Cluster, excludeName string) []string {
+func terminationHandlerQueueURLs(clusters []seaplanev1alpha1.Cluster, excludeName string) []string {
 	var queueURLs []string
 	for i := range clusters {
 		cluster := &clusters[i]
@@ -539,7 +539,7 @@ func (h *ClusterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	err := h.db.DeleteCluster(ctx, accountID, clusterName)
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrClusterDeleteNotFound, h.logger)
 			return
 		}

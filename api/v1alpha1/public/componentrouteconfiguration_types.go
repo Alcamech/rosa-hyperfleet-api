@@ -8,21 +8,21 @@ import (
 
 // ComponentRouteConfiguration specifies a custom hostname and serving
 // certificate for an OpenShift component route.
-// +hyperfleet:upstream-reduced-object=configv1.ComponentRouteSpec
+// +seaplane:upstream-reduced-object=configv1.ComponentRouteSpec
 type ComponentRouteConfiguration struct {
 	// namespace identifies the namespace containing the component route.
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +kubebuilder:validation:Enum=openshift-console
 	Namespace string `json:"namespace"`
 	// name identifies the component route within its namespace.
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +kubebuilder:validation:Enum=console;downloads
 	Name string `json:"name"`
 	// hostname is the hostname that should be used by the route.
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	Hostname configv1.Hostname `json:"hostname"`
 	// servingCertKeyPairSecret references a TLS secret in openshift-config.
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +optional
 	ServingCertKeyPairSecret configv1.SecretNameReference `json:"servingCertKeyPairSecret"`
 }

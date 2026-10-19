@@ -11,22 +11,22 @@ import (
 // is account-<accountID>.
 type ClusterSpec struct {
 	// DeleteProtection prevents accidental deletion when enabled.
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +optional
 	DeleteProtection *bool `json:"deleteProtection,omitempty"`
 	// ExpirationTimestamp marks when this cluster should be automatically deleted.
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +optional
 	ExpirationTimestamp *metav1.Time `json:"expirationTimestamp,omitempty"`
 	// Properties are arbitrary key-value pairs for customer metadata.
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +kubebuilder:validation:MaxProperties=100
 	// +optional
 	Properties map[string]string `json:"properties,omitempty"`
 	// AdditionalTrustBundle is a PEM-encoded CA bundle used by the cluster.
 	// The Platform API accepts this value on writes and redacts it in its responses.
-	// +hyperfleet:write-mode=mutable
-	// +hyperfleet:response-redact
+	// +seaplane:write-mode=mutable
+	// +seaplane:response-redact
 	// +kubebuilder:validation:MaxLength=1048576
 	// +optional
 	AdditionalTrustBundle *string `json:"additionalTrustBundle,omitempty"`
@@ -38,19 +38,19 @@ type ClusterSpec struct {
 	// HyperShift caps platform.aws.resourceTags at 25 entries and the operator
 	// injects 2 system tags (red-hat-managed and kubernetes.io/cluster/<id>),
 	// so 23 customer tags are available here.
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +kubebuilder:validation:MaxProperties=23
 	// +optional
 	Tags map[string]string `json:"tags,omitempty"`
 	// DNSReservationID is the UID of an account-scoped DNSReservation to bind to
 	// this Cluster. If omitted, the operator allocates and binds one automatically.
 	// Immutable after creation.
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +optional
 	DNSReservationID string `json:"dnsReservationId,omitempty"`
 	// OidcConfigID is the UID of the account-scoped OidcConfig to use for cluster
 	// identity. Empty selects the legacy managed issuer flow. Immutable after creation.
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +optional
 	OidcConfigID string `json:"oidcConfigId,omitempty"`
 	// HostedCluster contains the upstream HyperShift fields, mirrored as

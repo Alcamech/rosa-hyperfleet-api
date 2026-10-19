@@ -42,25 +42,25 @@ const HostedClusterNamePending = "uid-pending"
 // is account-<accountID>.
 type ClusterSpec struct {
 	// DeleteProtection prevents accidental deletion when enabled.
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +optional
 	DeleteProtection *bool `json:"deleteProtection,omitempty"`
 
 	// ExpirationTimestamp marks when this cluster should be automatically deleted.
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +optional
 	ExpirationTimestamp *metav1.Time `json:"expirationTimestamp,omitempty"`
 
 	// Properties are arbitrary key-value pairs for customer metadata.
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +kubebuilder:validation:MaxProperties=100
 	// +optional
 	Properties map[string]string `json:"properties,omitempty"`
 
 	// AdditionalTrustBundle is a PEM-encoded CA bundle used by the cluster.
 	// The Platform API accepts this value on writes and redacts it in its responses.
-	// +hyperfleet:write-mode=mutable
-	// +hyperfleet:response-redact
+	// +seaplane:write-mode=mutable
+	// +seaplane:response-redact
 	// +kubebuilder:validation:MaxLength=1048576
 	// +optional
 	AdditionalTrustBundle *string `json:"additionalTrustBundle,omitempty"`
@@ -73,20 +73,20 @@ type ClusterSpec struct {
 	// HyperShift caps platform.aws.resourceTags at 25 entries and the operator
 	// injects 2 system tags (red-hat-managed and kubernetes.io/cluster/<id>),
 	// so 23 customer tags are available here.
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +kubebuilder:validation:MaxProperties=23
 	// +optional
 	Tags map[string]string `json:"tags,omitempty"`
 
 	// AccountID is the AWS account that owns this cluster.
 	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +seaplane:write-mode=service-set
 	// +optional
 	AccountID string `json:"accountId,omitempty"`
 
 	// CreatorARN is the IAM ARN of the user who created this cluster.
 	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +seaplane:write-mode=service-set
 	// +optional
 	// +kubebuilder:validation:Pattern=`^arn:aws:`
 	CreatorARN string `json:"creatorARN,omitempty"`
@@ -100,20 +100,20 @@ type ClusterSpec struct {
 	// It is optional for legacy Clusters that fall back to metadata.name; remove
 	// +optional after those records are backfilled with an internal name.
 	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +seaplane:write-mode=service-set
 	// +optional
 	HostedClusterName string `json:"hostedClusterName,omitempty"`
 
 	// DNSReservationID is the UID of an account-scoped DNSReservation to bind to
 	// this Cluster. If omitted, the operator allocates and binds one automatically.
 	// Immutable after creation.
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +optional
 	DNSReservationID string `json:"dnsReservationId,omitempty"`
 
 	// OidcConfigID is the UID of the account-scoped OidcConfig to use for cluster
 	// identity. Empty selects the legacy managed issuer flow. Immutable after creation.
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +optional
 	OidcConfigID string `json:"oidcConfigId,omitempty"`
 
@@ -181,7 +181,7 @@ type PlacementReference struct {
 // +genclient:nonNamespaced
 // +bridge:watch=disabled
 // +bridge:wait
-// +hyperfleet:rest-response-projection=proxy
+// +seaplane:rest-response-projection=proxy
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,shortName=hfc
@@ -193,10 +193,10 @@ type PlacementReference struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
 // Cluster is the Schema for the clusters API.
-// It represents a ROSA HCP cluster whose lifecycle is managed by the hyperfleet-operator.
+// It represents a ROSA HCP cluster whose lifecycle is managed by the seaplane-operator.
 // metadata.Name is a client-chosen DNS label of at most 63 characters;
 // metadata.Namespace is account-<accountID>. The owning account is recorded in
-// the hyperfleet.io/account-id label.
+// the seaplane.io/account-id label.
 type Cluster struct {
 	metav1.TypeMeta `json:",inline"`
 
@@ -228,19 +228,19 @@ func init() {
 
 // PlatformSpec mirrors PlatformSpec from upstream HyperShift, exposing only the AWS
 // platform. Azure, GCP, OpenStack, and other platforms are intentionally omitted —
-// HyperFleet only supports AWS-backed clusters.
-// +hyperfleet:upstream-reduced-object=hypershiftv1beta1.PlatformSpec
+// Seaplane only supports AWS-backed clusters.
+// +seaplane:upstream-reduced-object=hypershiftv1beta1.PlatformSpec
 // +k8s:openapi-gen=true
 type PlatformSpec struct {
 	// type specifies the underlying infrastructure provider for the cluster.
 	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=immutable
+	// +seaplane:write-mode=immutable
 	// +required
 	Type hypershiftv1beta1.PlatformType `json:"type"`
 
 	// aws specifies AWS-specific configuration for the cluster.
 	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +optional
 	AWS *hypershiftv1beta1.AWSPlatformSpec `json:"aws,omitempty"`
 }

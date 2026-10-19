@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/registry"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/registry"
 )
 
 func TestCRDVariantGenerator_shouldIncludeField(t *testing.T) {
@@ -16,7 +16,7 @@ func TestCRDVariantGenerator_shouldIncludeField(t *testing.T) {
 				"spec.tags": {
 					FieldPath:   "spec.tags",
 					WriteMode:   registry.Mutable,
-					FeatureGate: "HyperFleetAutoScaling", // TechPreview gate
+					FeatureGate: "SeaplaneAutoScaling", // TechPreview gate
 					OwnerType:   "Cluster",
 				},
 				"spec.displayName": {
@@ -35,7 +35,7 @@ func TestCRDVariantGenerator_shouldIncludeField(t *testing.T) {
 					FieldPath:   "spec.hiddenGated",
 					WriteMode:   registry.ServiceSet,
 					Hidden:      true,
-					FeatureGate: "HyperFleetAutoScaling",
+					FeatureGate: "SeaplaneAutoScaling",
 					OwnerType:   "Cluster",
 				},
 				"spec.mutableButKubernetesHidden": {
@@ -126,9 +126,9 @@ func TestCRDVariantGenerator_GenerateVariant(t *testing.T) {
 	testCRD := `apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: clusters.hyperfleet.io
+  name: clusters.seaplane.io
 spec:
-  group: hyperfleet.io
+  group: seaplane.io
   names:
     kind: Cluster
     plural: clusters
@@ -173,7 +173,7 @@ spec:
 				"spec.tags": {
 					FieldPath:   "spec.tags",
 					WriteMode:   registry.Mutable,
-					FeatureGate: "HyperFleetAutoScaling", // TechPreview
+					FeatureGate: "SeaplaneAutoScaling", // TechPreview
 					OwnerType:   "Cluster",
 				},
 				"spec.displayName": {
@@ -235,9 +235,9 @@ func TestCRDVariantGenerator_GenerateAllVariants(t *testing.T) {
 	testCRD := `apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: test.hyperfleet.io
+  name: test.seaplane.io
 spec:
-  group: hyperfleet.io
+  group: seaplane.io
   names:
     kind: Test
     plural: tests

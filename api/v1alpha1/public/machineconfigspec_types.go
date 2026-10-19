@@ -3,10 +3,10 @@
 package public
 
 // MachineConfigSpec specifies machine-level configuration.
-// +hyperfleet:upstream-reduced-object=hypershiftv1beta1.MachineConfigSpec
+// +seaplane:upstream-reduced-object=hypershiftv1beta1.MachineConfigSpec
 type MachineConfigSpec struct {
-	// +openshift:enable:FeatureGate=HyperFleetMachineConfig
-	// +hyperfleet:write-mode=immutable
+	// +openshift:enable:FeatureGate=SeaplaneMachineConfig
+	// +seaplane:write-mode=immutable
 	// +kubebuilder:validation:MaxItems=128
 	AllowedKernelArguments []string `json:"allowedKernelArguments,omitempty"`
 }

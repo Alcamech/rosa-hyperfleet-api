@@ -15,8 +15,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/clients/seaplanedb"
 )
 
 type fakeClusterClaimableResource struct {
@@ -77,7 +77,7 @@ func TestClaimResourceRetriesConflictAndPreservesConcurrentMetadata(t *testing.T
 		ready:        true,
 		onFirstSave: func(r *fakeClusterClaimableResource) error {
 			r.storedFinalizers = append(r.storedFinalizers, "controller-finalizer")
-			return apierrors.NewConflict(schema.GroupResource{Group: "hyperfleet.io", Resource: "claimables"}, "resource", errors.New("concurrent finalizer update"))
+			return apierrors.NewConflict(schema.GroupResource{Group: "seaplane.io", Resource: "claimables"}, "resource", errors.New("concurrent finalizer update"))
 		},
 	}
 
@@ -106,7 +106,7 @@ func TestClaimResourceReturnsInUseOnlyAfterFreshRead(t *testing.T) {
 		ready:        true,
 		onFirstSave: func(r *fakeClusterClaimableResource) error {
 			r.storedClaimedBy = "other-cluster-uid"
-			return apierrors.NewConflict(schema.GroupResource{Group: "hyperfleet.io", Resource: "claimables"}, "resource", errors.New("concurrent claim"))
+			return apierrors.NewConflict(schema.GroupResource{Group: "seaplane.io", Resource: "claimables"}, "resource", errors.New("concurrent claim"))
 		},
 	}
 
@@ -249,12 +249,12 @@ func TestClaimResourceStateHandling(t *testing.T) {
 }
 
 func TestDNSReservationClaimableResource(t *testing.T) {
-	reservation := &hyperfleetv1alpha1.DNSReservation{}
+	reservation := &seaplanev1alpha1.DNSReservation{}
 	resource := &dnsReservationClaimableResource{resource: reservation}
 	if resource.ReadyForClusterClaim() {
 		t.Fatal("ReadyForClusterClaim() = true before reservation is Ready")
 	}
-	reservation.Status.Phase = hyperfleetv1alpha1.DNSReservationPhaseReady
+	reservation.Status.Phase = seaplanev1alpha1.DNSReservationPhaseReady
 	if resource.ReadyForClusterClaim() {
 		t.Fatal("ReadyForClusterClaim() = true without a base domain")
 	}
@@ -290,24 +290,24 @@ func TestDNSReservationClaimableResource(t *testing.T) {
 }
 
 func TestOidcConfigClaimableResource(t *testing.T) {
-	config := &hyperfleetv1alpha1.OidcConfig{
+	config := &seaplanev1alpha1.OidcConfig{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-oidc"},
-		Spec:       hyperfleetv1alpha1.OidcConfigSpec{Type: hyperfleetv1alpha1.OidcConfigTypeUnmanaged},
+		Spec:       seaplanev1alpha1.OidcConfigSpec{Type: seaplanev1alpha1.OidcConfigTypeUnmanaged},
 	}
 	resource := &oidcConfigClaimableResource{resource: config}
 	if resource.ReadyForClusterClaim() {
 		t.Fatal("ReadyForClusterClaim() = true for a Pending unmanaged config")
 	}
-	config.Status.Phase = hyperfleetv1alpha1.OidcConfigPhaseReady
+	config.Status.Phase = seaplanev1alpha1.OidcConfigPhaseReady
 	if !resource.ReadyForClusterClaim() {
 		t.Fatal("ReadyForClusterClaim() = false for a Ready unmanaged config")
 	}
-	config.Spec.Type = hyperfleetv1alpha1.OidcConfigTypeManaged
-	config.Status.Phase = hyperfleetv1alpha1.OidcConfigPhasePending
+	config.Spec.Type = seaplanev1alpha1.OidcConfigTypeManaged
+	config.Status.Phase = seaplanev1alpha1.OidcConfigPhasePending
 	if !resource.ReadyForClusterClaim() {
 		t.Fatal("ReadyForClusterClaim() = false for a Pending managed config")
 	}
-	config.Status.Phase = hyperfleetv1alpha1.OidcConfigPhaseError
+	config.Status.Phase = seaplanev1alpha1.OidcConfigPhaseError
 	if resource.ReadyForClusterClaim() {
 		t.Fatal("ReadyForClusterClaim() = true for an Error config")
 	}
@@ -337,7 +337,7 @@ func TestResolveDNSReservation(t *testing.T) {
 	missingHostedClusterNameReservation := testDNSReservationCR(testAccountID)
 	missingHostedClusterNameReservation.Status.InternalHostedClusterName = ""
 	notReadyReservation := testDNSReservationCR(testAccountID)
-	notReadyReservation.Status.Phase = hyperfleetv1alpha1.DNSReservationPhasePending
+	notReadyReservation.Status.Phase = seaplanev1alpha1.DNSReservationPhasePending
 	deletingReservation := testDNSReservationCR(testAccountID)
 	deletingAt := metav1.Now()
 	deletingReservation.Finalizers = []string{"test-finalizer"}
@@ -348,7 +348,7 @@ func TestResolveDNSReservation(t *testing.T) {
 	tests := []struct {
 		name             string
 		requestedUID     string
-		reservation      *hyperfleetv1alpha1.DNSReservation
+		reservation      *seaplanev1alpha1.DNSReservation
 		indexedUID       string
 		registerAPITypes bool
 		wantError        string
@@ -445,7 +445,7 @@ func TestResolveDNSReservation(t *testing.T) {
 	}
 }
 
-func newDNSReservationResolverHandler(t *testing.T, reservation *hyperfleetv1alpha1.DNSReservation, indexedUID string, registerAPITypes bool) *ClusterHandler {
+func newDNSReservationResolverHandler(t *testing.T, reservation *seaplanev1alpha1.DNSReservation, indexedUID string, registerAPITypes bool) *ClusterHandler {
 	t.Helper()
 
 	scheme := runtime.NewScheme()
@@ -454,7 +454,7 @@ func newDNSReservationResolverHandler(t *testing.T, reservation *hyperfleetv1alp
 	}
 	builder := fake.NewClientBuilder().WithScheme(scheme)
 	if registerAPITypes {
-		builder = builder.WithIndex(&hyperfleetv1alpha1.DNSReservation{}, "metadata.uid", func(obj client.Object) []string {
+		builder = builder.WithIndex(&seaplanev1alpha1.DNSReservation{}, "metadata.uid", func(obj client.Object) []string {
 			if indexedUID != "" {
 				return []string{indexedUID}
 			}
@@ -465,6 +465,6 @@ func newDNSReservationResolverHandler(t *testing.T, reservation *hyperfleetv1alp
 		builder = builder.WithObjects(reservation)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	db := hyperfleetdb.NewClientFrom(builder.Build(), logger)
+	db := seaplanedb.NewClientFrom(builder.Build(), logger)
 	return NewClusterHandler(db, "", 0, logger)
 }

@@ -1,11 +1,11 @@
-module github.com/openshift-online/rosa-hyperfleet-api/clientset
+module github.com/openshift-online/rosa-seaplane-api/clientset
 
 go 1.26.5
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.43.7
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.37
-	github.com/openshift-online/rosa-hyperfleet-api/api v0.0.0
+	github.com/openshift-online/rosa-seaplane-api/api v0.0.0
 	github.com/openshift/hypershift/api v0.0.0-20260625052409-9acec4759a16
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.36.0
@@ -62,4 +62,4 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace github.com/openshift-online/rosa-hyperfleet-api/api => ../api
+replace github.com/openshift-online/rosa-seaplane-api/api => ../api

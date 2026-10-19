@@ -8,7 +8,7 @@ import "strings"
 // and need automatic conversion logic for
 type MirrorTypeMapping struct {
 	FieldName          string // Name of the field in the struct (e.g., "Configuration", "AutoNode")
-	HyperFleetType     string // Our mirror type (e.g., "v1alpha1.ClusterConfiguration")
+	SeaplaneType     string // Our mirror type (e.g., "v1alpha1.ClusterConfiguration")
 	HyperShiftType     string // Upstream HyperShift type (e.g., "v1beta1.ClusterConfiguration")
 	ConversionStrategy string // "json-roundtrip" or "field-by-field"
 }
@@ -16,7 +16,7 @@ type MirrorTypeMapping struct {
 // mirrorTypeMappings is the registry of all mirror types requiring conversion
 //
 // These are types where:
-// 1. HyperFleet owns a mirror version (in api/v1alpha1/) to add granular markers
+// 1. Seaplane owns a mirror version (in api/v1alpha1/) to add granular markers
 // 2. HyperShift has the upstream version (in hypershift/api/hypershift/v1beta1/)
 // 3. Conversion functions need to convert between the two
 //
@@ -25,30 +25,30 @@ type MirrorTypeMapping struct {
 // - Generate conversion helper functions automatically
 // - Use helpers in ProjectX/UnprojectX conversion functions
 var mirrorTypeMappings = []MirrorTypeMapping{
-	// Configuration: HyperFleet owns a mirror type (api/v1alpha1/configuration.go) to enable granular markers
+	// Configuration: Seaplane owns a mirror type (api/v1alpha1/configuration.go) to enable granular markers
 	// on kubelet and machine config fields, while HyperShift has the upstream version in v1beta1
 	{
 		FieldName:          "Configuration",
-		HyperFleetType:     "v1alpha1.ClusterConfiguration",
+		SeaplaneType:     "v1alpha1.ClusterConfiguration",
 		HyperShiftType:     "v1beta1.ClusterConfiguration",
 		ConversionStrategy: "json-roundtrip",
 	},
 
-	// Platform: HyperFleet owns a reduced mirror (api/v1alpha1/cluster_types.go) that exposes only
+	// Platform: Seaplane owns a reduced mirror (api/v1alpha1/cluster_types.go) that exposes only
 	// the AWS platform, excluding Azure, GCP, OpenStack, and other non-supported platforms.
 	{
 		FieldName:          "Platform",
-		HyperFleetType:     "v1alpha1.PlatformSpec",
+		SeaplaneType:     "v1alpha1.PlatformSpec",
 		HyperShiftType:     "v1beta1.PlatformSpec",
 		ConversionStrategy: "json-roundtrip",
 	},
 
-	// Capabilities: HyperFleet owns a mirror (api/v1alpha1/capabilities_types.go) so the public
+	// Capabilities: Seaplane owns a mirror (api/v1alpha1/capabilities_types.go) so the public
 	// OpenAPI schema carries the upstream enum, maxItems, and immutability CEL rules instead of
 	// collapsing the field to an opaque object.
 	{
 		FieldName:          "Capabilities",
-		HyperFleetType:     "v1alpha1.Capabilities",
+		SeaplaneType:     "v1alpha1.Capabilities",
 		HyperShiftType:     "v1beta1.Capabilities",
 		ConversionStrategy: "json-roundtrip",
 	},
@@ -56,7 +56,7 @@ var mirrorTypeMappings = []MirrorTypeMapping{
 	// NodePool Platform: same as above for node pool platform configuration.
 	{
 		FieldName:          "Platform",
-		HyperFleetType:     "v1alpha1.NodePoolPlatform",
+		SeaplaneType:     "v1alpha1.NodePoolPlatform",
 		HyperShiftType:     "v1beta1.NodePoolPlatform",
 		ConversionStrategy: "json-roundtrip",
 	},
@@ -64,7 +64,7 @@ var mirrorTypeMappings = []MirrorTypeMapping{
 	// NodePool AWS platform: reduced further so RootVolume's sub-fields can carry independent write-modes.
 	{
 		FieldName:          "AWS",
-		HyperFleetType:     "v1alpha1.AWSNodePoolPlatform",
+		SeaplaneType:     "v1alpha1.AWSNodePoolPlatform",
 		HyperShiftType:     "v1beta1.AWSNodePoolPlatform",
 		ConversionStrategy: "json-roundtrip",
 	},
@@ -72,7 +72,7 @@ var mirrorTypeMappings = []MirrorTypeMapping{
 	// Root volume: size is customer-settable (create only); type/iops/encrypted/encryptionKey are service-set.
 	{
 		FieldName:          "RootVolume",
-		HyperFleetType:     "v1alpha1.Volume",
+		SeaplaneType:     "v1alpha1.Volume",
 		HyperShiftType:     "v1beta1.Volume",
 		ConversionStrategy: "json-roundtrip",
 	},
@@ -81,7 +81,7 @@ var mirrorTypeMappings = []MirrorTypeMapping{
 	// Example:
 	// {
 	//     FieldName:          "Kubelet",
-	//     HyperFleetType:     "v1alpha1.KubeletConfig",
+	//     SeaplaneType:     "v1alpha1.KubeletConfig",
 	//     HyperShiftType:     "v1beta1.KubeletConfig",
 	//     ConversionStrategy: "json-roundtrip",
 	// },
@@ -114,10 +114,10 @@ func GetMirrorMappingByHyperShiftType(hsTypeName string) *MirrorTypeMapping {
 	return nil
 }
 
-// LocalTypeName returns the base (unqualified) Go type name from HyperFleetType.
+// LocalTypeName returns the base (unqualified) Go type name from SeaplaneType.
 // e.g. "v1alpha1.PlatformSpec" → "PlatformSpec".
 func (m *MirrorTypeMapping) LocalTypeName() string {
-	parts := strings.SplitN(m.HyperFleetType, ".", 2)
+	parts := strings.SplitN(m.SeaplaneType, ".", 2)
 	return parts[len(parts)-1]
 }
 

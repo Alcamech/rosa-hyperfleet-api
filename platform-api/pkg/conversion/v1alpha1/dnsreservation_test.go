@@ -4,19 +4,19 @@ import (
 	"reflect"
 	"testing"
 
-	internal "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/conversion"
+	internal "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/conversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestProjectDNSReservation(t *testing.T) {
 	input := &internal.DNSReservation{
-		TypeMeta: metav1.TypeMeta{APIVersion: "hyperfleet.io/v1alpha1", Kind: "DNSReservation"},
+		TypeMeta: metav1.TypeMeta{APIVersion: "seaplane.io/v1alpha1", Kind: "DNSReservation"},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-reservation",
 			Namespace: "account-123456789012",
-			Labels:    map[string]string{"hyperfleet.io/account-id": "123456789012"},
+			Labels:    map[string]string{"seaplane.io/account-id": "123456789012"},
 		},
 		Status: internal.DNSReservationStatus{
 			Phase:                     internal.DNSReservationPhaseReady,

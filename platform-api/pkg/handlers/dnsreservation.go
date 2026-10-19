@@ -10,22 +10,22 @@ import (
 	"github.com/gorilla/mux"
 	"k8s.io/client-go/util/retry"
 
-	public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/validation"
+	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/api"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/clients/seaplanedb"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/middleware"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/validation"
 )
 
 var errDNSReservationClaimed = errors.New("DNS reservation is claimed")
 
 // DNSReservationHandler serves the customer-facing DNS reservation API.
 type DNSReservationHandler struct {
-	db     *hyperfleetdb.Client
+	db     *seaplanedb.Client
 	logger *slog.Logger
 }
 
-func NewDNSReservationHandler(db *hyperfleetdb.Client, logger *slog.Logger) *DNSReservationHandler {
+func NewDNSReservationHandler(db *seaplanedb.Client, logger *slog.Logger) *DNSReservationHandler {
 	return &DNSReservationHandler{db: db, logger: logger}
 }
 
@@ -44,7 +44,7 @@ func (h *DNSReservationHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]*public.DNSReservation, 0, len(list.Items))
 	for i := range list.Items {
-		items = append(items, hyperfleetdb.InternalToPublicDNSReservation(&list.Items[i]))
+		items = append(items, seaplanedb.InternalToPublicDNSReservation(&list.Items[i]))
 	}
 	total := len(items)
 	if offset >= len(items) {
@@ -85,10 +85,10 @@ func (h *DNSReservationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reservation := hyperfleetdb.PublicToInternalDNSReservation(&req, accountID)
+	reservation := seaplanedb.PublicToInternalDNSReservation(&req, accountID)
 	reservation.Status.Phase = "Pending"
 	if err := h.db.CreateDNSReservation(ctx, accountID, reservation); err != nil {
-		if hyperfleetdb.IsAlreadyExists(err) {
+		if seaplanedb.IsAlreadyExists(err) {
 			writeAPIError(w, ErrDNSReservationCreateNameConflict, h.logger)
 			return
 		}
@@ -96,7 +96,7 @@ func (h *DNSReservationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, ErrDNSReservationCreateFailed, h.logger)
 		return
 	}
-	if err := api.Write(w, http.StatusCreated, hyperfleetdb.InternalToPublicDNSReservation(reservation)); err != nil {
+	if err := api.Write(w, http.StatusCreated, seaplanedb.InternalToPublicDNSReservation(reservation)); err != nil {
 		h.logger.Error("failed to write DNS reservation response", "error", err)
 	}
 }
@@ -107,7 +107,7 @@ func (h *DNSReservationHandler) Get(w http.ResponseWriter, r *http.Request) {
 	name := mux.Vars(r)["id"]
 	reservation, err := h.db.GetDNSReservation(ctx, accountID, name)
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrDNSReservationGetNotFound, h.logger)
 			return
 		}
@@ -115,7 +115,7 @@ func (h *DNSReservationHandler) Get(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, ErrDNSReservationGetFailed, h.logger)
 		return
 	}
-	if err := api.Write(w, http.StatusOK, hyperfleetdb.InternalToPublicDNSReservation(reservation)); err != nil {
+	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicDNSReservation(reservation)); err != nil {
 		h.logger.Error("failed to write DNS reservation response", "error", err)
 	}
 }
@@ -128,17 +128,17 @@ func (h *DNSReservationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		reservation, err := h.db.GetDNSReservation(ctx, accountID, name)
 		if err != nil {
-			if hyperfleetdb.IsNotFound(err) {
+			if seaplanedb.IsNotFound(err) {
 				notFound = true
 			}
 			return err
 		}
-		if reservation.Labels["hyperfleet.io/claimed-by-cluster-uid"] != "" {
+		if reservation.Labels["seaplane.io/claimed-by-cluster-uid"] != "" {
 			return errDNSReservationClaimed
 		}
 		return h.db.DeleteDNSReservationObject(ctx, reservation)
 	})
-	if notFound || hyperfleetdb.IsNotFound(err) {
+	if notFound || seaplanedb.IsNotFound(err) {
 		writeAPIError(w, ErrDNSReservationDeleteNotFound, h.logger)
 		return
 	}

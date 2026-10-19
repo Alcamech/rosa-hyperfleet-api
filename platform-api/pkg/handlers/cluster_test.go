@@ -25,12 +25,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/clients/seaplanedb"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/middleware"
 )
 
 const testAccountID = "123456789012"
@@ -39,7 +39,7 @@ const testDNSReservationUID = "11111111-1111-4111-8111-111111111111"
 func newTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	_ = corev1.AddToScheme(s)
-	_ = hyperfleetv1alpha1.AddToScheme(s)
+	_ = seaplanev1alpha1.AddToScheme(s)
 	return s
 }
 
@@ -47,20 +47,20 @@ func newClusterTestClientBuilder(scheme *runtime.Scheme) *fake.ClientBuilder {
 	return newClusterTestClientBuilderWithDNSReservation(scheme, testDNSReservationCR(testAccountID))
 }
 
-func newClusterTestClientBuilderWithDNSReservation(scheme *runtime.Scheme, reservation *hyperfleetv1alpha1.DNSReservation) *fake.ClientBuilder {
+func newClusterTestClientBuilderWithDNSReservation(scheme *runtime.Scheme, reservation *seaplanev1alpha1.DNSReservation) *fake.ClientBuilder {
 	return fake.NewClientBuilder().WithScheme(scheme).
-		WithIndex(&hyperfleetv1alpha1.DNSReservation{}, "metadata.uid", func(obj client.Object) []string {
+		WithIndex(&seaplanev1alpha1.DNSReservation{}, "metadata.uid", func(obj client.Object) []string {
 			return []string{string(obj.GetUID())}
 		}).
-		WithIndex(&hyperfleetv1alpha1.OidcConfig{}, "metadata.uid", func(obj client.Object) []string {
+		WithIndex(&seaplanev1alpha1.OidcConfig{}, "metadata.uid", func(obj client.Object) []string {
 			return []string{string(obj.GetUID())}
 		}).
-		WithIndex(&hyperfleetv1alpha1.Cluster{}, "metadata.uid", func(obj client.Object) []string {
+		WithIndex(&seaplanev1alpha1.Cluster{}, "metadata.uid", func(obj client.Object) []string {
 			return []string{string(obj.GetUID())}
 		}).
 		WithInterceptorFuncs(interceptor.Funcs{
 			Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
-				if cluster, ok := obj.(*hyperfleetv1alpha1.Cluster); ok && cluster.UID == "" {
+				if cluster, ok := obj.(*seaplanev1alpha1.Cluster); ok && cluster.UID == "" {
 					cluster.UID = types.UID(uuid.NewString())
 				}
 				return c.Create(ctx, obj, opts...)
@@ -69,20 +69,20 @@ func newClusterTestClientBuilderWithDNSReservation(scheme *runtime.Scheme, reser
 		WithObjects(reservation)
 }
 
-func testDNSReservationCR(accountID string) *hyperfleetv1alpha1.DNSReservation {
-	reservation := &hyperfleetv1alpha1.DNSReservation{
+func testDNSReservationCR(accountID string) *seaplanev1alpha1.DNSReservation {
+	reservation := &seaplanev1alpha1.DNSReservation{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-reservation",
 			Namespace: "account-" + accountID,
 			UID:       types.UID(testDNSReservationUID),
-			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+			Labels:    map[string]string{"seaplane.io/account-id": accountID},
 		},
-		Status: hyperfleetv1alpha1.DNSReservationStatus{
-			Phase:      hyperfleetv1alpha1.DNSReservationPhaseReady,
+		Status: seaplanev1alpha1.DNSReservationStatus{
+			Phase:      seaplanev1alpha1.DNSReservationPhaseReady,
 			BaseDomain: "f7a3.0.example.com",
 		},
 	}
-	reservation.Status.InternalHostedClusterName = hyperfleetv1alpha1.HostedClusterNameFromDNSReservation(reservation)
+	reservation.Status.InternalHostedClusterName = seaplanev1alpha1.HostedClusterNameFromDNSReservation(reservation)
 	return reservation
 }
 
@@ -95,17 +95,17 @@ func testContext(accountID string) context.Context {
 
 // testClusterCR creates a cluster CR with an account namespace, a database UID,
 // and the owning account label.
-func testClusterCR(clusterID, clusterName, accountID string) *hyperfleetv1alpha1.Cluster {
-	return &hyperfleetv1alpha1.Cluster{
+func testClusterCR(clusterID, clusterName, accountID string) *seaplanev1alpha1.Cluster {
+	return &seaplanev1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      clusterName,
 			Namespace: "account-" + accountID,
 			UID:       types.UID(clusterID),
-			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+			Labels:    map[string]string{"seaplane.io/account-id": accountID},
 		},
-		Spec: hyperfleetv1alpha1.ClusterSpec{
+		Spec: seaplanev1alpha1.ClusterSpec{
 			DNSReservationID: testDNSReservationUID,
-			HostedCluster: hyperfleetv1alpha1.HostedClusterSpecPassthrough{
+			HostedCluster: seaplanev1alpha1.HostedClusterSpecPassthrough{
 				Platform: hypershiftv1beta1.PlatformSpec{
 					Type: hypershiftv1beta1.AWSPlatform,
 					AWS: &hypershiftv1beta1.AWSPlatformSpec{
@@ -157,10 +157,10 @@ func specWithOidcConfigID(id string) map[string]any {
 
 // testReadyOidcConfig returns a managed OidcConfig CR in the Ready phase
 // with the given issuerUrl, scoped to accountID.
-func testReadyOidcConfig(configID, accountID, issuerURL string) *hyperfleetv1alpha1.OidcConfig {
+func testReadyOidcConfig(configID, accountID, issuerURL string) *seaplanev1alpha1.OidcConfig {
 	oc := testOidcConfigCR(configID, accountID, testManagedOidcConfigSpec(accountID))
 	oc.Spec.IssuerUrl = issuerURL
-	oc.Status.Phase = hyperfleetv1alpha1.OidcConfigPhaseReady
+	oc.Status.Phase = seaplanev1alpha1.OidcConfigPhaseReady
 	return oc
 }
 
@@ -212,7 +212,7 @@ func TestClusterHandler_List_Success(t *testing.T) {
 		testClusterCR("uuid-2", "cluster-2", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -240,7 +240,7 @@ func TestClusterHandler_List_Empty(t *testing.T) {
 	scheme := newTestScheme()
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -268,7 +268,7 @@ func TestClusterHandler_List_Pagination(t *testing.T) {
 		testClusterCR("uuid-c3", "c3", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters?limit=2&offset=1", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -296,7 +296,7 @@ func TestClusterHandler_Create_Success(t *testing.T) {
 	scheme := newTestScheme()
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -323,7 +323,7 @@ func TestClusterHandler_Create_RejectsSpotTerminationQueueRegionMismatch(t *test
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	const queueURL = "https://sqs.us-east-1.amazonaws.com/123456789012/spot-termination"
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(spotQueueClusterBody("my-cluster", "us-west-2", queueURL)))
@@ -347,7 +347,7 @@ func TestClusterHandler_Create_RejectsDuplicateSpotTerminationQueueURL(t *testin
 	existing.Spec.HostedCluster.Platform.AWS.TerminationHandlerQueueURL = queueURL
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(spotQueueClusterBody("my-cluster", "us-east-1", queueURL)))
 	req = req.WithContext(testContext(testAccountID))
@@ -367,7 +367,7 @@ func TestClusterHandler_Create_WithoutDNSReservationDefersAllocationToOperator(t
 	scheme := newTestScheme()
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	spec := map[string]any{"hostedCluster": minSpec["hostedCluster"]}
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", spec)))
@@ -387,7 +387,7 @@ func TestClusterHandler_Create_WithoutDNSReservationDefersAllocationToOperator(t
 		t.Errorf("DNSReservationID = %q before operator fallback, want empty", response.Spec.DNSReservationID)
 	}
 
-	stored, err := hyperfleetdb.NewClientFrom(fc, logger).GetCluster(context.Background(), testAccountID, "my-cluster")
+	stored, err := seaplanedb.NewClientFrom(fc, logger).GetCluster(context.Background(), testAccountID, "my-cluster")
 	if err != nil {
 		t.Fatalf("get created Cluster: %v", err)
 	}
@@ -406,7 +406,7 @@ func TestClusterHandler_Create_LongNameWithDNSReservation(t *testing.T) {
 	reservation.Status.InternalHostedClusterName = "hc-authoritative"
 	fc := newClusterTestClientBuilderWithDNSReservation(scheme, reservation).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody(clusterName, nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -416,7 +416,7 @@ func TestClusterHandler_Create_LongNameWithDNSReservation(t *testing.T) {
 		t.Fatalf("expected 201 for long name with DNS reservation, got %d: %s", w.Code, w.Body.String())
 	}
 
-	stored, err := hyperfleetdb.NewClientFrom(fc, logger).GetCluster(context.Background(), testAccountID, clusterName)
+	stored, err := seaplanedb.NewClientFrom(fc, logger).GetCluster(context.Background(), testAccountID, clusterName)
 	if err != nil {
 		t.Fatalf("get created Cluster: %v", err)
 	}
@@ -430,9 +430,9 @@ func TestClusterHandler_Create_LongNameWithoutDNSReservationInvalidName(t *testi
 	scheme := newTestScheme()
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 	spec := map[string]any{"hostedCluster": minSpec["hostedCluster"]}
-	name := strings.Repeat("a", hyperfleetv1alpha1.MaxClusterNameLengthWithoutDNSReservation()+1)
+	name := strings.Repeat("a", seaplanev1alpha1.MaxClusterNameLengthWithoutDNSReservation()+1)
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody(name, spec)))
 	req = req.WithContext(testContext(testAccountID))
 	w := httptest.NewRecorder()
@@ -450,7 +450,7 @@ func TestClusterHandler_Create_SetsCreatorARN(t *testing.T) {
 	scheme := newTestScheme()
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -464,7 +464,7 @@ func TestClusterHandler_Create_SetsCreatorARN(t *testing.T) {
 
 	// CreatorARN is a service-set field — not exposed in the public response.
 	// Verify it was stored correctly in the internal CRD.
-	var list hyperfleetv1alpha1.ClusterList
+	var list seaplanev1alpha1.ClusterList
 	if err := fc.List(context.Background(), &list); err != nil {
 		t.Fatalf("listing clusters from fake client: %v", err)
 	}
@@ -481,7 +481,7 @@ func TestClusterHandler_Create_InvalidJSON(t *testing.T) {
 	scheme := newTestScheme()
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader([]byte("not json")))
 	req = req.WithContext(testContext(testAccountID))
@@ -514,7 +514,7 @@ func TestClusterHandler_Create_MissingFields(t *testing.T) {
 			scheme := newTestScheme()
 			fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-			handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+			handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(tt.body))
 			req = req.WithContext(testContext(testAccountID))
@@ -544,7 +544,7 @@ func TestClusterHandler_Create_InvalidName(t *testing.T) {
 			scheme := newTestScheme()
 			fc := newClusterTestClientBuilder(scheme).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-			handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+			handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody(tt.clusterName, nil)))
 			req = req.WithContext(testContext(testAccountID))
@@ -569,7 +569,7 @@ func TestClusterHandler_Create_LegacyPath_NoOidcConfig(t *testing.T) {
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	const baseURL = "https://oidc.example.com"
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), baseURL, 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), baseURL, 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -588,7 +588,7 @@ func TestClusterHandler_Create_LegacyPath_NoOidcConfig(t *testing.T) {
 		t.Fatal("expected non-empty cluster UID in metadata.uid")
 	}
 
-	var list hyperfleetv1alpha1.ClusterList
+	var list seaplanev1alpha1.ClusterList
 	if err := fc.List(context.Background(), &list); err != nil {
 		t.Fatalf("listing clusters from fake client: %v", err)
 	}
@@ -618,7 +618,7 @@ func TestClusterHandler_Create_OidcConfigNotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -641,7 +641,7 @@ type oidcConfigListFailingClient struct {
 }
 
 func (c *oidcConfigListFailingClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
-	if _, ok := list.(*hyperfleetv1alpha1.OidcConfigList); ok {
+	if _, ok := list.(*seaplanev1alpha1.OidcConfigList); ok {
 		return fmt.Errorf("simulated database error")
 	}
 	return c.Client.List(ctx, list, opts...)
@@ -651,7 +651,7 @@ func TestClusterHandler_Create_OidcConfigLookupFailure(t *testing.T) {
 	scheme := newTestScheme()
 	fc := &oidcConfigListFailingClient{Client: newClusterTestClientBuilder(scheme).Build()}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -674,7 +674,7 @@ func TestClusterHandler_Create_OidcConfigWrongAccount(t *testing.T) {
 		testReadyOidcConfig(testOidcConfigID, otherAccount, testOidcConfigIssuerURL),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	// The OidcConfig exists but belongs to a different account; it must not
 	// be resolvable by a caller in testAccountID.
@@ -692,10 +692,10 @@ func TestClusterHandler_Create_OidcConfigWrongAccount(t *testing.T) {
 func TestClusterHandler_Create_UnmanagedOidcConfigNotReady(t *testing.T) {
 	scheme := newTestScheme()
 	pending := testOidcConfigCR(testOidcConfigID, testAccountID, testUnmanagedOidcConfigSpec(testAccountID))
-	pending.Status.Phase = hyperfleetv1alpha1.OidcConfigPhasePending
+	pending.Status.Phase = seaplanev1alpha1.OidcConfigPhasePending
 	fc := newClusterTestClientBuilder(scheme).WithObjects(pending).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -715,11 +715,11 @@ func TestClusterHandler_Create_ManagedOidcConfigPending_Succeeds(t *testing.T) {
 	scheme := newTestScheme()
 	pending := testOidcConfigCR(testOidcConfigID, testAccountID, testManagedOidcConfigSpec(testAccountID))
 	pending.Spec.IssuerUrl = testOidcConfigIssuerURL
-	pending.Status.Phase = hyperfleetv1alpha1.OidcConfigPhasePending
+	pending.Status.Phase = seaplanev1alpha1.OidcConfigPhasePending
 	fc := newClusterTestClientBuilder(scheme).WithObjects(pending).
 		WithStatusSubresource(pending).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -731,7 +731,7 @@ func TestClusterHandler_Create_ManagedOidcConfigPending_Succeeds(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var list hyperfleetv1alpha1.ClusterList
+	var list seaplanev1alpha1.ClusterList
 	if err := fc.List(context.Background(), &list); err != nil {
 		t.Fatalf("listing clusters from fake client: %v", err)
 	}
@@ -747,16 +747,16 @@ func TestClusterHandler_Create_ManagedOidcConfigPending_Succeeds(t *testing.T) {
 }
 
 func TestClusterHandler_Create_OidcConfigError_Rejected(t *testing.T) {
-	for _, spec := range []hyperfleetv1alpha1.OidcConfigSpec{
+	for _, spec := range []seaplanev1alpha1.OidcConfigSpec{
 		testManagedOidcConfigSpec(testAccountID),
 		testUnmanagedOidcConfigSpec(testAccountID),
 	} {
 		scheme := newTestScheme()
 		errored := testOidcConfigCR(testOidcConfigID, testAccountID, spec)
-		errored.Status.Phase = hyperfleetv1alpha1.OidcConfigPhaseError
+		errored.Status.Phase = seaplanev1alpha1.OidcConfigPhaseError
 		fc := newClusterTestClientBuilder(scheme).WithObjects(errored).Build()
 		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-		handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+		handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 		req = req.WithContext(testContext(testAccountID))
@@ -782,7 +782,7 @@ func TestClusterHandler_Create_OidcConfigAlreadyInUse(t *testing.T) {
 	fc := newClusterTestClientBuilder(scheme).WithObjects(oidcConfig, existingCluster).
 		WithStatusSubresource(oidcConfig).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("new-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -797,7 +797,7 @@ func TestClusterHandler_Create_OidcConfigAlreadyInUse(t *testing.T) {
 		t.Errorf("expected message to contain %s, got %q", ErrClusterCreateOidcConfigInUse.Code, msg)
 	}
 
-	var list hyperfleetv1alpha1.ClusterList
+	var list seaplanev1alpha1.ClusterList
 	if err := fc.List(context.Background(), &list); err != nil {
 		t.Fatalf("listing clusters from fake client: %v", err)
 	}
@@ -816,7 +816,7 @@ func TestClusterHandler_Create_OidcConfigInUseDifferentAccountAllowed(t *testing
 	fc := newClusterTestClientBuilder(scheme).WithObjects(oidcConfigOther, existingCluster, oidcConfigMine).
 		WithStatusSubresource(oidcConfigOther, oidcConfigMine).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("new-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -838,7 +838,7 @@ func TestClusterHandler_Create_ConcurrentOidcConfigCollision(t *testing.T) {
 		WithStatusSubresource(oidcConfig).Build()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	var wg sync.WaitGroup
 	names := []string{"concurrent-a", "concurrent-b"}
@@ -878,7 +878,7 @@ func TestClusterHandler_Create_OidcClaimFailureDeletesForOperatorCleanup(t *test
 	oidcConfig.Labels = map[string]string{claimedByClusterUIDLabel: "another-cluster-uid"}
 	fc := newClusterTestClientBuilder(scheme).WithObjects(oidcConfig).WithStatusSubresource(oidcConfig).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 	cluster := testClusterCR("rollback-cluster-uid", "rollback-cluster", testAccountID)
 	cluster.Spec.OidcConfigID = string(oidcConfig.UID)
 	cluster.Finalizers = []string{clusterCleanupFinalizer}
@@ -919,13 +919,13 @@ func TestClusterHandler_ClaimDNSReservationRetriesUpdateConflict(t *testing.T) {
 	updateCalls := 0
 	fc := newClusterTestClientBuilder(scheme).WithInterceptorFuncs(interceptor.Funcs{
 		Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
-			reservation, ok := obj.(*hyperfleetv1alpha1.DNSReservation)
+			reservation, ok := obj.(*seaplanev1alpha1.DNSReservation)
 			if !ok {
 				return c.Update(ctx, obj, opts...)
 			}
 			updateCalls++
 			if updateCalls == 1 {
-				var latest hyperfleetv1alpha1.DNSReservation
+				var latest seaplanev1alpha1.DNSReservation
 				if err := c.Get(ctx, client.ObjectKeyFromObject(reservation), &latest); err != nil {
 					return err
 				}
@@ -933,13 +933,13 @@ func TestClusterHandler_ClaimDNSReservationRetriesUpdateConflict(t *testing.T) {
 				if err := c.Update(ctx, &latest, opts...); err != nil {
 					return err
 				}
-				return apierrors.NewConflict(hyperfleetv1alpha1.GroupVersion.WithResource("dnsreservations").GroupResource(), reservation.Name, errors.New("concurrent finalizer update"))
+				return apierrors.NewConflict(seaplanev1alpha1.GroupVersion.WithResource("dnsreservations").GroupResource(), reservation.Name, errors.New("concurrent finalizer update"))
 			}
 			return c.Update(ctx, obj, opts...)
 		},
 	}).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 	clusterUID := "new-cluster-uid"
 
 	if apiErr := handler.claimDNSReservation(context.Background(), testAccountID, testDNSReservationUID, clusterUID); apiErr != nil {
@@ -966,13 +966,13 @@ func TestClusterHandler_ClaimDNSReservationReturnsInUseAfterConflictRecheck(t *t
 	updateCalls := 0
 	fc := newClusterTestClientBuilder(scheme).WithInterceptorFuncs(interceptor.Funcs{
 		Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
-			reservation, ok := obj.(*hyperfleetv1alpha1.DNSReservation)
+			reservation, ok := obj.(*seaplanev1alpha1.DNSReservation)
 			if !ok {
 				return c.Update(ctx, obj, opts...)
 			}
 			updateCalls++
 			if updateCalls == 1 {
-				var latest hyperfleetv1alpha1.DNSReservation
+				var latest seaplanev1alpha1.DNSReservation
 				if err := c.Get(ctx, client.ObjectKeyFromObject(reservation), &latest); err != nil {
 					return err
 				}
@@ -980,13 +980,13 @@ func TestClusterHandler_ClaimDNSReservationReturnsInUseAfterConflictRecheck(t *t
 				if err := c.Update(ctx, &latest, opts...); err != nil {
 					return err
 				}
-				return apierrors.NewConflict(hyperfleetv1alpha1.GroupVersion.WithResource("dnsreservations").GroupResource(), reservation.Name, errors.New("concurrent claim"))
+				return apierrors.NewConflict(seaplanev1alpha1.GroupVersion.WithResource("dnsreservations").GroupResource(), reservation.Name, errors.New("concurrent claim"))
 			}
 			return c.Update(ctx, obj, opts...)
 		},
 	}).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	apiErr := handler.claimDNSReservation(context.Background(), testAccountID, testDNSReservationUID, "new-cluster-uid")
 	if apiErr == nil || apiErr.Code != ErrClusterCreateDNSReservationInUse.Code {
@@ -1003,13 +1003,13 @@ func TestClusterHandler_ClaimOidcConfigRetriesUpdateConflict(t *testing.T) {
 	updateCalls := 0
 	fc := newClusterTestClientBuilder(scheme).WithObjects(oidcConfig).WithStatusSubresource(oidcConfig).WithInterceptorFuncs(interceptor.Funcs{
 		Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
-			config, ok := obj.(*hyperfleetv1alpha1.OidcConfig)
+			config, ok := obj.(*seaplanev1alpha1.OidcConfig)
 			if !ok {
 				return c.Update(ctx, obj, opts...)
 			}
 			updateCalls++
 			if updateCalls == 1 {
-				var latest hyperfleetv1alpha1.OidcConfig
+				var latest seaplanev1alpha1.OidcConfig
 				if err := c.Get(ctx, client.ObjectKeyFromObject(config), &latest); err != nil {
 					return err
 				}
@@ -1017,13 +1017,13 @@ func TestClusterHandler_ClaimOidcConfigRetriesUpdateConflict(t *testing.T) {
 				if err := c.Update(ctx, &latest, opts...); err != nil {
 					return err
 				}
-				return apierrors.NewConflict(hyperfleetv1alpha1.GroupVersion.WithResource("oidcconfigs").GroupResource(), config.Name, errors.New("concurrent finalizer update"))
+				return apierrors.NewConflict(seaplanev1alpha1.GroupVersion.WithResource("oidcconfigs").GroupResource(), config.Name, errors.New("concurrent finalizer update"))
 			}
 			return c.Update(ctx, obj, opts...)
 		},
 	}).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 	clusterUID := "new-cluster-uid"
 
 	if apiErr := handler.claimOidcConfig(context.Background(), testAccountID, testOidcConfigID, clusterUID); apiErr != nil {
@@ -1033,7 +1033,7 @@ func TestClusterHandler_ClaimOidcConfigRetriesUpdateConflict(t *testing.T) {
 		t.Fatalf("OidcConfig update calls = %d, want 2 after retry", updateCalls)
 	}
 
-	var claimed hyperfleetv1alpha1.OidcConfig
+	var claimed seaplanev1alpha1.OidcConfig
 	if err := fc.Get(context.Background(), types.NamespacedName{Namespace: "account-" + testAccountID, Name: testOidcConfigID}, &claimed); err != nil {
 		t.Fatalf("get claimed OidcConfig: %v", err)
 	}
@@ -1051,7 +1051,7 @@ func TestClusterHandler_Create_DerivesIssuerURLAndUpdatesLastUsed(t *testing.T) 
 	fc := newClusterTestClientBuilder(scheme).WithObjects(oidcConfig).
 		WithStatusSubresource(oidcConfig).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -1074,7 +1074,7 @@ func TestClusterHandler_Create_DerivesIssuerURLAndUpdatesLastUsed(t *testing.T) 
 	}
 
 	// ...and it must be persisted on the internal CRD, derived from the OidcConfig.
-	var list hyperfleetv1alpha1.ClusterList
+	var list seaplanev1alpha1.ClusterList
 	if err := fc.List(context.Background(), &list); err != nil {
 		t.Fatalf("listing clusters from fake client: %v", err)
 	}
@@ -1084,12 +1084,12 @@ func TestClusterHandler_Create_DerivesIssuerURLAndUpdatesLastUsed(t *testing.T) 
 	if got := list.Items[0].Spec.HostedCluster.IssuerURL; got != testOidcConfigIssuerURL {
 		t.Errorf("expected issuerURL=%s, got %s", testOidcConfigIssuerURL, got)
 	}
-	if got, want := list.Items[0].Spec.HostedClusterName, hyperfleetv1alpha1.HostedClusterNameFromDNSReservation(testDNSReservationCR(testAccountID)); got != want {
+	if got, want := list.Items[0].Spec.HostedClusterName, seaplanev1alpha1.HostedClusterNameFromDNSReservation(testDNSReservationCR(testAccountID)); got != want {
 		t.Errorf("HostedClusterName = %q, want DNSReservation UID-derived name %q", got, want)
 	}
 
 	// The referenced OidcConfig's lastUsedTimestamp must be stamped.
-	var updated hyperfleetv1alpha1.OidcConfig
+	var updated seaplanev1alpha1.OidcConfig
 	if err := fc.Get(context.Background(), client.ObjectKeyFromObject(oidcConfig), &updated); err != nil {
 		t.Fatalf("getting oidc config: %v", err)
 	}
@@ -1100,7 +1100,7 @@ func TestClusterHandler_Create_DerivesIssuerURLAndUpdatesLastUsed(t *testing.T) 
 
 func TestClusterHandler_Get_Success(t *testing.T) {
 	cr := testClusterCR("cluster-123", "test-cluster", testAccountID)
-	cr.Status = hyperfleetv1alpha1.ClusterStatus{
+	cr.Status = seaplanev1alpha1.ClusterStatus{
 		ObservedGeneration: 1,
 		Phase:              "Ready",
 		Conditions: []metav1.Condition{
@@ -1111,7 +1111,7 @@ func TestClusterHandler_Get_Success(t *testing.T) {
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).
 		WithStatusSubresource(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/test-cluster", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -1144,7 +1144,7 @@ func TestClusterHandler_Get_NotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/no-such-cluster", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -1167,7 +1167,7 @@ func TestClusterHandler_Delete_Success(t *testing.T) {
 		testClusterCR("cluster-123", "test-cluster", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v0/clusters/test-cluster", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -1192,7 +1192,7 @@ func TestClusterHandler_Delete_NotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v0/clusters/no-such-cluster", nil)
 	req = req.WithContext(testContext(testAccountID))
@@ -1212,7 +1212,7 @@ func TestClusterHandler_Update_Success(t *testing.T) {
 		testClusterCR("cluster-123", "test-cluster", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"spec": map[string]any{
@@ -1250,7 +1250,7 @@ func TestClusterHandler_Update_RejectsDuplicateSpotTerminationQueueURL(t *testin
 	existing.Spec.HostedCluster.Platform.AWS.TerminationHandlerQueueURL = queueURL
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(target, existing).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	body, err := json.Marshal(map[string]any{
 		"spec": map[string]any{
@@ -1286,7 +1286,7 @@ func TestClusterHandler_Update_RejectsSpotTerminationQueueRegionMismatchWhenRegi
 	target.Spec.HostedCluster.Platform.AWS.TerminationHandlerQueueURL = queueURL
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(target).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	body, err := json.Marshal(map[string]any{
 		"spec": map[string]any{
@@ -1332,7 +1332,7 @@ func TestClusterHandler_Update_SkipsSpotTerminationQueueLookupWhenUnchanged(t *t
 		},
 	}).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	body, err := json.Marshal(map[string]any{"spec": map[string]any{"displayName": "updated-display"}})
 	if err != nil {
@@ -1356,7 +1356,7 @@ func TestClusterHandler_Update_NamespaceMismatch(t *testing.T) {
 		testClusterCR("cluster-123", "test-cluster", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	body := mustMarshal(t, map[string]any{
 		"metadata": map[string]any{"namespace": "account-999999999999"},
@@ -1383,7 +1383,7 @@ func TestClusterHandler_Update_AllowsUnchangedServiceManagedIssuerURL(t *testing
 	cluster.Spec.HostedCluster.IssuerURL = "https://oidc.example.com/issuer"
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"spec": map[string]any{
@@ -1400,7 +1400,7 @@ func TestClusterHandler_Update_AllowsUnchangedServiceManagedIssuerURL(t *testing
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 for unchanged service-managed issuerURL, got %d: %s", w.Code, w.Body.String())
 	}
-	var updated hyperfleetv1alpha1.Cluster
+	var updated seaplanev1alpha1.Cluster
 	if err := fc.Get(context.Background(), types.NamespacedName{Namespace: "account-" + testAccountID, Name: "test-cluster"}, &updated); err != nil {
 		t.Fatalf("get updated Cluster: %v", err)
 	}
@@ -1413,7 +1413,7 @@ func TestClusterHandler_Update_NotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"spec": map[string]any{"properties": map[string]string{"environment": "x"}},
@@ -1449,7 +1449,7 @@ func TestClusterHandler_Update_MissingSpec(t *testing.T) {
 				testClusterCR("cluster-123", "test-cluster", testAccountID),
 			).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-			handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
+			handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
 
 			req := httptest.NewRequest(http.MethodPut, "/api/v0/clusters/cluster-123", bytes.NewReader(tt.body))
 			req = req.WithContext(testContext(testAccountID))
@@ -1473,7 +1473,7 @@ func TestClusterHandler_Update_RejectsOidcConfigIdChange(t *testing.T) {
 	cr.Spec.OidcConfigID = testOidcConfigID
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"spec": map[string]any{
@@ -1503,7 +1503,7 @@ func TestClusterHandler_Update_RejectsOidcConfigIdAddition(t *testing.T) {
 	cr := testClusterCR("cluster-123", "test-cluster", testAccountID)
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"spec": map[string]any{
@@ -1532,7 +1532,7 @@ func TestClusterHandler_Create_DuplicateName(t *testing.T) {
 		testClusterCR("existing-id", "test-cluster", testAccountID),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("test-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -1556,7 +1556,7 @@ func TestClusterHandler_Create_DBError(t *testing.T) {
 		},
 	}).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "https://oidc.example.com", 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("test-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -1581,7 +1581,7 @@ func TestClusterHandler_Create_SameNameDifferentAccount(t *testing.T) {
 		oidcConfig,
 	).WithStatusSubresource(oidcConfig).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("test-cluster", nil)))
 	req = req.WithContext(testContext(testAccountID))
@@ -1666,7 +1666,7 @@ func TestClusterHandler_Create_NetworkCIDRValidation(t *testing.T) {
 			scheme := newTestScheme()
 			fc := fake.NewClientBuilder().WithScheme(scheme).Build()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-			handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fc, logger), "", 0, logger)
+			handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, logger)
 
 			spec := map[string]any{
 				"hostedCluster": map[string]any{

@@ -7,7 +7,7 @@ import (
 	"net/url"
 
 	"github.com/onsi/ginkgo/v2"
-	awstest "github.com/openshift-online/rosa-hyperfleet-api/test/helpers/aws"
+	awstest "github.com/openshift-online/rosa-seaplane-api/test/helpers/aws"
 )
 
 type QueryResponse struct {

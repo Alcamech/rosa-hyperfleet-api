@@ -28,7 +28,7 @@ import (
 // Example: abc123.execute-api.us-east-1.amazonaws.com → us-east-1
 var awsRegionRE = regexp.MustCompile(`[a-z]+-[a-z]+-\d+`)
 
-// Config holds the parameters needed to connect to the Hyperfleet platform API.
+// Config holds the parameters needed to connect to the Seaplane platform API.
 type Config struct {
 	// Host is the platform API base URL (e.g. https://abc123.execute-api.us-east-1.amazonaws.com).
 	// Required.

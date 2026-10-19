@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/api"
 )
 
 // APIError is an alias for api.APIError so middleware code uses the short form.

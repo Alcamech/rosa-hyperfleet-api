@@ -23,10 +23,10 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// oidcSigningKeySecretPath mirrors hyperfleet-operator/internal/oidc.SecretName, which the e2e-api
+// oidcSigningKeySecretPath mirrors seaplane-operator/internal/oidc.SecretName, which the e2e-api
 // test module can't import directly (different module, internal package).
 func oidcSigningKeySecretPath(accountID, configName string) string {
-	return fmt.Sprintf("/hyperfleet/oidc/%s/%s/signing-key", accountID, configName)
+	return fmt.Sprintf("/seaplane/oidc/%s/%s/signing-key", accountID, configName)
 }
 
 // customerOidcFixture is a self-provisioned stand-in for a customer's unmanaged OIDC infrastructure:
@@ -107,7 +107,7 @@ func provisionCustomerOidcFixture(ctx context.Context, name string) (*customerOi
 
 	roleTagKey := os.Getenv("E2E_OIDC_ROLE_TAG_KEY")
 	if roleTagKey == "" {
-		roleTagKey = "hyperfleet-access"
+		roleTagKey = "seaplane-access"
 	}
 	roleTagValue := os.Getenv("E2E_OIDC_ROLE_TAG_VALUE")
 	if roleTagValue == "" {

@@ -29,7 +29,7 @@ limitations under the License.
 //	E2E_CUSTOMER_ACCOUNT_ID   — customer account ID (derived from STS if absent)
 //	HCP_CLUSTER_NAME          — fixed cluster name longer than the automatic-DNS budget (generated if absent)
 //	OCP_IMAGE               — release image passed to release.image; defaults to defaultReleaseImage
-//	HYPERFLEET_INSTANCE_TYPE  — node instance type (defaults to m5.xlarge)
+//	SEAPLANE_INSTANCE_TYPE  — node instance type (defaults to m5.xlarge)
 //	E2E_SKIP_CLEANUP          — set to skip DeferCleanup safety-net teardown
 package e2e_sdk_test
 
@@ -50,12 +50,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	hyperfleet "github.com/openshift-online/rosa-hyperfleet-api/clientset"
-	"github.com/openshift-online/rosa-hyperfleet-api/clientset/platform"
-	hfrest "github.com/openshift-online/rosa-hyperfleet-api/clientset/rest"
-	awstest "github.com/openshift-online/rosa-hyperfleet-api/test/helpers/aws"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	v1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	seaplane "github.com/openshift-online/rosa-seaplane-api/clientset"
+	"github.com/openshift-online/rosa-seaplane-api/clientset/platform"
+	hfrest "github.com/openshift-online/rosa-seaplane-api/clientset/rest"
+	awstest "github.com/openshift-online/rosa-seaplane-api/test/helpers/aws"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -121,7 +121,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		iamOut   iamStackOutputs
 
 		awsCfg    aws.Config
-		cs        *hyperfleet.Clientset
+		cs        *seaplane.Clientset
 		apiClient *awstest.APIClient
 
 		vpcCreated            bool
@@ -168,7 +168,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 			version = defaultReleaseImage
 		}
 
-		instanceType = os.Getenv("HYPERFLEET_INSTANCE_TYPE")
+		instanceType = os.Getenv("SEAPLANE_INSTANCE_TYPE")
 		if instanceType == "" {
 			instanceType = defaultInstanceType
 		}
@@ -200,7 +200,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		} else {
 			clusterName = fmt.Sprintf("sdk-e2e-long-cluster-%d", time.Now().Unix())
 		}
-		Expect(len(clusterName)).To(BeNumerically(">", hyperfleetv1alpha1.MaxClusterNameLengthWithoutDNSReservation()),
+		Expect(len(clusterName)).To(BeNumerically(">", seaplanev1alpha1.MaxClusterNameLengthWithoutDNSReservation()),
 			"SDK E2E must use a Cluster name longer than the automatic-DNS namespace budget")
 		GinkgoWriter.Printf("Cluster name: %s\n", clusterName)
 
@@ -214,7 +214,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		identity, err := sts.NewFromConfig(awsCfg).GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
 		Expect(err).ToNot(HaveOccurred(), "getting customer caller identity")
 
-		cs, err = hyperfleet.NewForConfig(&hfrest.Config{
+		cs, err = seaplane.NewForConfig(&hfrest.Config{
 			Host:      baseURL,
 			AccountID: *identity.Account,
 			CallerARN: *identity.Arn,
@@ -267,7 +267,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 			}
 			if nodepoolCreated && nodepoolName != "" {
 				GinkgoWriter.Printf("DeferCleanup: initiating nodepool %s deletion\n", nodepoolName)
-				if err := cs.HyperfleetV1alpha1().NodePools().Delete(cleanupCtx, nodepoolName, platform.DeleteOptions{}); err != nil {
+				if err := cs.SeaplaneV1alpha1().NodePools().Delete(cleanupCtx, nodepoolName, platform.DeleteOptions{}); err != nil {
 					GinkgoWriter.Printf("DeferCleanup WARNING: nodepool delete: %v\n", err)
 				} else {
 					nodepoolCreated = false
@@ -316,7 +316,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 
 		By("creating a DNS reservation via SDK")
 		dnsReservationName = clusterName + "-dns"
-		dnsReservations := cs.HyperfleetV1alpha1().DNSReservations()
+		dnsReservations := cs.SeaplaneV1alpha1().DNSReservations()
 		reservation, err := dnsReservations.Create(ctx, &v1alpha1.DNSReservation{
 			ObjectMeta: metav1.ObjectMeta{Name: dnsReservationName},
 		}, platform.CreateOptions{})
@@ -377,7 +377,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 
 		By("creating a managed OIDC config via SDK")
 		oidcConfigName = clusterName + "-oidc"
-		oidcConfigs := cs.HyperfleetV1alpha1().OidcConfigs()
+		oidcConfigs := cs.SeaplaneV1alpha1().OidcConfigs()
 		managedOidcConfig, err := oidcConfigs.Create(ctx, &v1alpha1.OidcConfig{
 			ObjectMeta: metav1.ObjectMeta{Name: oidcConfigName},
 			Spec:       v1alpha1.OidcConfigSpec{Type: "managed"},
@@ -422,7 +422,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		Expect(subnetOut.Subnets).ToNot(BeEmpty(), "subnet %s not found", subnetID)
 		zone := *subnetOut.Subnets[0].AvailabilityZone
 
-		cluster, err := cs.HyperfleetV1alpha1().Clusters().Create(ctx, &v1alpha1.Cluster{
+		cluster, err := cs.SeaplaneV1alpha1().Clusters().Create(ctx, &v1alpha1.Cluster{
 			ObjectMeta: metav1.ObjectMeta{Name: clusterName},
 			Spec: v1alpha1.ClusterSpec{
 				DNSReservationID: dnsReservationUID,
@@ -451,7 +451,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		GinkgoWriter.Printf("Cluster %s created (uid=%s)\n", clusterName, clusterUID)
 
 		By("waiting for cluster Ready")
-		clusters := cs.HyperfleetV1alpha1().Clusters()
+		clusters := cs.SeaplaneV1alpha1().Clusters()
 		Expect(clusters.WaitUntil(ctx, clusterName,
 			func(c *v1alpha1.Cluster) bool {
 				if c == nil {
@@ -479,7 +479,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		)).To(Succeed(), "OidcConfig should reach Ready phase")
 
 		By("creating nodepools via SDK")
-		nodepools := cs.HyperfleetV1alpha1().NodePools()
+		nodepools := cs.SeaplaneV1alpha1().NodePools()
 
 		nodepoolName = clusterName + ".e2e-np"
 		initialReplicas := int32(2)
@@ -769,8 +769,8 @@ func verifyRolesTrustOIDCProvider(roles hypershiftv1beta1.AWSRolesRef, oidcProvi
 	return nil
 }
 
-func deleteNodepool(ctx context.Context, cs *hyperfleet.Clientset, nodepoolName string) error {
-	nodepools := cs.HyperfleetV1alpha1().NodePools()
+func deleteNodepool(ctx context.Context, cs *seaplane.Clientset, nodepoolName string) error {
+	nodepools := cs.SeaplaneV1alpha1().NodePools()
 	if err := nodepools.Delete(ctx, nodepoolName, platform.DeleteOptions{}); err != nil {
 		return fmt.Errorf("nodepool delete: %w", err)
 	}
@@ -788,8 +788,8 @@ func deleteNodepool(ctx context.Context, cs *hyperfleet.Clientset, nodepoolName 
 	)
 }
 
-func deleteDNSReservation(ctx context.Context, cs *hyperfleet.Clientset, reservationName string) error {
-	reservations := cs.HyperfleetV1alpha1().DNSReservations()
+func deleteDNSReservation(ctx context.Context, cs *seaplane.Clientset, reservationName string) error {
+	reservations := cs.SeaplaneV1alpha1().DNSReservations()
 	if err := reservations.Delete(ctx, reservationName, platform.DeleteOptions{}); err != nil {
 		return fmt.Errorf("DNSReservation delete: %w", err)
 	}
@@ -807,8 +807,8 @@ func deleteDNSReservation(ctx context.Context, cs *hyperfleet.Clientset, reserva
 	)
 }
 
-func deleteOidcConfig(ctx context.Context, cs *hyperfleet.Clientset, configName string) error {
-	configs := cs.HyperfleetV1alpha1().OidcConfigs()
+func deleteOidcConfig(ctx context.Context, cs *seaplane.Clientset, configName string) error {
+	configs := cs.SeaplaneV1alpha1().OidcConfigs()
 	if err := configs.Delete(ctx, configName, platform.DeleteOptions{}); err != nil {
 		return fmt.Errorf("OidcConfig delete: %w", err)
 	}
@@ -826,8 +826,8 @@ func deleteOidcConfig(ctx context.Context, cs *hyperfleet.Clientset, configName 
 	)
 }
 
-func deleteCluster(ctx context.Context, cs *hyperfleet.Clientset, clusterName string) error {
-	clusters := cs.HyperfleetV1alpha1().Clusters()
+func deleteCluster(ctx context.Context, cs *seaplane.Clientset, clusterName string) error {
+	clusters := cs.SeaplaneV1alpha1().Clusters()
 	if err := clusters.Delete(ctx, clusterName, platform.DeleteOptions{}); err != nil {
 		return fmt.Errorf("cluster delete: %w", err)
 	}

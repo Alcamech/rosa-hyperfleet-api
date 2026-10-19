@@ -38,8 +38,8 @@ func TestGetMirrorMapping(t *testing.T) {
 				if got.FieldName != tt.fieldName {
 					t.Errorf("GetMirrorMapping().FieldName = %s, want %s", got.FieldName, tt.fieldName)
 				}
-				if got.HyperFleetType == "" {
-					t.Error("GetMirrorMapping().HyperFleetType is empty")
+				if got.SeaplaneType == "" {
+					t.Error("GetMirrorMapping().SeaplaneType is empty")
 				}
 				if got.HyperShiftType == "" {
 					t.Error("GetMirrorMapping().HyperShiftType is empty")
@@ -61,8 +61,8 @@ func TestGetMirrorMapping_Configuration(t *testing.T) {
 	if mapping.FieldName != "Configuration" {
 		t.Errorf("FieldName = %s, want Configuration", mapping.FieldName)
 	}
-	if mapping.HyperFleetType != "v1alpha1.ClusterConfiguration" {
-		t.Errorf("HyperFleetType = %s, want v1alpha1.ClusterConfiguration", mapping.HyperFleetType)
+	if mapping.SeaplaneType != "v1alpha1.ClusterConfiguration" {
+		t.Errorf("SeaplaneType = %s, want v1alpha1.ClusterConfiguration", mapping.SeaplaneType)
 	}
 	if mapping.HyperShiftType != "v1beta1.ClusterConfiguration" {
 		t.Errorf("HyperShiftType = %s, want v1beta1.ClusterConfiguration", mapping.HyperShiftType)
@@ -122,8 +122,8 @@ func TestMirrorTypeMappings_Completeness(t *testing.T) {
 			t.Error("Found mapping with empty FieldName")
 		}
 
-		if mapping.HyperFleetType == "" {
-			t.Errorf("Mirror field %s has empty HyperFleetType", mapping.FieldName)
+		if mapping.SeaplaneType == "" {
+			t.Errorf("Mirror field %s has empty SeaplaneType", mapping.FieldName)
 		}
 
 		if mapping.HyperShiftType == "" {

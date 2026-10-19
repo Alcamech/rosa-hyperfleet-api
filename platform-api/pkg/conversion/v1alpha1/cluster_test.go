@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	internal "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	rest "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
+	internal "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	rest "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
 	configv1 "github.com/openshift/api/config/v1"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 )

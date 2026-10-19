@@ -27,6 +27,6 @@ mode and HyperShift does not enable graceful drain on interruption. To enable
 graceful handling, customers can provision an SQS queue and provide its URL at
 `spec.hostedCluster.platform.aws.terminationHandlerQueueURL` on the Cluster.
 The URL is optional, must be a valid regional SQS queue URL in the Cluster's AWS
-region, and may be used by only one Cluster in the account. HyperFleet validates
+region, and may be used by only one Cluster in the account. Seaplane validates
 the URL and passes it to HyperShift; it does not create or manage the queue or
 its EventBridge rules.

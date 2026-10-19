@@ -11,13 +11,13 @@ import (
 type ClusterAuthentication struct {
 	// type identifies the authentication mode. Set it to OIDC when configuring oidcProviders.
 	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +optional
 	Type string `json:"type,omitempty"`
 	// oidcProviders are OIDC identity providers that can issue tokens for this cluster.
 	// At most one provider can be configured. Set type to OIDC to enable these providers.
 	// +k8s:openapi-gen=true
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +listType=map
 	// +listMapKey=name
 	// +kubebuilder:validation:MaxItems=1

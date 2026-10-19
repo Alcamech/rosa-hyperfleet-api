@@ -7,26 +7,26 @@
 There are three layers of types:
 
 - **HyperShift CRDs**: The full HostedCluster and NodePool, owned by the HyperShift team.
-- **HyperFleet CRDs**: Some wrap HyperShift types (Cluster wraps HostedCluster, NodePool wraps NodePool); others are HyperFleet-native with no upstream equivalent.
-- **Platform API**: A REST API whose OpenAPI spec is generated from the HyperFleet CRD types.
+- **Seaplane CRDs**: Some wrap HyperShift types (Cluster wraps HostedCluster, NodePool wraps NodePool); others are Seaplane-native with no upstream equivalent.
+- **Platform API**: A REST API whose OpenAPI spec is generated from the Seaplane CRD types.
 
 For each CRD, a single set of Go types is the source of truth for both the CRD schema and the customer-facing OpenAPI schema. Go markers on these types control visibility, write modes, and feature gating. Codegen reads these markers and produces all downstream artifacts (CRDs, OpenAPI spec, field metadata registry).
 
 This document uses Cluster as the detailed example; the same patterns apply to NodePool and any future resource types.
 
-## Boundary 1: HyperShift CRD → HyperFleet CRD
+## Boundary 1: HyperShift CRD → Seaplane CRD
 
-This boundary applies to wrapper CRDs only (Cluster wraps HostedCluster, NodePool wraps NodePool). HyperFleet-native CRDs skip this boundary entirely.
+This boundary applies to wrapper CRDs only (Cluster wraps HostedCluster, NodePool wraps NodePool). Seaplane-native CRDs skip this boundary entirely.
 
 ### Mechanism
 
-We cannot add Go markers to types imported from another module. So instead of embedding HyperShift types directly, a **code generator** reads the upstream HyperShift types and produces HyperFleet-owned Go structs that mirror all of their fields. These are called **passthrough types**.
+We cannot add Go markers to types imported from another module. So instead of embedding HyperShift types directly, a **code generator** reads the upstream HyperShift types and produces Seaplane-owned Go structs that mirror all of their fields. These are called **passthrough types**.
 
 Each wrapper CRD separates **envelope fields** (platform-managed, not passed to HyperShift) from the **passthrough struct** (generated mirror of all upstream fields):
 
 ```go
 type ClusterSpec struct {
-    // Envelope fields (HyperFleet-only, not passed to HyperShift)
+    // Envelope fields (Seaplane-only, not passed to HyperShift)
     DeleteProtection    *DeleteProtection   `json:"deleteProtection,omitempty"`
     ExpirationTimestamp *metav1.Time        `json:"expirationTimestamp,omitempty"`
     Properties          map[string]string   `json:"properties,omitempty"`
@@ -37,7 +37,7 @@ type ClusterSpec struct {
 }
 ```
 
-**Conversion functions** map between HyperFleet and HyperShift types:
+**Conversion functions** map between Seaplane and HyperShift types:
 
 ```go
 func ToHyperShiftHostedCluster(cluster *v1alpha1.Cluster) *hypershiftv1beta1.HostedCluster { ... }
@@ -53,7 +53,7 @@ A code generator keeps the passthrough types in sync with upstream HyperShift:
 
 1. **Bump** the HyperShift module in `go.mod`
 2. **Run the generator** (`make codegen-passthrough`), which reads upstream types and produces/updates the passthrough Go structs
-3. **New upstream fields** appear with safe defaults: `+k8s:openapi-gen=false` (hidden) and `+hyperfleet:write-mode=service-set` (not customer-writable)
+3. **New upstream fields** appear with safe defaults: `+k8s:openapi-gen=false` (hidden) and `+seaplane:write-mode=service-set` (not customer-writable)
 4. **Removed upstream fields** are dropped from the passthrough types
 5. **Developer reviews** the diff, sets the appropriate boundary 2 markers on new fields, and runs `make manifests openapi`
 
@@ -69,9 +69,9 @@ The [field metadata registry](#runtime-enforcement) is the **durable source of t
 
 CI verifies that every passthrough field has an explicit visibility and write-mode annotation, and that regeneration is a no-op when upstream is unchanged.
 
-## Boundary 2: HyperFleet CRD → Platform API OpenAPI
+## Boundary 2: Seaplane CRD → Platform API OpenAPI
 
-This boundary applies to **all** HyperFleet CRDs (wrappers and native). Three Go markers control what reaches the customer-facing API.
+This boundary applies to **all** Seaplane CRDs (wrappers and native). Three Go markers control what reaches the customer-facing API.
 
 ### Marker 1: Visibility (`+k8s:openapi-gen=false`)
 
@@ -90,27 +90,27 @@ type ClusterSpec struct {
 
 Hidden fields are never seen by customers. The operator and internal tooling can read and write them freely.
 
-### Marker 2: Write Mode (`+hyperfleet:write-mode=X`)
+### Marker 2: Write Mode (`+seaplane:write-mode=X`)
 
 Controls whether customers can set or change a field.
 
 ```go
 type ClusterSpec struct {
     // Customer sets on create, cannot change afterward
-    // +hyperfleet:write-mode=immutable
+    // +seaplane:write-mode=immutable
     Name string `json:"name"`
 
     // Customer can change anytime
-    // +hyperfleet:write-mode=mutable
+    // +seaplane:write-mode=mutable
     DeleteProtection *DeleteProtection `json:"deleteProtection,omitempty"`
 
     // Platform sets this based on the regional endpoint
-    // +hyperfleet:write-mode=service-set
+    // +seaplane:write-mode=service-set
     Region string `json:"region"`
 
     // Platform sets this, customer cannot see it
     // +k8s:openapi-gen=false
-    // +hyperfleet:write-mode=service-set
+    // +seaplane:write-mode=service-set
     CreatorARN string `json:"creatorARN,omitempty"`
 }
 ```
@@ -132,8 +132,8 @@ type HostedClusterPassthrough struct {
     Release Release `json:"release"`
 
     // Only available to customers with this gate enabled
-    // +openshift:enable:FeatureGate=HyperFleetEtcdConfig
-    // +hyperfleet:write-mode=immutable
+    // +openshift:enable:FeatureGate=SeaplaneEtcdConfig
+    // +seaplane:write-mode=immutable
     // +optional
     Etcd *EtcdSpec `json:"etcd,omitempty"`
 }
@@ -142,10 +142,10 @@ type HostedClusterPassthrough struct {
 Feature gates are declared in a single registry file:
 
 ```go
-var HyperFleetFeatureGates = map[string]FeatureGateInfo{
-    "HyperFleetEtcdConfig":       {Stage: GA},
-    "HyperFleetAutoScaling":      {Stage: TechPreview},
-    "HyperFleetSecretEncryption": {Stage: TechPreview},
+var SeaplaneFeatureGates = map[string]FeatureGateInfo{
+    "SeaplaneEtcdConfig":       {Stage: GA},
+    "SeaplaneAutoScaling":      {Stage: TechPreview},
+    "SeaplaneSecretEncryption": {Stage: TechPreview},
 }
 ```
 
@@ -158,7 +158,7 @@ The Platform API resolves a customer's effective gates from two sources:
 
 ```go
 func customerHasGate(customer Customer, gate string) bool {
-    info := HyperFleetFeatureGates[gate]
+    info := SeaplaneFeatureGates[gate]
     if info.Stage <= customer.FeatureSet {
         return true
     }
@@ -176,7 +176,7 @@ flowchart TB
     end
 
     subgraph src ["Single Source of Truth"]
-        GO["Go types (api/v1alpha1/*.go)<br/>+k8s:openapi-gen=false<br/>+hyperfleet:write-mode=X<br/>+openshift:enable:FeatureGate=X"]
+        GO["Go types (api/v1alpha1/*.go)<br/>+k8s:openapi-gen=false<br/>+seaplane:write-mode=X<br/>+openshift:enable:FeatureGate=X"]
     end
 
     subgraph gen ["Codegen"]
@@ -209,7 +209,7 @@ var FieldRegistry = TypedFieldRegistry{
         "spec.deleteProtection":      {WriteMode: Mutable, OwnerType: "Cluster", ...},
         "spec.accountId":             {WriteMode: ServiceSet, OwnerType: "Cluster", ...},
         "spec.hostedCluster.release": {WriteMode: Immutable, OwnerType: "Cluster", ...},
-        "spec.hostedCluster.etcd":    {WriteMode: Immutable, Gate: "HyperFleetEtcdConfig", OwnerType: "Cluster", ...},
+        "spec.hostedCluster.etcd":    {WriteMode: Immutable, Gate: "SeaplaneEtcdConfig", OwnerType: "Cluster", ...},
         // ...
     },
     "NodePool": {
@@ -227,7 +227,7 @@ for fieldPath, value := range req.Fields() {
     meta := FieldRegistry[req.ResourceType][fieldPath]
 
     if meta.Gate != "" && !customerHasGate(customer, meta.Gate) {
-        // 400: field 'hostedCluster.etcd' requires gate 'HyperFleetEtcdConfig'
+        // 400: field 'hostedCluster.etcd' requires gate 'SeaplaneEtcdConfig'
     }
     if meta.WriteMode == ServiceSet {
         // 400: field 'accountId' cannot be set by customers

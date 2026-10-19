@@ -7,10 +7,10 @@ import (
 )
 
 // Cluster is the Schema for the clusters API.
-// It represents a ROSA HCP cluster whose lifecycle is managed by the hyperfleet-operator.
+// It represents a ROSA HCP cluster whose lifecycle is managed by the seaplane-operator.
 // metadata.Name is a client-chosen DNS label of at most 63 characters;
 // metadata.Namespace is account-<accountID>. The owning account is recorded in
-// the hyperfleet.io/account-id label.
+// the seaplane.io/account-id label.
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:subresource:status

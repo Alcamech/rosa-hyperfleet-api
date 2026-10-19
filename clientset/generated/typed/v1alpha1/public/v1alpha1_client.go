@@ -21,8 +21,8 @@ package public
 import (
 	http "net/http"
 
-	v1alpha1public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	scheme "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated/scheme"
+	v1alpha1public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	scheme "github.com/openshift-online/rosa-seaplane-api/clientset/generated/scheme"
 	rest "k8s.io/client-go/rest"
 )
 

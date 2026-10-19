@@ -13,7 +13,7 @@ func TestPlatformGenerationUsesCRDParentMarkers(t *testing.T) {
 	source := `package v1alpha1
 
 // +bridge:wait
-// +bridge:parent=Cluster,label=hyperfleet.io/cluster-uid
+// +bridge:parent=Cluster,label=seaplane.io/cluster-uid
 type NodePool struct{}
 
 // +bridge:wait
@@ -47,7 +47,7 @@ type Gadget struct{}
 	for _, expected := range []string{
 		"type NodePoolListOptions struct",
 		"ClusterUID string",
-		`mo.LabelSelector = "hyperfleet.io/cluster-uid=" + opts.ClusterUID`,
+		`mo.LabelSelector = "seaplane.io/cluster-uid=" + opts.ClusterUID`,
 		"type GadgetListOptions struct",
 		"WidgetUID string",
 		`mo.LabelSelector = "example.io/widget-uid=" + opts.WidgetUID`,

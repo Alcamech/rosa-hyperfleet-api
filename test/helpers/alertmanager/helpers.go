@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const createdBy = "hyperfleet-silence-reconciler"
+const createdBy = "seaplane-silence-reconciler"
 
 // ReasonInstalling is the lifecycle reason for cluster install silences.
 const ReasonInstalling = "installing"
@@ -39,7 +39,7 @@ func ClusterNamespace(clusterID string) string {
 	return "cluster-" + strings.ToLower(clusterID)
 }
 
-// ListManagedSilences returns active silences managed by the hyperfleet silence reconciler.
+// ListManagedSilences returns active silences managed by the seaplane silence reconciler.
 func ListManagedSilences(ctx context.Context, baseURL, clusterID, clusterName string) ([]gettableSilence, error) {
 	ns := ClusterNamespace(clusterID)
 	values := url.Values{}

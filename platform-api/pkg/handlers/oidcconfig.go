@@ -13,12 +13,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/validation"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/api"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/clients/seaplanedb"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/middleware"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/validation"
 )
 
 // maxIssuerURLLength bounds customer-supplied unmanaged issuer URLs.
@@ -59,14 +59,14 @@ func normalizeIssuerURL(raw string) (string, error) {
 
 // OidcConfigHandler handles OIDC config HTTP requests.
 type OidcConfigHandler struct {
-	db                *hyperfleetdb.Client
+	db                *seaplanedb.Client
 	oidcIssuerBaseURL string
 	logger            *slog.Logger
 	generateID        func() string
 }
 
 // NewOidcConfigHandler creates a new OIDC config handler.
-func NewOidcConfigHandler(db *hyperfleetdb.Client, oidcIssuerBaseURL string, logger *slog.Logger) *OidcConfigHandler {
+func NewOidcConfigHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, logger *slog.Logger) *OidcConfigHandler {
 	return &OidcConfigHandler{
 		db:                db,
 		oidcIssuerBaseURL: oidcIssuerBaseURL,
@@ -109,7 +109,7 @@ func (h *OidcConfigHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	configs := make([]*public.OidcConfig, 0, len(list.Items))
 	for i := range list.Items {
-		configs = append(configs, hyperfleetdb.InternalToPublicOidcConfig(&list.Items[i]))
+		configs = append(configs, seaplanedb.InternalToPublicOidcConfig(&list.Items[i]))
 	}
 
 	total := len(configs)
@@ -189,12 +189,12 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Spec.Type != hyperfleetv1alpha1.OidcConfigTypeManaged && req.Spec.Type != hyperfleetv1alpha1.OidcConfigTypeUnmanaged {
+	if req.Spec.Type != seaplanev1alpha1.OidcConfigTypeManaged && req.Spec.Type != seaplanev1alpha1.OidcConfigTypeUnmanaged {
 		writeAPIError(w, ErrOidcConfigCreateInvalidType, h.logger)
 		return
 	}
 
-	if req.Spec.Type == hyperfleetv1alpha1.OidcConfigTypeManaged {
+	if req.Spec.Type == seaplanev1alpha1.OidcConfigTypeManaged {
 		if req.Spec.SecretArn != "" || req.Spec.InstallerRoleArn != "" {
 			writeAPIError(w, ErrOidcConfigCreateInvalidFields, h.logger)
 			return
@@ -208,7 +208,7 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 	issuerID := h.generateID()
 	h.logger.Info("creating oidc config", "account_id", accountID, "config_name", configName, "type", req.Spec.Type)
 
-	if req.Spec.Type == hyperfleetv1alpha1.OidcConfigTypeManaged {
+	if req.Spec.Type == seaplanev1alpha1.OidcConfigTypeManaged {
 		if h.oidcIssuerBaseURL == "" {
 			h.logger.Error("oidc issuer base URL is not configured; refusing to create managed config with a path-only issuerUrl", "account_id", accountID, "config_name", configName)
 			writeAPIError(w, ErrOidcConfigCreateIssuerNotConfigured, h.logger)
@@ -227,20 +227,20 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Spec.IssuerUrl = normalizedIssuerURL
 
-	indexName := hyperfleetv1alpha1.IssuerURLIndexName(normalizedIssuerURL)
+	indexName := seaplanev1alpha1.IssuerURLIndexName(normalizedIssuerURL)
 
 	// Fast-path check (best-effort, NOT atomic): reserveIssuerURLIndex is the real enforcement point.
 	if _, err := h.db.GetOidcIssuerIndex(ctx, indexName); err == nil {
 		writeAPIError(w, ErrOidcConfigCreateDuplicateIssuerUrl, h.logger)
 		return
-	} else if !hyperfleetdb.IsNotFound(err) {
+	} else if !seaplanedb.IsNotFound(err) {
 		h.logger.Warn("fast-path issuer URL uniqueness check failed; falling through to async reservation", "error", err, "account_id", accountID, "config_name", configName)
 	}
 
-	cr := hyperfleetdb.PublicToInternalOidcConfig(&req, accountID)
+	cr := seaplanedb.PublicToInternalOidcConfig(&req, accountID)
 
 	if err := h.db.CreateOidcConfig(ctx, accountID, cr); err != nil {
-		if hyperfleetdb.IsAlreadyExists(err) {
+		if seaplanedb.IsAlreadyExists(err) {
 			writeAPIError(w, ErrOidcConfigCreateNameConflict, h.logger)
 			return
 		}
@@ -249,7 +249,7 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := api.Write(w, http.StatusCreated, hyperfleetdb.InternalToPublicOidcConfig(cr)); err != nil {
+	if err := api.Write(w, http.StatusCreated, seaplanedb.InternalToPublicOidcConfig(cr)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }
@@ -264,7 +264,7 @@ func (h *OidcConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	cr, err := h.db.GetOidcConfig(ctx, accountID, configID)
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrOidcConfigGetNotFound, h.logger)
 			return
 		}
@@ -273,7 +273,7 @@ func (h *OidcConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := api.Write(w, http.StatusOK, hyperfleetdb.InternalToPublicOidcConfig(cr)); err != nil {
+	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicOidcConfig(cr)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }
@@ -289,7 +289,7 @@ func (h *OidcConfigHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	// Fetch first (capturing ResourceVersion) so the in-use check and delete are CAS'd against the same object.
 	oc, err := h.db.GetOidcConfig(ctx, accountID, configID)
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrOidcConfigDeleteNotFound, h.logger)
 			return
 		}
@@ -304,11 +304,11 @@ func (h *OidcConfigHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.db.DeleteOidcConfigObject(ctx, oc); err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrOidcConfigDeleteNotFound, h.logger)
 			return
 		}
-		if hyperfleetdb.IsConflict(err) {
+		if seaplanedb.IsConflict(err) {
 			// A concurrent cluster create claimed this config between our Get and Delete above; return 409 instead of 500.
 			writeAPIError(w, ErrOidcConfigDeleteInUse, h.logger)
 			return

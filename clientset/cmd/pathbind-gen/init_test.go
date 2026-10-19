@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/clientset/cmd/pathbind-gen/pkg"
+	"github.com/openshift-online/rosa-seaplane-api/clientset/cmd/pathbind-gen/pkg"
 )
 
 func TestRunInitIncludesMutableFieldsHiddenFromKubernetesOpenAPI(t *testing.T) {

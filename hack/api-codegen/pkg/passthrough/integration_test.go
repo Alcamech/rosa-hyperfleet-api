@@ -8,8 +8,8 @@ import (
 	// Import HyperShift API to ensure it's in go.mod as a direct dependency
 	_ "github.com/openshift/hypershift/api/hypershift/v1beta1"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/markers"
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/passthrough"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/markers"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/passthrough"
 )
 
 // TestGenerateFromHyperShiftModule verifies passthrough generation from go.mod dependency
@@ -84,7 +84,7 @@ func TestGenerateFromHyperShiftModule(t *testing.T) {
 		t.Error("Missing visibility marker")
 	}
 
-	if !contains(contentStr, "+hyperfleet:write-mode=service-set") {
+	if !contains(contentStr, "+seaplane:write-mode=service-set") {
 		t.Error("Missing write-mode marker")
 	}
 

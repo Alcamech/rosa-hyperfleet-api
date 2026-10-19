@@ -21,8 +21,8 @@ package public
 import (
 	context "context"
 
-	v1alpha1public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	scheme "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated/scheme"
+	v1alpha1public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	scheme "github.com/openshift-online/rosa-seaplane-api/clientset/generated/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"

@@ -2,29 +2,29 @@ package featuregate
 
 import "sort"
 
-// HyperFleetFeatureGates is the registry of all feature gates.
-var HyperFleetFeatureGates = map[string]FeatureGateInfo{
-	"HyperFleetEtcdConfig": {
+// SeaplaneFeatureGates is the registry of all feature gates.
+var SeaplaneFeatureGates = map[string]FeatureGateInfo{
+	"SeaplaneEtcdConfig": {
 		Stage:       GA,
 		Description: "Allows customers to configure etcd settings",
 	},
-	"HyperFleetAutoScaling": {
+	"SeaplaneAutoScaling": {
 		Stage:       TechPreview,
 		Description: "Enables cluster autoscaling configuration",
 	},
-	"HyperFleetSecretEncryption": {
+	"SeaplaneSecretEncryption": {
 		Stage:       TechPreview,
 		Description: "Allows customers to configure secret encryption",
 	},
-	"HyperFleetCustomDNS": {
+	"SeaplaneCustomDNS": {
 		Stage:       DevPreview,
 		Description: "Enables custom DNS configuration for development/testing",
 	},
-	"HyperFleetKubeletAdvanced": {
+	"SeaplaneKubeletAdvanced": {
 		Stage:       TechPreview,
 		Description: "Enables advanced kubelet configuration (serializeImagePulls, registryPullQPS, etc.)",
 	},
-	"HyperFleetMachineConfig": {
+	"SeaplaneMachineConfig": {
 		Stage:       TechPreview,
 		Description: "Allows customers to request approved kernel parameters via allowlist",
 	},
@@ -32,7 +32,7 @@ var HyperFleetFeatureGates = map[string]FeatureGateInfo{
 
 // IsGateEnabled returns true if the given gate is enabled for the feature set.
 func IsGateEnabled(gate string, featureSet FeatureSet) bool {
-	info, exists := HyperFleetFeatureGates[gate]
+	info, exists := SeaplaneFeatureGates[gate]
 	if !exists {
 		return false
 	}
@@ -43,7 +43,7 @@ func IsGateEnabled(gate string, featureSet FeatureSet) bool {
 func GatesForFeatureSet(featureSet FeatureSet) []string {
 	var gates []string
 	maxStage := featureSet.MaxStage()
-	for gate, info := range HyperFleetFeatureGates {
+	for gate, info := range SeaplaneFeatureGates {
 		if info.Stage <= maxStage {
 			gates = append(gates, gate)
 		}

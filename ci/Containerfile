@@ -1,4 +1,4 @@
-# CI build-root image for rosa-hyperfleet-api.
+# CI build-root image for rosa-seaplane-api.
 # Extends the standard Go builder with rootless podman support so that
 # integration tests can spin up containers (e.g. postgres) via nested podman.
 FROM registry.ci.openshift.org/openshift/release:rhel-9-release-golang-1.26-openshift-4.23

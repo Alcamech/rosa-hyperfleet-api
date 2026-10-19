@@ -26,7 +26,7 @@ namespace itself when the request omits it.
 
 Names identify human-facing resources; FleetDB UIDs identify object incarnations.
 NodePool resolves its parent using the Cluster-name prefix and account namespace,
-then stores the parent UID in its ownerReference and `hyperfleet.io/cluster-uid`
+then stores the parent UID in its ownerReference and `seaplane.io/cluster-uid`
 label. OidcConfig and DNSReservation claims are likewise held by Cluster UID.
 
 ## Management-Cluster Resources
@@ -40,7 +40,7 @@ NodePool, Placement, and reservation remain in `account-<accountID>`.
 `ManagementCluster` is cluster-scoped. Internal uniqueness `Index` resources use
 operator-controlled namespaces, including `dns-shard-0-reservations` for DNS
 prefixes and `oidc-issuer-reservations` for issuer URLs. Index ownership is recorded
-with `hyperfleet.io/owner-uid`.
+with `seaplane.io/owner-uid`.
 
 ## Name Validation
 

@@ -54,11 +54,11 @@ hack/tools/bin/
 
 # envtest binaries
 .envtest/
-hyperfleet-operator/bin/
+seaplane-operator/bin/
 
 # Compiled operator binaries (built outside bin/)
-hyperfleet-operator/manager
-hyperfleet-operator/compactor
+seaplane-operator/manager
+seaplane-operator/compactor
 
 # Codegen intermediates
 *.passthrough.go.raw

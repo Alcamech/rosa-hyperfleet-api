@@ -8,21 +8,21 @@ import (
 	"github.com/gorilla/mux"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/api"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/clients/seaplanedb"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/middleware"
 )
 
 // ManagementClusterHandler handles management cluster endpoints.
 type ManagementClusterHandler struct {
-	db     *hyperfleetdb.Client
+	db     *seaplanedb.Client
 	logger *slog.Logger
 }
 
 // NewManagementClusterHandler creates a new ManagementClusterHandler.
-func NewManagementClusterHandler(db *hyperfleetdb.Client, logger *slog.Logger) *ManagementClusterHandler {
+func NewManagementClusterHandler(db *seaplanedb.Client, logger *slog.Logger) *ManagementClusterHandler {
 	return &ManagementClusterHandler{
 		db:     db,
 		logger: logger,
@@ -71,18 +71,18 @@ func (h *ManagementClusterHandler) Create(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	mc := &hyperfleetv1alpha1.ManagementCluster{
+	mc := &seaplanev1alpha1.ManagementCluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: req.ID,
 		},
-		Spec: hyperfleetv1alpha1.ManagementClusterSpec{
+		Spec: seaplanev1alpha1.ManagementClusterSpec{
 			Region:    req.Region,
 			AccountID: req.AccountID,
 		},
 	}
 
 	if err := h.db.CreateManagementCluster(ctx, mc); err != nil {
-		if hyperfleetdb.IsAlreadyExists(err) {
+		if seaplanedb.IsAlreadyExists(err) {
 			writeAPIError(w, ErrMCCreateExists.WithReason(req.ID), h.logger)
 			return
 		}
@@ -139,7 +139,7 @@ func (h *ManagementClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	mc, err := h.db.GetManagementCluster(ctx, id)
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrMCGetNotFound, h.logger)
 			return
 		}
@@ -155,7 +155,7 @@ func (h *ManagementClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func mcToResponse(mc *hyperfleetv1alpha1.ManagementCluster) ManagementClusterResponse {
+func mcToResponse(mc *seaplanev1alpha1.ManagementCluster) ManagementClusterResponse {
 	return ManagementClusterResponse{
 		ID:        mc.Name,
 		Region:    mc.Spec.Region,

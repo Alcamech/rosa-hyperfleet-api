@@ -10,18 +10,18 @@ import (
 	"sort"
 	"strings"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
 var (
 	// Marker patterns
 	openapiGenPattern                = regexp.MustCompile(`\+k8s:openapi-gen=false`)
-	writeModePattern                 = regexp.MustCompile(`\+hyperfleet:write-mode=(mutable|immutable|service-set)`)
-	resettablePattern                = regexp.MustCompile(`\+hyperfleet:resettable=(true|false)`)
+	writeModePattern                 = regexp.MustCompile(`\+seaplane:write-mode=(mutable|immutable|service-set)`)
+	resettablePattern                = regexp.MustCompile(`\+seaplane:resettable=(true|false)`)
 	featureGatePattern               = regexp.MustCompile(`\+openshift:enable:FeatureGate=(\w+)`)
-	featureGateAwareWriteModePattern = regexp.MustCompile(`\+hyperfleet:validation:FeatureGateAwareWriteMode:featureGate="([^"]*)",writeMode="(mutable|immutable|service-set)"`)
-	upstreamReducedObjectPattern     = regexp.MustCompile(`\+hyperfleet:upstream-reduced-object=([^\s]+)`)
+	featureGateAwareWriteModePattern = regexp.MustCompile(`\+seaplane:validation:FeatureGateAwareWriteMode:featureGate="([^"]*)",writeMode="(mutable|immutable|service-set)"`)
+	upstreamReducedObjectPattern     = regexp.MustCompile(`\+seaplane:upstream-reduced-object=([^\s]+)`)
 )
 
 // NewScanner creates a new marker scanner
@@ -45,10 +45,10 @@ func NewScanner(inputDirs []string, verbose bool) (*MarkerScanner, error) {
 }
 
 // discoverCRDTypes initializes the scheme and populates crdTypes map
-// Maps Kind name (e.g., "Cluster") to full GVK string (e.g., "hyperfleet.io/v1alpha1.Cluster")
+// Maps Kind name (e.g., "Cluster") to full GVK string (e.g., "seaplane.io/v1alpha1.Cluster")
 func (s *MarkerScanner) discoverCRDTypes() error {
 	scheme := runtime.NewScheme()
-	if err := hyperfleetv1alpha1.AddToScheme(scheme); err != nil {
+	if err := seaplanev1alpha1.AddToScheme(scheme); err != nil {
 		return fmt.Errorf("adding v1alpha1 to scheme: %w", err)
 	}
 
@@ -59,7 +59,7 @@ func (s *MarkerScanner) discoverCRDTypes() error {
 			continue
 		}
 
-		// Store Kind → GVK string mapping (e.g., "Cluster" → "hyperfleet.io/v1alpha1.Cluster")
+		// Store Kind → GVK string mapping (e.g., "Cluster" → "seaplane.io/v1alpha1.Cluster")
 		gvkStr := fmt.Sprintf("%s/%s.%s", gvk.Group, gvk.Version, gvk.Kind)
 		s.crdTypes[gvk.Kind] = gvkStr
 		s.logf("discovered CRD type: %s → %s", gvk.Kind, gvkStr)
@@ -238,7 +238,7 @@ func (s *MarkerScanner) isRootType(typeName string) bool {
 	}
 
 	// Upstream-reduced types are root types regardless of naming convention,
-	// because their fields carry explicit +hyperfleet:write-mode markers that
+	// because their fields carry explicit +seaplane:write-mode markers that
 	// generateSyntheticPaths must be able to read from byOwner.
 	if _, ok := s.upstreamReducedTypes[typeName]; ok {
 		return true
@@ -254,7 +254,7 @@ func (s *MarkerScanner) isRootType(typeName string) bool {
 
 // processStruct walks struct fields and extracts markers
 // ownerKind is the Kind of the CRD that owns these fields (e.g., "Cluster", "NodePool")
-// ownerGVK is the full GVK string (e.g., "hyperfleet.io/v1alpha1.Cluster")
+// ownerGVK is the full GVK string (e.g., "seaplane.io/v1alpha1.Cluster")
 func (s *MarkerScanner) processStruct(_ string, structType *ast.StructType, parentPath string, visited map[string]bool, ownerKind string, ownerGVK string) {
 	for _, field := range structType.Fields.List {
 		s.processField(field, parentPath, visited, ownerKind, ownerGVK)
@@ -469,7 +469,7 @@ func (t TypedFieldRegistry) Validate() error {
 		for path, meta := range fields {
 			// All visible fields must have a write mode
 			if !meta.Hidden && meta.WriteMode == "" {
-				errors = append(errors, fmt.Sprintf("%s.%s is missing +hyperfleet:write-mode marker", owner, path))
+				errors = append(errors, fmt.Sprintf("%s.%s is missing +seaplane:write-mode marker", owner, path))
 			}
 		}
 	}

@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/middleware"
 )
 
 func setupTest(t *testing.T, cfg *Config) (*Limiter, *miniredis.Miniredis) {

@@ -25,5 +25,5 @@ import (
 
 func TestE2ESDK(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Hyperfleet SDK E2E Suite")
+	RunSpecs(t, "Seaplane SDK E2E Suite")
 }

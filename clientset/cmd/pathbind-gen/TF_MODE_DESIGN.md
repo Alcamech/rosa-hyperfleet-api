@@ -32,7 +32,7 @@ This document outlines the design for implementing TF mode in pathbind-gen to ge
 pathbind-gen --mode=tf \
   --draft=pathbind-draft.yaml \
   --overrides=pathbind-overrides.yaml \
-  --output-dir=provider/hyperfleet/pathbind
+  --output-dir=provider/seaplane/pathbind
 
 ↓ (for each resource: cluster, nodepool, oidcconfig)
 
@@ -144,7 +144,7 @@ type ClusterHandler interface {
 // Generated: cluster_resource_gen.go
 type ClusterResource struct {
     // Client, AccountID, CallerARN set by consumer via Configure()
-    Client    hyperfleet.Interface
+    Client    seaplane.Interface
     AccountID string
     CallerARN string
 
@@ -153,7 +153,7 @@ type ClusterResource struct {
 }
 
 func (r *ClusterResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-    resp.TypeName = req.ProviderTypeName + "_cluster_hyperfleet"
+    resp.TypeName = req.ProviderTypeName + "_cluster_seaplane"
 }
 
 func (r *ClusterResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -186,7 +186,7 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
     // 3. Create empty SDK struct: &v1alpha1.Cluster{}
     // 4. Call pathbind.Expand(input, sdkStruct) to map fields
     // 5. Call Handler.PostExpand() to set unmappable fields
-    // 6. Call API: r.Client.HyperfleetV1alpha1().Clusters().Create(ctx, sdkStruct, ...)
+    // 6. Call API: r.Client.SeaplaneV1alpha1().Clusters().Create(ctx, sdkStruct, ...)
     // 7. Call pathbind.Flatten(apiResp, state) to map back to state
     // 8. Call Handler.PostResponse() for output formatting
     // 9. Set state in response
@@ -196,7 +196,7 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 func (r *ClusterResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
     // Scaffolding flow:
     // 1. Get state
-    // 2. Call API: r.Client.HyperfleetV1alpha1().Clusters().Get(ctx, state.ID, ...)
+    // 2. Call API: r.Client.SeaplaneV1alpha1().Clusters().Get(ctx, state.ID, ...)
     // 3. Call pathbind.Flatten(apiResp, state)
     // 4. Call Handler.PostResponse()
     // 5. Set state in response
@@ -208,10 +208,10 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
     // 1. Get plan into ClusterInput
     // 2. Get current state
     // 3. Call Handler.PreExpand()
-    // 4. Fetch live object from API: r.Client.HyperfleetV1alpha1().Clusters().Get(ctx, state.ID, ...)
+    // 4. Fetch live object from API: r.Client.SeaplaneV1alpha1().Clusters().Get(ctx, state.ID, ...)
     // 5. Call pathbind.Expand(plan, liveObject) — overwrites only plan fields, preserves the rest
     // 6. Call Handler.PostExpand()
-    // 7. Call API: r.Client.HyperfleetV1alpha1().Clusters().Update(ctx, liveObject, ...)
+    // 7. Call API: r.Client.SeaplaneV1alpha1().Clusters().Update(ctx, liveObject, ...)
     // 8. Call pathbind.Flatten(apiResp, state)
     // 9. Call Handler.PostResponse()
     // 10. Set state in response
@@ -222,7 +222,7 @@ func (r *ClusterResource) Delete(ctx context.Context, req resource.DeleteRequest
     // Scaffolding flow:
     // 1. Get state
     // 2. Call Handler.PreExpand() for validation (no-op for delete, but allows unified interface)
-    // 3. Call API: r.Client.HyperfleetV1alpha1().Clusters().Delete(ctx, state.ID, ...)
+    // 3. Call API: r.Client.SeaplaneV1alpha1().Clusters().Delete(ctx, state.ID, ...)
     // 4. Call Handler.PostResponse() for side effects
     ...
 }
@@ -230,7 +230,7 @@ func (r *ClusterResource) Delete(ctx context.Context, req resource.DeleteRequest
 func (r *ClusterResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
     // Scaffolding flow:
     // 1. ID passed in req.ID
-    // 2. Call API: r.Client.HyperfleetV1alpha1().Clusters().Get(ctx, req.ID, ...)
+    // 2. Call API: r.Client.SeaplaneV1alpha1().Clusters().Get(ctx, req.ID, ...)
     // 3. Call pathbind.Flatten(apiResp, state)
     // 4. Call Handler.PostResponse()
     // 5. Set state in response
@@ -367,7 +367,7 @@ For Create():
 7. dg = r.Handler.PostExpand(ctx, &input, obj)
 8. resp.Diagnostics.Append(dg...)
 9. obj.ObjectMeta.Name = input.Name.ValueString()  // or from plan
-10. created, err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}().Create(ctx, obj, ...)
+10. created, err := r.Client.SeaplaneV1alpha1().{{pluralize .ResourceName}}().Create(ctx, obj, ...)
 11. if err != nil { /* error */ }
 12. var state {{.ResourceName}}State
 13. if err := pathbind.Flatten(ctx, created, &state); err != nil { /* error */ }
@@ -393,7 +393,7 @@ For Delete():
 2. resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 3. dg := r.Handler.PreExpand(ctx, nil)
 4. resp.Diagnostics.Append(dg...)
-5. err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}().Delete(ctx, state.ID.ValueString(), ...)
+5. err := r.Client.SeaplaneV1alpha1().{{pluralize .ResourceName}}().Delete(ctx, state.ID.ValueString(), ...)
 6. if err != nil { /* error */ }
 7. dg = r.Handler.PostResponse(ctx, nil)
 8. resp.Diagnostics.Append(dg...)
@@ -521,9 +521,9 @@ func Run(draftPath, overridesPath, outputDir string) error {
 
    func (r *ClusterResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
        r.ClusterResource = &pathbind.ClusterResource{
-           Client:    shared.HyperfleetClient,
-           AccountID: shared.HyperfleetAccountID,
-           CallerARN: shared.HyperfleetCallerARN,
+           Client:    shared.SeaplaneClient,
+           AccountID: shared.SeaplaneAccountID,
+           CallerARN: shared.SeaplaneCallerARN,
            Handler:   r.handler,
        }
    }
@@ -539,7 +539,7 @@ func Run(draftPath, overridesPath, outputDir string) error {
 ```yaml
 config:
   package: pathbind # Generated code package
-  tfProviderPkg: github.com/.../terraform-provider-rhcs/provider/hyperfleet
+  tfProviderPkg: github.com/.../terraform-provider-rhcs/provider/seaplane
   runtimePkg: github.com/.../terraform-provider-rhcs/provider/providerdata # For cobra only
   runtimeType: ProviderSharedData # For cobra only
 

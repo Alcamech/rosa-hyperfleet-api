@@ -3,8 +3,8 @@ package validation
 import (
 	"testing"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/featuregate"
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/registry"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/featuregate"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/registry"
 )
 
 func TestValidator_FeatureGateAwareWriteMode(t *testing.T) {
@@ -73,9 +73,9 @@ func TestValidator_FeatureGateAwareWriteMode(t *testing.T) {
 			baseMode:  registry.ServiceSet,
 			gatedModes: []registry.FeatureGateWriteMode{
 				{FeatureGate: "", WriteMode: registry.ServiceSet},
-				{FeatureGate: "HyperFleetEtcdConfig", WriteMode: registry.Mutable},
+				{FeatureGate: "SeaplaneEtcdConfig", WriteMode: registry.Mutable},
 			},
-			enabledGates: []string{"HyperFleetEtcdConfig"},
+			enabledGates: []string{"SeaplaneEtcdConfig"},
 			operation:    OperationCreate,
 			expectError:  false,
 		},
@@ -85,7 +85,7 @@ func TestValidator_FeatureGateAwareWriteMode(t *testing.T) {
 			baseMode:  registry.ServiceSet,
 			gatedModes: []registry.FeatureGateWriteMode{
 				{FeatureGate: "", WriteMode: registry.ServiceSet},
-				{FeatureGate: "HyperFleetEtcdConfig", WriteMode: registry.Mutable},
+				{FeatureGate: "SeaplaneEtcdConfig", WriteMode: registry.Mutable},
 			},
 			enabledGates: []string{},
 			operation:    OperationCreate,

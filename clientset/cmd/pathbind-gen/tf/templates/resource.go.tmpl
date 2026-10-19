@@ -109,10 +109,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 {{- end}}
-	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	hyperfleet "github.com/openshift-online/rosa-hyperfleet-api/clientset"
-	hfwrappers "github.com/openshift-online/rosa-hyperfleet-api/clientset/platform"
-	pathbind "github.com/openshift-online/rosa-hyperfleet-api/clientset/pathbind"
+	v1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	seaplane "github.com/openshift-online/rosa-seaplane-api/clientset"
+	hfwrappers "github.com/openshift-online/rosa-seaplane-api/clientset/platform"
+	pathbind "github.com/openshift-online/rosa-seaplane-api/clientset/pathbind"
 
 	"github.com/terraform-redhat/terraform-provider-rhcs/provider/providerdata"
 )
@@ -122,7 +122,7 @@ var _ resource.ResourceWithConfigure = &{{.ResourceName}}Resource{}
 var _ resource.ResourceWithImportState = &{{.ResourceName}}Resource{}
 
 // {{.ResourceName}}HandlerFactory creates the hand-written handler used by the generated resource.
-type {{.ResourceName}}HandlerFactory func(client hyperfleet.Interface, accountID, callerARN string) {{.ResourceName}}Handler
+type {{.ResourceName}}HandlerFactory func(client seaplane.Interface, accountID, callerARN string) {{.ResourceName}}Handler
 
 // New{{.ResourceName}} creates a new {{.ResourceName}} resource.
 func New{{.ResourceName}}(handlerFactory {{.ResourceName}}HandlerFactory) resource.Resource {
@@ -149,10 +149,10 @@ type {{.ResourceName}}Handler interface {
 	PostFlatten(ctx context.Context, state *{{.ResourceName}}State, resp *v1alpha1.{{.SDKShortType}})
 }
 
-// {{.ResourceName}}Resource manages {{.ResourceName}} resources via the hyperfleet Platform API.
+// {{.ResourceName}}Resource manages {{.ResourceName}} resources via the seaplane Platform API.
 type {{.ResourceName}}Resource struct {
-	// Client is the hyperfleet SDK client configured by the provider.
-	Client hyperfleet.Interface
+	// Client is the seaplane SDK client configured by the provider.
+	Client seaplane.Interface
 
 	// AccountID is the AWS account ID configured by the provider.
 	AccountID string
@@ -169,7 +169,7 @@ type {{.ResourceName}}Resource struct {
 func (r *{{.ResourceName}}Resource) Metadata(
 	_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse,
 ) {
-	resp.TypeName = req.ProviderTypeName + "_{{lower .ResourceName}}_hyperfleet"
+	resp.TypeName = req.ProviderTypeName + "_{{lower .ResourceName}}_seaplane"
 }
 
 func (r *{{.ResourceName}}Resource) Configure(
@@ -188,12 +188,12 @@ func (r *{{.ResourceName}}Resource) Configure(
 		return
 	}
 
-	r.Client = shared.HyperfleetClient
-	r.AccountID = shared.HyperfleetAccountID
-	r.CallerARN = shared.HyperfleetCallerARN
+	r.Client = shared.SeaplaneClient
+	r.AccountID = shared.SeaplaneAccountID
+	r.CallerARN = shared.SeaplaneCallerARN
 
 	// Initialize the handler via factory function
-	r.Handler = r.handlerFactory(shared.HyperfleetClient, shared.HyperfleetAccountID, shared.HyperfleetCallerARN)
+	r.Handler = r.handlerFactory(shared.SeaplaneClient, shared.SeaplaneAccountID, shared.SeaplaneCallerARN)
 }
 
 func (r *{{.ResourceName}}Resource) Schema(
@@ -365,12 +365,12 @@ func (r *{{.ResourceName}}Resource) Schema(
 func (r *{{.ResourceName}}Resource) Create(
 	ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse,
 ) {
-	// Validate that hyperfleet is configured
+	// Validate that seaplane is configured
 	if r.Client == nil {
 		resp.Diagnostics.AddError(
-			"Hyperfleet not configured",
+			"Seaplane not configured",
 			//nolint:lll
-			"The hyperfleet_url provider attribute is required to manage {{.ResourceName}} resources. Set it explicitly in the provider configuration or via the RHCS_HYPERFLEET_URL environment variable.",
+			"The seaplane_url provider attribute is required to manage {{.ResourceName}} resources. Set it explicitly in the provider configuration or via the RHCS_SEAPLANE_URL environment variable.",
 		)
 		return
 	}
@@ -410,7 +410,7 @@ func (r *{{.ResourceName}}Resource) Create(
 	}
 
 	// Create via API. The Platform API derives the account namespace internally.
-	created, err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}().Create(ctx, obj, hfwrappers.CreateOptions{})
+	created, err := r.Client.SeaplaneV1alpha1().{{pluralize .ResourceName}}().Create(ctx, obj, hfwrappers.CreateOptions{})
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create {{.ResourceName}}", err.Error())
 		return
@@ -450,12 +450,12 @@ func (r *{{.ResourceName}}Resource) Create(
 func (r *{{.ResourceName}}Resource) Read(
 	ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse,
 ) {
-	// Validate that hyperfleet is configured
+	// Validate that seaplane is configured
 	if r.Client == nil {
 		resp.Diagnostics.AddError(
-			"Hyperfleet not configured",
+			"Seaplane not configured",
 			//nolint:lll
-			"The hyperfleet_url provider attribute is required to manage {{.ResourceName}} resources. Set it explicitly in the provider configuration or via the RHCS_HYPERFLEET_URL environment variable.",
+			"The seaplane_url provider attribute is required to manage {{.ResourceName}} resources. Set it explicitly in the provider configuration or via the RHCS_SEAPLANE_URL environment variable.",
 		)
 		return
 	}
@@ -467,7 +467,7 @@ func (r *{{.ResourceName}}Resource) Read(
 	}
 
 	// Platform API routes by account-scoped metadata.name; metadata.uid remains the Terraform identity.
-	obj, err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}().Get(ctx, state.{{.NameField}}.ValueString(), hfwrappers.GetOptions{})
+	obj, err := r.Client.SeaplaneV1alpha1().{{pluralize .ResourceName}}().Get(ctx, state.{{.NameField}}.ValueString(), hfwrappers.GetOptions{})
 	if err != nil {
 		if isNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -512,12 +512,12 @@ func (r *{{.ResourceName}}Resource) Read(
 func (r *{{.ResourceName}}Resource) Update(
 	ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse,
 ) {
-	// Validate that hyperfleet is configured
+	// Validate that seaplane is configured
 	if r.Client == nil {
 		resp.Diagnostics.AddError(
-			"Hyperfleet not configured",
+			"Seaplane not configured",
 			//nolint:lll
-			"The hyperfleet_url provider attribute is required to manage {{.ResourceName}} resources. Set it explicitly in the provider configuration or via the RHCS_HYPERFLEET_URL environment variable.",
+			"The seaplane_url provider attribute is required to manage {{.ResourceName}} resources. Set it explicitly in the provider configuration or via the RHCS_SEAPLANE_URL environment variable.",
 		)
 		return
 	}
@@ -543,7 +543,7 @@ func (r *{{.ResourceName}}Resource) Update(
 	}
 
 	// Fetch by account-scoped metadata.name so fields not represented in Terraform are preserved.
-	obj, err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}().Get(ctx, plan.{{.NameField}}.ValueString(), hfwrappers.GetOptions{})
+	obj, err := r.Client.SeaplaneV1alpha1().{{pluralize .ResourceName}}().Get(ctx, plan.{{.NameField}}.ValueString(), hfwrappers.GetOptions{})
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read {{.ResourceName}} for update", err.Error())
 		return
@@ -563,7 +563,7 @@ func (r *{{.ResourceName}}Resource) Update(
 	}
 
 	// Update via API. The Platform API derives the account namespace internally.
-	updated, err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}().Update(ctx, obj, hfwrappers.UpdateOptions{})
+	updated, err := r.Client.SeaplaneV1alpha1().{{pluralize .ResourceName}}().Update(ctx, obj, hfwrappers.UpdateOptions{})
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to update {{.ResourceName}}", err.Error())
 		return
@@ -603,12 +603,12 @@ func (r *{{.ResourceName}}Resource) Update(
 func (r *{{.ResourceName}}Resource) Delete(
 	ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse,
 ) {
-	// Validate that hyperfleet is configured
+	// Validate that seaplane is configured
 	if r.Client == nil {
 		resp.Diagnostics.AddError(
-			"Hyperfleet not configured",
+			"Seaplane not configured",
 			//nolint:lll
-			"The hyperfleet_url provider attribute is required to manage {{.ResourceName}} resources. Set it explicitly in the provider configuration or via the RHCS_HYPERFLEET_URL environment variable.",
+			"The seaplane_url provider attribute is required to manage {{.ResourceName}} resources. Set it explicitly in the provider configuration or via the RHCS_SEAPLANE_URL environment variable.",
 		)
 		return
 	}
@@ -619,7 +619,7 @@ func (r *{{.ResourceName}}Resource) Delete(
 		return
 	}
 
-	err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}().Delete(ctx, state.{{.NameField}}.ValueString(), hfwrappers.DeleteOptions{})
+	err := r.Client.SeaplaneV1alpha1().{{pluralize .ResourceName}}().Delete(ctx, state.{{.NameField}}.ValueString(), hfwrappers.DeleteOptions{})
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to delete {{.ResourceName}}", err.Error())
 		return
@@ -634,19 +634,19 @@ func (r *{{.ResourceName}}Resource) Delete(
 func (r *{{.ResourceName}}Resource) ImportState(
 	ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse,
 ) {
-	// Validate that hyperfleet is configured
+	// Validate that seaplane is configured
 	if r.Client == nil {
 		resp.Diagnostics.AddError(
-			"Hyperfleet not configured",
+			"Seaplane not configured",
 			//nolint:lll
-			"The hyperfleet_url provider attribute is required to manage {{.ResourceName}} resources. Set it explicitly in the provider configuration or via the RHCS_HYPERFLEET_URL environment variable.",
+			"The seaplane_url provider attribute is required to manage {{.ResourceName}} resources. Set it explicitly in the provider configuration or via the RHCS_SEAPLANE_URL environment variable.",
 		)
 		return
 	}
 
 	// Import IDs are account-scoped metadata.name values because the Platform API
 	// routes by name; Flatten populates the server UID into the Terraform state ID.
-	obj, err := r.Client.HyperfleetV1alpha1().{{pluralize .ResourceName}}().Get(ctx, req.ID, hfwrappers.GetOptions{})
+	obj, err := r.Client.SeaplaneV1alpha1().{{pluralize .ResourceName}}().Get(ctx, req.ID, hfwrappers.GetOptions{})
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to import {{.ResourceName}}", err.Error())
 		return

@@ -3,11 +3,11 @@
 package public
 
 // IngressConfiguration specifies the cluster-wide ingress settings.
-// +hyperfleet:upstream-reduced-object=configv1.IngressSpec
+// +seaplane:upstream-reduced-object=configv1.IngressSpec
 type IngressConfiguration struct {
 	// componentRoutes configures hostnames and serving certificates for
 	// the console and downloads OpenShift component routes.
-	// +hyperfleet:write-mode=mutable
+	// +seaplane:write-mode=mutable
 	// +kubebuilder:validation:MaxItems=2
 	// +listType=map
 	// +listMapKey=namespace

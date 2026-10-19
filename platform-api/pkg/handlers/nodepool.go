@@ -17,22 +17,22 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/util/retry"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/internal/codegen/featuregate"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/validation"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/internal/codegen/featuregate"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/api"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/clients/seaplanedb"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/middleware"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/validation"
 )
 
 type NodePoolHandler struct {
-	db        *hyperfleetdb.Client
+	db        *seaplanedb.Client
 	validator *validation.FieldValidator
 	logger    *slog.Logger
 }
 
-func NewNodePoolHandler(db *hyperfleetdb.Client, logger *slog.Logger) *NodePoolHandler {
+func NewNodePoolHandler(db *seaplanedb.Client, logger *slog.Logger) *NodePoolHandler {
 	return &NodePoolHandler{
 		db:        db,
 		validator: validation.NewFieldValidator("NodePool"),
@@ -138,7 +138,7 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	nodepools := make([]*public.NodePool, 0, len(list.Items))
 	for i := range list.Items {
-		nodepools = append(nodepools, hyperfleetdb.InternalToPublicNodePool(&list.Items[i]))
+		nodepools = append(nodepools, seaplanedb.InternalToPublicNodePool(&list.Items[i]))
 	}
 
 	total := len(nodepools)
@@ -216,7 +216,7 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	cluster, err := h.db.GetCluster(ctx, accountID, clusterName)
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolCreateClusterNotFound, h.logger)
 			return
 		}
@@ -233,14 +233,14 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// internalPoolID is retained as a service-set implementation field; FleetDB UID
 	// is the public object identity.
 	internalPoolID := uuid.New().String()
-	cr := hyperfleetdb.PublicToInternalNodePool(&req, accountID, internalPoolID)
+	cr := seaplanedb.PublicToInternalNodePool(&req, accountID, internalPoolID)
 	cr.Spec.NodePool.ClusterName = cluster.Name
-	cr.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(cluster, hyperfleetv1alpha1.GroupVersion.WithKind("Cluster"))}
-	cr.Labels["hyperfleet.io/cluster-uid"] = string(cluster.UID)
+	cr.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(cluster, seaplanev1alpha1.GroupVersion.WithKind("Cluster"))}
+	cr.Labels["seaplane.io/cluster-uid"] = string(cluster.UID)
 
 	if err := h.db.CreateNodePool(ctx, accountID, cr); err != nil {
 		h.logger.Error("failed to create nodepool", "error", err, "account_id", accountID)
-		if hyperfleetdb.IsAlreadyExists(err) {
+		if seaplanedb.IsAlreadyExists(err) {
 			writeAPIError(w, ErrNodePoolCreateNameConflict, h.logger)
 			return
 		}
@@ -248,7 +248,7 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := api.Write(w, http.StatusCreated, hyperfleetdb.InternalToPublicNodePool(cr)); err != nil {
+	if err := api.Write(w, http.StatusCreated, seaplanedb.InternalToPublicNodePool(cr)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }
@@ -263,7 +263,7 @@ func (h *NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	cr, err := h.db.GetNodePool(ctx, accountID, nodepoolName)
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolGetNotFound, h.logger)
 			return
 		}
@@ -272,7 +272,7 @@ func (h *NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := api.Write(w, http.StatusOK, hyperfleetdb.InternalToPublicNodePool(cr)); err != nil {
+	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicNodePool(cr)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }
@@ -322,7 +322,7 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var updated *hyperfleetv1alpha1.NodePool
+	var updated *seaplanev1alpha1.NodePool
 	var validationErr validation.ValidationErrors
 	var mergeErr error
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -336,7 +336,7 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 			validationErr = errs
 			return fmt.Errorf("invalid nodepool update: %w", errs)
 		}
-		if err := hyperfleetdb.MergeSpecJSON(&current.Spec, envelope.Spec); err != nil {
+		if err := seaplanedb.MergeSpecJSON(&current.Spec, envelope.Spec); err != nil {
 			mergeErr = err
 			return fmt.Errorf("merge nodepool spec: %w", err)
 		}
@@ -356,11 +356,11 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolUpdateNotFound, h.logger)
 			return
 		}
-		if hyperfleetdb.IsConflict(err) {
+		if seaplanedb.IsConflict(err) {
 			writeAPIError(w, ErrNodePoolUpdateConflict, h.logger)
 			return
 		}
@@ -369,7 +369,7 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := api.Write(w, http.StatusOK, hyperfleetdb.InternalToPublicNodePool(updated)); err != nil {
+	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicNodePool(updated)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }
@@ -384,7 +384,7 @@ func (h *NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	err := h.db.DeleteNodePool(ctx, accountID, nodepoolName)
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolDeleteNotFound, h.logger)
 			return
 		}

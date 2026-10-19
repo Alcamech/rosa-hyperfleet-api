@@ -30,7 +30,7 @@ import (
 // +bridge:wait
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="BaseDomain",type=string,JSONPath=".status.baseDomain"
-// +kubebuilder:printcolumn:name="Cluster",type=string,JSONPath=".metadata.labels.hyperfleet\\.io/claimed-by-cluster-uid"
+// +kubebuilder:printcolumn:name="Cluster",type=string,JSONPath=".metadata.labels.seaplane\\.io/claimed-by-cluster-uid"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
 // DNSReservation reserves a DNS prefix within a specific zone shard.
@@ -39,8 +39,8 @@ import (
 // domain and internal HostedCluster name are reported in status. metadata.name
 // is customer-selected.
 // Labels:
-//   - hyperfleet.io/account-id: AWS account that owns this reservation (always set).
-//   - hyperfleet.io/claimed-by-cluster-uid: set when a Cluster claims the reservation.
+//   - seaplane.io/account-id: AWS account that owns this reservation (always set).
+//   - seaplane.io/claimed-by-cluster-uid: set when a Cluster claims the reservation.
 type DNSReservation struct {
 	metav1.TypeMeta `json:",inline"`
 
@@ -74,7 +74,7 @@ type DNSReservationSpec struct {
 	// It is platform-managed: customer-created reservations default to Retain and
 	// operator-created automatic reservations use Delete.
 	// +k8s:openapi-gen=false
-	// +hyperfleet:write-mode=service-set
+	// +seaplane:write-mode=service-set
 	// +optional
 	ClusterDeletionPolicy DNSReservationClusterDeletionPolicy `json:"clusterDeletionPolicy,omitempty"`
 }
