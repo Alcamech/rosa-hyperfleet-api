@@ -4,7 +4,7 @@ The API evaluates Cedar in-process (`cedar-go v1.8.0`) against a configuration
 bundle loaded at startup. Every implemented resource operation requires an
 explicit grant. Enrollment and gateway authentication grant nothing.
 
-Not implemented: label APIs, policy/attachment management, account linking,
+Not implemented: policy/attachment management, account linking,
 AccessEntry, `/authz/check`. Chart delivery and provisioning grants:
 `rosa-seaplane/docs/platform-api-authorization.md`.
 
@@ -81,7 +81,7 @@ fails the request, even when Cedar would allow.
 | NodePool          | List                  | ListNodePools; DescribeNodePool per item for details                 |
 | NodePool          | Get                   | DescribeNodePool                                                     |
 | NodePool          | Create                | CreateNodePool                                                       |
-| NodePool          | PUT                   | UpdateNodePool + changed-field actions                               |
+| NodePool          | PUT / PATCH           | UpdateNodePool + changed-field actions                               |
 | NodePool          | Delete                | DeleteNodePool                                                       |
 | OIDCConfig        | List                  | ListOIDCConfigs; DescribeOIDCConfig per item for details             |
 | OIDCConfig        | Get / Create / Delete | DescribeOIDCConfig / CreateOIDCConfig / DeleteOIDCConfig             |
@@ -117,6 +117,43 @@ Rules:
   and re-authorizes each attempt.
 - Denials return 403 `AUTHZ-DENIED-001`; authorization failures return 500
   `AUTHZ-FAILED-001`. Responses never include policy details.
+
+## Customer metadata labels
+
+Only `clusters`, `nodepools`, `oidc_configs`, and `dns_reservations` support
+`/api/v0/{collection}/{id}/labels`. IDs remain account-scoped names, with
+NodePool IDs `<cluster>.<child>`. No ManagementCluster label routes exist.
+
+- GET requires `ListLabelsForResource` and returns 200 with the complete stored
+  JSON map, including system labels (`{}` when empty).
+- PATCH accepts a non-empty JSON map, not an envelope. Strings set keys (including
+  empty strings); `null` removes keys. Other keys remain unchanged. Success is
+  204 without a body, even for mutation-only principals.
+- Any string requires `LabelResource`; any null requires `UnlabelResource`.
+  Mixed patches require both against the same pre-change snapshot. No Describe
+  or base Update action is required. No-ops still require the submitted actions,
+  but a wholly unchanged patch does not write.
+- Malformed, non-object, null, empty, or wrong-value-type bodies return 400.
+  Kubernetes key/value syntax errors and any set/removal under `seaplane.io/`
+  return 422. Validation rejects the entire request, never just some keys.
+- Creates discard caller-supplied system-prefix labels, validate customer syntax,
+  install trusted system labels, and check only the resource Create action
+  against the candidate. These are metadata labels, not NodePool `spec.labels`
+  or Cluster `spec.tags`.
+- Storage resolves the caller's account and stored NodePool parent before
+  authorization. Valid missing/foreign requests return 404 even with broad grants.
+  Labels cannot grant permission to their own patch. An allowed patch may revoke
+  the caller's future access; post-change permission is not required.
+- PATCH retries conflicts up to five times, rereading and authorizing every
+  snapshot and writing its checked resource version. Only submitted keys are
+  reapplied. Different-key concurrent writes survive; same-key writes use
+  last-successful-write semantics. No expected-version or ETag is accepted.
+  UID replacement or deletion after the first read, and exhausted retries,
+  return 409. Denials/evaluation failures do not write or retry.
+
+Label administration controls authorization inputs. Grant it only to principals
+trusted to transfer access through customer labels; reserving system keys does
+not prevent that transfer.
 
 ## Entities
 
@@ -156,12 +193,13 @@ Frozen once per request: `region`, `accountId`, `principalArn`, `sourceIp`,
 
 | Group               | Actions                                                                   |
 | ------------------- | ------------------------------------------------------------------------- |
-| ReadOnly            | Customer List and Describe actions                                        |
+| ReadOnly            | ListLabelsForResource plus customer List and Describe actions             |
 | ClusterAdmin        | Create, Update, UpdateClusterConfig, UpdateClusterVersion, Delete Cluster |
 | NodePoolAdmin       | Create, Update, ScaleNodePool, UpdateNodePoolVersion, Delete NodePool     |
 | OIDCConfigAdmin     | Create, Delete OIDCConfig                                                 |
 | DNSReservationAdmin | Create, Delete DNSReservation                                             |
-| AllActions          | The five customer groups. Not ServiceOperator.                            |
+| LabelAdmin          | LabelResource, UnlabelResource, without implicit label read permission    |
+| AllActions          | The six customer groups, including LabelAdmin. Not ServiceOperator.       |
 | ServiceOperator     | Create, List, Describe ManagementCluster                                  |
 
 These examples are validated against the schema in tests.
@@ -217,7 +255,7 @@ permit(principal, action in Seaplane::Action::"ServiceOperator", resource);
 
 Failures log `request authorization failed` with `operation` (the request),
 `action` (the failing check), caller, `stage`, `cause`, `provenance` (policy,
-attachment, `PolicyRevision` = SHA-256 of the bundle file), and Cedar
+attachment, `BundleHash` = SHA-256 of the bundle file), and Cedar
 `diagnostics`. Denials log `request authorization denied` at INFO with
 `operation`, `action`, caller, and `provenance` (empty when no policy permits;
 forbid IDs when one matches). Logs never include policy content.
@@ -228,8 +266,12 @@ forbid IDs when one matches). Logs never include policy content.
 | `authz_duration_seconds` | `operation`, `outcome` |
 | `authz_failures_total`   | `operation`, `stage`   |
 
-- One sample per request, plus one per update conflict retry; `operation` is the
-  request action.
+- One final outcome and duration observation per request reaching authorization,
+  not per retry or checked action. A later retry denial/error replaces earlier
+  allowed checks. Conflict exhaustion after allowed checks remains an authorization
+  allow, not an HTTP success.
+- Label GET uses `ListLabelsForResource`; PATCH uses `LabelResource` if any set
+  was submitted, otherwise `UnlabelResource`. Mixed patches emit one outcome.
 - `outcome`: `allow`, `deny`, `error`. `stage`: `resolution`, `parsing`,
   `binding`, `entity_validation`, `evaluation`, `resource_loading`.
 - Unauthenticated, unenrolled, rate-limited, and public requests record nothing.
@@ -241,6 +283,10 @@ forbid IDs when one matches). Logs never include policy content.
 | `make test-api`       | Unit tests, including `seaplane-api/pkg/authz`.                                                    |
 | `make test-api-int`   | Handler and server integration tests.                                                              |
 | `make test-e2e-authz` | Real binary over HTTP with disposable PostgreSQL (Podman). Results in `test-results/authz-http-*`. |
+
+Local results do not prove deployed ServiceMonitor, Prometheus, or Thanos
+delivery. That needs an integrated run at matching API, operator, and test
+revisions.
 
 ## Limits
 

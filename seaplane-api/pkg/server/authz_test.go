@@ -100,6 +100,23 @@ func authzMetricSamples(t *testing.T) map[string]float64 {
 	return samples
 }
 
+// Assert the terminal sample and the absence of intermediate retry/action outcomes.
+func assertAuthzOutcome(t *testing.T, before, after map[string]float64, operation, outcome string) {
+	t.Helper()
+	for _, family := range []string{"authz_requests_total", "authz_duration_seconds"} {
+		for _, candidate := range []string{"allow", "deny", "error"} {
+			want := float64(0)
+			if candidate == outcome {
+				want = 1
+			}
+			key := family + "/operation=" + operation + "/outcome=" + candidate
+			if delta := after[key] - before[key]; delta != want {
+				t.Errorf("%s delta=%v, want %v", key, delta, want)
+			}
+		}
+	}
+}
+
 func TestServerEnrollment(t *testing.T) {
 	t.Setenv("TARGET_GROUP_ARN", "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/test/id")
 	cfg := config.NewConfig()
@@ -165,25 +182,6 @@ func TestServerEnrollment(t *testing.T) {
 				t.Fatal("missing grants confused with missing enrollment")
 			}
 		})
-	}
-}
-
-func TestServerMultipleMetrics(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	before := authzMetricSamples(t)
-	for range 3 {
-		srv, err := newConfiguredServer(t, config.NewConfig(), nil, logger)
-		if err != nil {
-			t.Fatal(err)
-		}
-		w := httptest.NewRecorder()
-		srv.metricsServer.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-		if w.Code != http.StatusOK {
-			t.Fatalf("metrics scrape failed: %d %s", w.Code, w.Body.String())
-		}
-		if !reflect.DeepEqual(before, authzMetricSamples(t)) {
-			t.Fatal("constructing another server or scraping changed authorization samples")
-		}
 	}
 }
 

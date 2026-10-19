@@ -16,13 +16,14 @@ type evaluator func(*cedar.PolicySet, cedar.EntityMap, cedar.Request) (cedar.Dec
 
 // Authorizer selects validated policies once per request in a fixed service region.
 type Authorizer struct {
-	customer  []policyAttachment
-	service   []policyAttachment
-	region    string
-	accounts  map[string]struct{}
-	model     *resolved.Schema
-	validator *validate.Validator
-	evaluate  evaluator
+	bundleHash string
+	customer   []policyAttachment
+	service    []policyAttachment
+	region     string
+	accounts   map[string]struct{}
+	model      *resolved.Schema
+	validator  *validate.Validator
+	evaluate   evaluator
 }
 
 // Prepared owns concrete immutable policy inputs for one identity and request.
@@ -38,6 +39,9 @@ type Prepared struct {
 	validator       *validate.Validator
 	evaluate        evaluator
 }
+
+// BundleHash returns the SHA-256 hash of the bundle file loaded at startup.
+func (a *Authorizer) BundleHash() string { return a.bundleHash }
 
 // IsAccountRegistered checks enrollment in the startup snapshot, not permission grants.
 // A canceled context returns false.
@@ -193,6 +197,13 @@ func (p *Prepared) mapProvenance(ids []cedar.PolicyID) ([]Provenance, error) {
 // validateResourceIdentity checks action compatibility, ownership, and collection or object identity before building entities.
 func (p *Prepared) validateResourceIdentity(action Action, resource Resource) (ResourceKind, error) {
 	kind := actionResourceKind(action)
+	// Label actions share the four customer kinds, never service resources.
+	if action == ListLabelsForResource || action == LabelResource || action == UnlabelResource {
+		switch resource.Kind {
+		case Cluster, NodePool, OIDCConfig, DNSReservation:
+			kind = resource.Kind
+		}
+	}
 	if kind == "" {
 		return "", fmt.Errorf("unsupported action")
 	}

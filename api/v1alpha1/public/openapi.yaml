@@ -12,6 +12,146 @@ servers:
     description: API v0
 
 paths:
+  /clusters/{id}/labels:
+    parameters:
+      - $ref: "#/components/parameters/LabelResourceID"
+    get:
+      operationId: listClusterLabels
+      summary: Read stored metadata labels (ListLabelsForResource)
+      responses:
+        "200":
+          $ref: "#/components/responses/ResourceLabels"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      operationId: patchClusterLabels
+      summary: Set or remove customer metadata labels
+      requestBody:
+        $ref: "#/components/requestBodies/LabelPatch"
+      responses:
+        "204":
+          description: Labels updated; no labels are returned
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          description: Invalid label syntax or reserved seaplane.io/ key
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /nodepools/{id}/labels:
+    parameters:
+      - $ref: "#/components/parameters/LabelResourceID"
+    get:
+      operationId: listNodePoolLabels
+      summary: Read stored metadata labels (ListLabelsForResource)
+      responses:
+        "200":
+          $ref: "#/components/responses/ResourceLabels"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      operationId: patchNodePoolLabels
+      summary: Set or remove customer metadata labels
+      requestBody:
+        $ref: "#/components/requestBodies/LabelPatch"
+      responses:
+        "204":
+          description: Labels updated; no labels are returned
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          description: Invalid label syntax or reserved seaplane.io/ key
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /oidc_configs/{id}/labels:
+    parameters:
+      - $ref: "#/components/parameters/LabelResourceID"
+    get:
+      operationId: listOIDCConfigLabels
+      summary: Read stored metadata labels (ListLabelsForResource)
+      responses:
+        "200":
+          $ref: "#/components/responses/ResourceLabels"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      operationId: patchOIDCConfigLabels
+      summary: Set or remove customer metadata labels
+      requestBody:
+        $ref: "#/components/requestBodies/LabelPatch"
+      responses:
+        "204":
+          description: Labels updated; no labels are returned
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          description: Invalid label syntax or reserved seaplane.io/ key
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /dns_reservations/{id}/labels:
+    parameters:
+      - $ref: "#/components/parameters/LabelResourceID"
+    get:
+      operationId: listDNSReservationLabels
+      summary: Read stored metadata labels (ListLabelsForResource)
+      responses:
+        "200":
+          $ref: "#/components/responses/ResourceLabels"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      operationId: patchDNSReservationLabels
+      summary: Set or remove customer metadata labels
+      requestBody:
+        $ref: "#/components/requestBodies/LabelPatch"
+      responses:
+        "204":
+          description: Labels updated; no labels are returned
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          description: Invalid label syntax or reserved seaplane.io/ key
+        "500":
+          $ref: "#/components/responses/InternalError"
   /info:
     get:
       summary: Get regional info
@@ -450,6 +590,36 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+    patch:
+      summary: Update nodepool
+      description: Update nodepool spec (user must own the cluster). Same behavior as PUT.
+      operationId: patchUserNodePool
+      tags:
+        - NodePools
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NodePool"
+      responses:
+        "200":
+          description: NodePool updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodePool"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
     put:
       summary: Update nodepool
       description: Update nodepool (user must own the cluster)
@@ -677,6 +847,41 @@ paths:
                 $ref: "#/components/schemas/HealthStatus"
 
 components:
+  responses:
+    ResourceLabels:
+      description: Complete stored metadata labels, including read-only system labels; empty object when absent
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties:
+              type: string
+  parameters:
+    LabelResourceID:
+      name: id
+      in: path
+      required: true
+      description: Account-scoped resource name; NodePool names are <cluster>.<child>
+      schema:
+        type: string
+  requestBodies:
+    LabelPatch:
+      required: true
+      description: |
+        Non-empty map of customer metadata label keys to strings (set) or null
+        (remove). Empty string is valid. All seaplane.io/ keys are reserved.
+        Requires LabelResource for any string and UnlabelResource for any null,
+        including no-ops. Both are checked against pre-change stored labels.
+        Changes are atomic and retried on conflicts against the same UID;
+        unrelated keys survive and same-key changes use last-successful-write.
+      content:
+        application/json:
+          schema:
+            type: object
+            minProperties: 1
+            additionalProperties:
+              type: string
+              nullable: true
   schemas:
     ManagementClusterRequest:
       type: object

@@ -184,20 +184,6 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	queueClaimCreated := false
-	if queueURL != "" {
-		queueClaimCreated, err = h.db.ClaimSpotTerminationQueue(ctx, accountID, queueURL, req.Name)
-		if err != nil {
-			if seaplanedb.IsAlreadyExists(err) {
-				writeAPIError(w, ErrClusterValidation.WithErrors(validation.SpotTerminationHandlerQueueAlreadyInUse()), h.logger)
-				return
-			}
-			h.logger.Error("failed to claim Spot termination handler queue URL", "error", err, "account_id", accountID)
-			writeAPIError(w, ErrClusterCreateFailed, h.logger)
-			return
-		}
-	}
-
 	h.logger.Info("creating cluster", "account_id", accountID, "cluster_name", req.Name)
 
 	if h.defaultClusterExpiration > 0 && req.Spec.ExpirationTimestamp == nil {
@@ -211,6 +197,9 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if oidcConfig != nil {
 		req.Spec.OidcConfigID = string(oidcConfig.UID)
+	}
+	if !validateCreateLabels(w, req.Labels, h.logger) {
+		return
 	}
 	cr := seaplanedb.PublicToInternalCluster(req, accountID)
 	cr.Spec.HostedClusterName = req.Name
@@ -237,6 +226,21 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if !authorizeResource(w, r, h.authorizer, h.logger, authz.CreateCluster, candidateResource(h.clusterResource(cr), cr.Name)) {
 		return
 	}
+	// Reserve the queue only after validation and Cedar authorization succeed.
+	queueClaimCreated := false
+	if queueURL != "" {
+		queueClaimCreated, err = h.db.ClaimSpotTerminationQueue(ctx, accountID, queueURL, req.Name)
+		if err != nil {
+			if seaplanedb.IsAlreadyExists(err) {
+				writeAPIError(w, ErrClusterValidation.WithErrors(validation.SpotTerminationHandlerQueueAlreadyInUse()), h.logger)
+				return
+			}
+			h.logger.Error("failed to claim Spot termination handler queue URL", "error", err, "account_id", accountID)
+			writeAPIError(w, ErrClusterCreateFailed, h.logger)
+			return
+		}
+	}
+
 	if err := h.db.CreateCluster(ctx, cr); err != nil {
 		if queueClaimCreated {
 			if releaseErr := h.db.ReleaseSpotTerminationQueue(context.WithoutCancel(ctx), accountID, queueURL, req.Name); releaseErr != nil {
@@ -476,6 +480,8 @@ func (h *ClusterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	// Retry conflicts like upstream. Each attempt re-reads, re-validates, and
 	// re-authorizes, so no write uses a snapshot that was not checked.
+	r, finish := withAuthzOutcome(r)
+	defer finish()
 	var updated *seaplanev1alpha1.Cluster
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var attemptErr error
@@ -542,20 +548,20 @@ func (h *ClusterHandler) updateOnce(w http.ResponseWriter, r *http.Request, clus
 		if err != nil {
 			h.logger.Error("failed to check Spot termination handler queue URL uniqueness", "error", err)
 			writeAPIError(w, ErrClusterUpdateFailed, h.logger)
-			return
+			return nil, errResponded
 		}
 		if errs := validation.ValidateSpotTerminationHandlerQueueURL(queueURL, region, terminationHandlerQueueURLs(existing.Items, cr.Name)); errs != nil {
 			writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
-			return
+			return nil, errResponded
 		}
 		if _, err := h.db.ClaimSpotTerminationQueue(ctx, accountID, queueURL, clusterName); err != nil {
 			if seaplanedb.IsAlreadyExists(err) {
 				writeAPIError(w, ErrClusterValidation.WithErrors(validation.SpotTerminationHandlerQueueAlreadyInUse()), h.logger)
-				return
+				return nil, errResponded
 			}
 			h.logger.Error("failed to claim Spot termination handler queue", "error", err)
 			writeAPIError(w, ErrClusterUpdateFailed, h.logger)
-			return
+			return nil, errResponded
 		}
 	}
 

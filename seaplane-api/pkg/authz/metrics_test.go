@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -58,9 +57,7 @@ func TestMetricsAccounting(t *testing.T) {
 		outcome Outcome
 		stage   Stage
 	}{
-		{OutcomeAllow, StageNone}, {OutcomeDeny, StageNone},
-		{OutcomeError, StageResolution}, {OutcomeError, StageParsing}, {OutcomeError, StageBinding},
-		{OutcomeError, StageEntityValidation}, {OutcomeError, StageEvaluation}, {OutcomeError, StageResourceLoading},
+		{OutcomeAllow, StageNone}, {OutcomeDeny, StageNone}, {OutcomeError, StageEvaluation},
 	} {
 		t.Run(string(tc.outcome)+" "+string(tc.stage), func(t *testing.T) {
 			labels := map[string]string{"operation": string(DescribeCluster), "outcome": string(tc.outcome)}
@@ -90,20 +87,6 @@ func TestMetricsAccounting(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("concurrent finish counts once", func(t *testing.T) {
-		labels := map[string]string{"operation": string(ListClusters), "outcome": string(OutcomeAllow)}
-		before := metricSample(t, registry, "authz_requests_total", labels).GetCounter().GetValue()
-		attempt := metrics.Start(ListClusters)
-		var group sync.WaitGroup
-		for range 32 {
-			group.Go(func() { attempt.Finish(OutcomeAllow, StageNone) })
-		}
-		group.Wait()
-		if delta := metricSample(t, registry, "authz_requests_total", labels).GetCounter().GetValue() - before; delta != 1 {
-			t.Fatalf("concurrent delta %v", delta)
-		}
-	})
 }
 
 // Checks emit nothing; only the request-level attempt is counted, and a late

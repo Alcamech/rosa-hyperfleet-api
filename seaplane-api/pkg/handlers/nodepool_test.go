@@ -30,7 +30,7 @@ func testNodePoolCR(npName string, parent *seaplanev1alpha1.Cluster) *seaplanev1
 			UID:       types.UID(npName + "-uid"),
 			Labels: map[string]string{
 				"seaplane.io/account-id": parent.Labels["seaplane.io/account-id"],
-				clusterUIDLabel:            string(parent.UID),
+				clusterUIDLabel:          string(parent.UID),
 			},
 			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(parent, seaplanev1alpha1.GroupVersion.WithKind("Cluster"))},
 		},

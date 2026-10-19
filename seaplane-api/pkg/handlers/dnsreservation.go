@@ -103,6 +103,9 @@ func (h *DNSReservationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !validateCreateLabels(w, req.Labels, h.logger) {
+		return
+	}
 	reservation := seaplanedb.PublicToInternalDNSReservation(&req, accountID)
 	if !authorizeResource(w, r, h.authorizer, h.logger, authz.CreateDNSReservation, candidateResource(h.dnsReservationResource(reservation), reservation.Name)) {
 		return
@@ -145,6 +148,8 @@ func (h *DNSReservationHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DNSReservationHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	r, finish := withAuthzOutcome(r)
+	defer finish()
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
 	name := mux.Vars(r)["id"]

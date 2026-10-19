@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"maps"
@@ -30,7 +31,7 @@ func (h *ClusterHandler) clusterResource(cr *seaplanev1alpha1.Cluster) authz.Res
 }
 
 func writeResourceAuthzError(w http.ResponseWriter, r *http.Request, attempt *authz.Attempt, operation authz.Action, err error, logger *slog.Logger) {
-	stage := authz.StageEvaluation
+	stage, action := authz.StageEvaluation, operation
 	attrs := []any{
 		"operation", operation,
 		"account_id", middleware.GetAccountID(r.Context()),
@@ -41,9 +42,12 @@ func writeResourceAuthzError(w http.ResponseWriter, r *http.Request, attempt *au
 	var failure *authz.Failure
 	if errors.As(err, &failure) {
 		stage = failure.Stage
-		attrs = append(attrs, "action", failure.Action, "cause", failure.Err, "provenance", failure.Provenance, "diagnostics", failure.Diagnostics)
+		if failure.Action != "" {
+			action = failure.Action
+		}
+		attrs = append(attrs, "cause", failure.Err, "provenance", failure.Provenance, "diagnostics", failure.Diagnostics)
 	}
-	attrs = append(attrs, "stage", stage)
+	attrs = append(attrs, "stage", stage, "action", action)
 	logger.Error("request authorization failed", attrs...)
 	attempt.Finish(authz.OutcomeError, stage)
 	writeAPIError(w, errAuthzFailed, logger)
@@ -64,9 +68,17 @@ func writeAuthzDenied(w http.ResponseWriter, r *http.Request, attempt *authz.Att
 }
 
 func prepareResourceAuthz(r *http.Request, authorizer *authz.Authorizer) (*authz.Prepared, error) {
-	return authorizer.Prepare(r.Context(), authz.Identity{
+	shared, _ := r.Context().Value(authzOutcomeKey{}).(*requestAuthz)
+	if shared != nil && shared.prepared != nil {
+		return shared.prepared, nil
+	}
+	prepared, err := authorizer.Prepare(r.Context(), authz.Identity{
 		AccountID: middleware.GetAccountID(r.Context()), CallerARN: middleware.GetCallerARN(r.Context()),
 	}, authz.RequestContext{SourceIP: middleware.GetSourceIP(r.Context()), UserAgent: r.UserAgent(), RequestTime: time.Now()})
+	if shared != nil && err == nil {
+		shared.prepared = prepared
+	}
+	return prepared, err
 }
 
 // authorizeCollection prepares one frozen policy/context snapshot for all item checks.
@@ -89,9 +101,37 @@ func authorizeCollection(w http.ResponseWriter, r *http.Request, authorizer *aut
 	return prepared, attempt
 }
 
+type authzOutcomeKey struct{}
+
+type requestAuthz struct {
+	attempt  *authz.Attempt
+	prepared *authz.Prepared
+}
+
+// Retried writes share one terminal outcome and frozen context, but not resource facts.
+func withAuthzOutcome(r *http.Request) (*http.Request, func()) {
+	shared := &requestAuthz{}
+	return r.WithContext(context.WithValue(r.Context(), authzOutcomeKey{}, shared)), func() {
+		if shared.attempt != nil {
+			shared.attempt.Finish(authz.OutcomeAllow, authz.StageNone)
+		}
+	}
+}
+
+func startResourceAuthz(r *http.Request, operation authz.Action) *authz.Attempt {
+	shared, _ := r.Context().Value(authzOutcomeKey{}).(*requestAuthz)
+	if shared == nil {
+		return authz.DefaultMetrics.Start(operation)
+	}
+	if shared.attempt == nil {
+		shared.attempt = authz.DefaultMetrics.Start(operation)
+	}
+	return shared.attempt
+}
+
 // authorizeResource checks the base operation and every effective changed-field action before a write.
 func authorizeResource(w http.ResponseWriter, r *http.Request, authorizer *authz.Authorizer, logger *slog.Logger, operation authz.Action, resource authz.Resource, additional ...authz.Action) bool {
-	attempt := authz.DefaultMetrics.Start(operation)
+	attempt := startResourceAuthz(r, operation)
 	prepared, err := prepareResourceAuthz(r, authorizer)
 	if err != nil {
 		writeResourceAuthzError(w, r, attempt, operation, err, logger)
@@ -108,7 +148,9 @@ func authorizeResource(w http.ResponseWriter, r *http.Request, authorizer *authz
 			return false
 		}
 	}
-	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
+	if r.Context().Value(authzOutcomeKey{}) == nil {
+		attempt.Finish(authz.OutcomeAllow, authz.StageNone)
+	}
 	return true
 }
 

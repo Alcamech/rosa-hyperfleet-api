@@ -229,6 +229,7 @@ test-e2e-cli: $(GINKGO)
 		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-cli
 
 test-e2e-platform-monitoring: $(GINKGO)
+	E2E_BASE_URL="$${BASE_URL}" E2E_ACCOUNT_ID="$${E2E_ACCOUNT_ID}" \
 	E2E_RHOBS_API_URL="$${RHOBS_API_URL}" \
 	$(GINKGO) -vv --junit-report=junit-platform-monitoring.xml \
 		--output-dir=$(TEST_OUTPUT_DIR) ./test/e2e-platform-monitoring

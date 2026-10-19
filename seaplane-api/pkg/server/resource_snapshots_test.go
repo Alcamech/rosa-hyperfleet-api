@@ -1,11 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -77,7 +78,25 @@ func resourceServer(t *testing.T, customer, service []string, hooks interceptor.
 		WithIndex(&v1.OidcConfig{}, "metadata.uid", func(obj client.Object) []string {
 			return []string{string(obj.GetUID())}
 		}).WithInterceptorFuncs(hooks).Build()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	// Existing route cases verify the real server binds the hash, including default denials.
+	t.Cleanup(func() {
+		decoder := json.NewDecoder(&logs)
+		for decoder.More() {
+			var entry struct {
+				Message    string `json:"msg"`
+				BundleHash string `json:"bundle_hash"`
+			}
+			if err := decoder.Decode(&entry); err != nil {
+				t.Error(err)
+				return
+			}
+			if (entry.Message == "request authorization denied" || entry.Message == "request authorization failed") && entry.BundleHash != authorizer.BundleHash() {
+				t.Errorf("authorization log bundle_hash=%q, want %q", entry.BundleHash, authorizer.BundleHash())
+			}
+		}
+	})
 	cfg := config.NewConfig()
 	cfg.Regional.AWSRegion = "us-east-1"
 	srv, err := New(cfg, seaplanedb.NewClientFrom(fc, logger), authorizer, logger)
@@ -119,18 +138,31 @@ func actionPermit(action string) string {
 
 func TestImplementedRoutesActionSpecific(t *testing.T) {
 	for _, tc := range []struct {
-		action, method, path, body string
-		status                     int
+		action, group, method, path, body string
+		status                            int
 	}{
-		{"ListClusters", "GET", "clusters", "", 200}, {"DescribeCluster", "GET", "clusters/parent", "", 200}, {"CreateCluster", "POST", "clusters", `{"metadata":{"name":"new"},"spec":{"properties":{"team":"new"}}}`, 201}, {"UpdateCluster", "PUT", "clusters/parent", `{"spec":{"properties":{"team":"new"}}}`, 200}, {"UpdateCluster", "PATCH", "clusters/parent", `{"spec":{"properties":{"team":"new"}}}`, 200}, {"DeleteCluster", "DELETE", "clusters/parent", "", 202},
-		{"ListNodePools", "GET", "nodepools", "", 200}, {"DescribeNodePool", "GET", "nodepools/parent.workers", "", 200}, {"CreateNodePool", "POST", "nodepools", `{"metadata":{"name":"parent.new"},"spec":{"nodePool":{"clusterName":"parent"}}}`, 201}, {"UpdateNodePool", "PUT", "nodepools/parent.workers", `{"spec":{"labels":{"team":"new"}}}`, 200}, {"DeleteNodePool", "DELETE", "nodepools/parent.workers", "", 202},
-		{"ListOIDCConfigs", "GET", "oidc_configs", "", 200}, {"DescribeOIDCConfig", "GET", "oidc_configs/config", "", 200}, {"CreateOIDCConfig", "POST", "oidc_configs", `{"metadata":{"name":"new"},"spec":{"type":"unmanaged","issuerUrl":"https://example.com","secretArn":"secret","installerRoleArn":"role"}}`, 201}, {"DeleteOIDCConfig", "DELETE", "oidc_configs/config", "", 202},
-		{"ListDNSReservations", "GET", "dns_reservations", "", 200}, {"DescribeDNSReservation", "GET", "dns_reservations/zone", "", 200}, {"CreateDNSReservation", "POST", "dns_reservations", `{"metadata":{"name":"new"}}`, 201}, {"DeleteDNSReservation", "DELETE", "dns_reservations/zone", "", 202},
-		{"ListManagementClusters", "GET", "management_clusters", "", 200}, {"DescribeManagementCluster", "GET", "management_clusters/mc", "", 200}, {"CreateManagementCluster", "POST", "management_clusters", `{"id":"new","accountId":"222222222222","region":"us-west-2"}`, 201},
+		{"ListClusters", "ReadOnly", "GET", "clusters", "", 200}, {"DescribeCluster", "ReadOnly", "GET", "clusters/parent", "", 200}, {"CreateCluster", "ClusterAdmin", "POST", "clusters", `{"metadata":{"name":"new"},"spec":{"properties":{"team":"new"}}}`, 201}, {"UpdateCluster", "ClusterAdmin", "PUT", "clusters/parent", `{"spec":{"properties":{"team":"new"}}}`, 200}, {"UpdateCluster", "ClusterAdmin", "PATCH", "clusters/parent", `{"spec":{"properties":{"team":"new"}}}`, 200}, {"DeleteCluster", "ClusterAdmin", "DELETE", "clusters/parent", "", 202},
+		{"ListNodePools", "ReadOnly", "GET", "nodepools", "", 200}, {"DescribeNodePool", "ReadOnly", "GET", "nodepools/parent.workers", "", 200}, {"CreateNodePool", "NodePoolAdmin", "POST", "nodepools", `{"metadata":{"name":"parent.new"},"spec":{"nodePool":{"clusterName":"parent"}}}`, 201}, {"UpdateNodePool", "NodePoolAdmin", "PUT", "nodepools/parent.workers", `{"spec":{"labels":{"team":"new"}}}`, 200}, {"UpdateNodePool", "NodePoolAdmin", "PATCH", "nodepools/parent.workers", `{"spec":{"labels":{"team":"new"}}}`, 200}, {"DeleteNodePool", "NodePoolAdmin", "DELETE", "nodepools/parent.workers", "", 202},
+		{"ListOIDCConfigs", "ReadOnly", "GET", "oidc_configs", "", 200}, {"DescribeOIDCConfig", "ReadOnly", "GET", "oidc_configs/config", "", 200}, {"CreateOIDCConfig", "OIDCConfigAdmin", "POST", "oidc_configs", `{"metadata":{"name":"new"},"spec":{"type":"unmanaged","issuerUrl":"https://example.com","secretArn":"secret","installerRoleArn":"role"}}`, 201}, {"DeleteOIDCConfig", "OIDCConfigAdmin", "DELETE", "oidc_configs/config", "", 202},
+		{"ListDNSReservations", "ReadOnly", "GET", "dns_reservations", "", 200}, {"DescribeDNSReservation", "ReadOnly", "GET", "dns_reservations/zone", "", 200}, {"CreateDNSReservation", "DNSReservationAdmin", "POST", "dns_reservations", `{"metadata":{"name":"new"}}`, 201}, {"DeleteDNSReservation", "DNSReservationAdmin", "DELETE", "dns_reservations/zone", "", 202},
+		{"ListLabelsForResource", "ReadOnly", "GET", "clusters/parent/labels", "", 200},
+		{"LabelResource", "LabelAdmin", "PATCH", "clusters/parent/labels", `{"new":"value"}`, 204},
+		{"UnlabelResource", "LabelAdmin", "PATCH", "clusters/parent/labels", `{"team":null}`, 204},
+		{"ListLabelsForResource", "ReadOnly", "GET", "nodepools/parent.workers/labels", "", 200},
+		{"LabelResource", "LabelAdmin", "PATCH", "nodepools/parent.workers/labels", `{"new":"value"}`, 204},
+		{"UnlabelResource", "LabelAdmin", "PATCH", "nodepools/parent.workers/labels", `{"team":null}`, 204},
+		{"ListLabelsForResource", "ReadOnly", "GET", "oidc_configs/config/labels", "", 200},
+		{"LabelResource", "LabelAdmin", "PATCH", "oidc_configs/config/labels", `{"new":"value"}`, 204},
+		{"UnlabelResource", "LabelAdmin", "PATCH", "oidc_configs/config/labels", `{"team":null}`, 204},
+		{"ListLabelsForResource", "ReadOnly", "GET", "dns_reservations/zone/labels", "", 200},
+		{"LabelResource", "LabelAdmin", "PATCH", "dns_reservations/zone/labels", `{"new":"value"}`, 204},
+		{"UnlabelResource", "LabelAdmin", "PATCH", "dns_reservations/zone/labels", `{"team":null}`, 204},
+		{"ListManagementClusters", "ServiceOperator", "GET", "management_clusters", "", 200}, {"DescribeManagementCluster", "ServiceOperator", "GET", "management_clusters/mc", "", 200}, {"CreateManagementCluster", "ServiceOperator", "POST", "management_clusters", `{"id":"new","accountId":"222222222222","region":"us-west-2"}`, 201},
 	} {
-		for _, grant := range []string{"matching", "wrong action", "unbound principal", "runtime error"} {
+		for _, grant := range []string{"matching", "wrong action", "unbound principal", "runtime error", "group", "AllActions", "permit + forbid"} {
 			t.Run(fmt.Sprintf("%s %s grant=%s", tc.method, tc.path, grant), func(t *testing.T) {
-				canAccess := grant == "matching"
+				isService := strings.Contains(tc.action, "ManagementCluster")
+				canAccess := grant == "matching" || grant == "group" || (grant == "AllActions" && !isService)
 				action := tc.action
 				if grant == "wrong action" {
 					action = "CreateCluster"
@@ -139,11 +171,21 @@ func TestImplementedRoutesActionSpecific(t *testing.T) {
 					}
 				}
 				policies := []string{actionPermit(action)}
+				switch grant {
+				case "group", "AllActions":
+					group := tc.group
+					if grant == "AllActions" {
+						group = grant
+					}
+					policies = []string{`permit(principal, action in Seaplane::Action::"` + group + `", resource);`}
+				case "permit + forbid":
+					policies = append(policies, strings.Replace(actionPermit(action), "permit(", "forbid(", 1))
+				}
 				if grant == "runtime error" {
 					policies = append(policies, `forbid(principal, action == Seaplane::Action::"`+action+`", resource) when { 9223372036854775807 + 1 == 0 };`)
 				}
 				var customer, service []string
-				if strings.Contains(tc.action, "ManagementCluster") {
+				if isService && grant != "AllActions" {
 					service = policies
 				} else {
 					customer = policies
@@ -181,21 +223,7 @@ func TestImplementedRoutesActionSpecific(t *testing.T) {
 				if grant == "runtime error" {
 					want = 500
 				}
-				if w.Code != want {
-					t.Fatalf("want %d got %d: %s", want, w.Code, w.Body.String())
-				}
-				if grant == "runtime error" {
-					var status metav1.Status
-					if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil || status.Kind != "Status" || status.Code != 500 || status.Message != "AUTHZ-FAILED-001: Authorization failed" || status.Details != nil || strings.Contains(w.Body.String(), `"items"`) {
-						t.Fatalf("unsafe runtime error response: %s (%v)", w.Body.String(), err)
-					}
-					after := authzMetricSamples(t)
-					for _, key := range []string{"authz_requests_total/operation=" + action + "/outcome=error", "authz_duration_seconds/operation=" + action + "/outcome=error", "authz_failures_total/operation=" + action + "/stage=evaluation"} {
-						if after[key]-before[key] != 1 {
-							t.Fatalf("runtime failure sample %s increased by %v, want 1", key, after[key]-before[key])
-						}
-					}
-				}
+				assertRouteResponse(t, w, before, action, want)
 				expectedWrites := 0
 				if canAccess && tc.method != "GET" {
 					expectedWrites = 1
@@ -203,7 +231,7 @@ func TestImplementedRoutesActionSpecific(t *testing.T) {
 				if writes != expectedWrites {
 					t.Fatalf("writes=%d want=%d", writes, expectedWrites)
 				}
-				if strings.HasPrefix(tc.action, "List") && canAccess {
+				if strings.HasPrefix(tc.action, "List") && tc.action != "ListLabelsForResource" && canAccess && grant != "group" && grant != "AllActions" {
 					var b struct{ Total int }
 					if err := json.Unmarshal(w.Body.Bytes(), &b); err != nil || b.Total != 1 || strings.Contains(w.Body.String(), "labels") || strings.Contains(w.Body.String(), "us-west-2") {
 						t.Fatalf("List without Describe must return identifiers only: %s (%v)", w.Body.String(), err)
@@ -214,56 +242,114 @@ func TestImplementedRoutesActionSpecific(t *testing.T) {
 	}
 }
 
-func TestEveryChangedUpdateActionBeforeWrite(t *testing.T) {
-	for _, tc := range []struct{ method, path, body, base, extra string }{
-		{"PUT", "clusters/parent", `{"spec":{"hostedCluster":{"release":{"image":"new"}}}}`, "UpdateCluster", "UpdateClusterVersion"},
-		{"PATCH", "clusters/parent", `{"spec":{"hostedCluster":{"release":{"image":"new"}}}}`, "UpdateCluster", "UpdateClusterVersion"},
-		{"PUT", "clusters/parent", `{"spec":{"hostedCluster":{"configuration":{"proxy":{"httpProxy":"http://new"}}}}}`, "UpdateCluster", "UpdateClusterConfig"},
-		{"PATCH", "clusters/parent", `{"spec":{"hostedCluster":{"configuration":{"proxy":{"httpProxy":"http://new"}}}}}`, "UpdateCluster", "UpdateClusterConfig"},
-		{"PUT", "nodepools/parent.workers", `{"spec":{"nodePool":{"replicas":0,"release":{"image":"new"}}}}`, "UpdateNodePool", "ScaleNodePool"},
-	} {
-		missingActions := []string{"", tc.base, tc.extra}
-		if tc.base == "UpdateNodePool" {
-			missingActions = append(missingActions, "UpdateNodePoolVersion")
+// Check route status and keep runtime-error sanitization and metric assertions together.
+func assertRouteResponse(t *testing.T, w *httptest.ResponseRecorder, before map[string]float64, action string, want int) {
+	t.Helper()
+	if w.Code != want {
+		t.Fatalf("want %d got %d: %s", want, w.Code, w.Body.String())
+	}
+	if want != http.StatusInternalServerError {
+		return
+	}
+	var status metav1.Status
+	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil || status.Kind != "Status" || status.Code != 500 || status.Message != "AUTHZ-FAILED-001: Authorization failed" || status.Details != nil || strings.Contains(w.Body.String(), `"items"`) {
+		t.Fatalf("unsafe runtime error response: %s (%v)", w.Body.String(), err)
+	}
+	after := authzMetricSamples(t)
+	for _, key := range []string{"authz_requests_total/operation=" + action + "/outcome=error", "authz_duration_seconds/operation=" + action + "/outcome=error", "authz_failures_total/operation=" + action + "/stage=evaluation"} {
+		if after[key]-before[key] != 1 {
+			t.Fatalf("runtime failure sample %s increased by %v, want 1", key, after[key]-before[key])
 		}
-		for _, missing := range missingActions {
-			t.Run(tc.method+tc.path+" missing="+missing, func(t *testing.T) {
-				objects := resourceFixtures()
-				replicas := int32(3)
-				objects[1].(*v1.NodePool).Spec.NodePool.Replicas = &replicas
-				permits := []string{}
-				actions := []string{tc.base, tc.extra}
-				if tc.base == "UpdateNodePool" {
-					actions = append(actions, "UpdateNodePoolVersion")
-				}
-				for _, action := range actions {
-					if action != missing {
-						permits = append(permits, actionPermit(action))
+	}
+}
+
+func TestEveryChangedUpdateActionBeforeWrite(t *testing.T) {
+	// Check individual changes and their combination, dropping each required grant in turn.
+	for _, tc := range []struct {
+		path, body string
+		extras     []string
+		status     int
+	}{
+		{"clusters/parent", `{"spec":{"hostedCluster":{"release":{"image":"new"}}}}`, []string{"UpdateClusterVersion"}, 200},
+		{"clusters/parent", `{"spec":{"hostedCluster":{"configuration":{"proxy":{"httpProxy":"http://new"}}}}}`, []string{"UpdateClusterConfig"}, 200},
+		{"clusters/parent", `{"spec":{"properties":{"team":"new"},"hostedCluster":{"release":{"image":"new"},"configuration":{"proxy":{"httpProxy":"http://new"}}}}}`, []string{"UpdateClusterVersion", "UpdateClusterConfig"}, 200},
+		{"clusters/parent", `{"spec":{"hostedCluster":{"configuration":null}}}`, []string{"UpdateClusterConfig"}, 200},
+		{"clusters/parent", `{"spec":{"hostedCluster":{"release":null}}}`, nil, 200},
+		{"clusters/parent", `{"spec":{"hostedCluster":{"configuration":{"proxy":{"httpProxy":"http://old"}}}}}`, nil, 200},
+		{"clusters/parent", `{"spec":{"hostedCluster":{"release":{"image":"old"}}}}`, nil, 200},
+		{"clusters/parent", `{"spec":{"controlPlaneUpgradePolicy":{"updateType":"user","scheduleType":"manual"}}}`, []string{"UpdateClusterVersion"}, 200},
+		{"clusters/parent", `{"spec":{"hostedCluster":{"Release":{"image":"new"}}}}`, []string{"UpdateClusterVersion"}, 200},
+		{"clusters/parent", `{"spec":{"accountId":"222222222222","hostedCluster":{"release":{"image":"new"}}}}`, []string{"UpdateClusterVersion"}, 422},
+		{"nodepools/parent.workers", `{"spec":{"labels":{"team":"new"},"nodePool":{"replicas":0,"release":{"image":"new"}}}}`, []string{"ScaleNodePool", "UpdateNodePoolVersion"}, 200},
+		{"nodepools/parent.workers", `{"spec":{"nodePool":{"replicas":null}}}`, []string{"ScaleNodePool"}, 200},
+		{"nodepools/parent.workers", `{"spec":{"nodePool":{"replicas":3}}}`, nil, 200},
+		{"nodepools/parent.workers", `{"spec":{"nodePool":{"autoScaling":{"min":1,"max":5}}}}`, []string{"ScaleNodePool"}, 200},
+		{"nodepools/parent.workers", `{"spec":{"nodePool":{"Replicas":5}}}`, []string{"ScaleNodePool"}, 200},
+		{"nodepools/parent.workers", `{"spec":{"accountId":"222222222222","nodePool":{"replicas":5}}}`, []string{"ScaleNodePool"}, 422},
+	} {
+		base := "UpdateNodePool"
+		if strings.HasPrefix(tc.path, "clusters/") {
+			base = "UpdateCluster"
+		}
+		missingActions := append([]string{"", base}, tc.extras...)
+		if tc.status == 422 {
+			missingActions = []string{""}
+		}
+		for _, method := range []string{"PUT", "PATCH"} {
+			for _, missing := range missingActions {
+				t.Run(method+tc.path+" "+tc.body+" missing="+missing, func(t *testing.T) {
+					objects := resourceFixtures()
+					if err := seaplanedb.MergeSpecJSON(&objects[0].(*v1.Cluster).Spec, []byte(`{"hostedCluster":{"release":{"image":"old"},"configuration":{"proxy":{"httpProxy":"http://old"}}}}`)); err != nil {
+						t.Fatal(err)
 					}
-				}
-				writes := 0
-				srv, store := resourceServer(t, permits, nil, interceptor.Funcs{Update: func(ctx context.Context, c client.WithWatch, o client.Object, opts ...client.UpdateOption) error {
-					writes++
-					return c.Update(ctx, o, opts...)
-				}}, objects...)
-				w := resourceRequest(srv, tc.method, tc.path, tc.body)
-				want := 200
-				if missing != "" {
-					want = 403
-				}
-				if w.Code != want {
-					t.Fatalf("want %d got %d: %s", want, w.Code, w.Body.String())
-				}
-				if missing != "" && writes != 0 {
-					t.Fatalf("denied update wrote %d times", writes)
-				}
-				if missing != "" {
-					var np v1.NodePool
-					if err := store.Get(context.Background(), client.ObjectKeyFromObject(objects[1]), &np); err != nil || *np.Spec.NodePool.Replicas != 3 {
-						t.Fatalf("denial changed stored candidate: %+v %v", np, err)
+					replicas := int32(3)
+					objects[1].(*v1.NodePool).Spec.NodePool.Replicas = &replicas
+					permits := []string{}
+					actions := append([]string{base}, tc.extras...)
+					for _, action := range actions {
+						if action != missing {
+							permits = append(permits, actionPermit(action))
+						}
 					}
-				}
-			})
+					writes := 0
+					srv, store := resourceServer(t, permits, nil, interceptor.Funcs{Update: func(ctx context.Context, c client.WithWatch, o client.Object, opts ...client.UpdateOption) error {
+						writes++
+						return c.Update(ctx, o, opts...)
+					}}, objects...)
+					w := resourceRequest(srv, method, tc.path, tc.body)
+					want, wantWrites := tc.status, 1
+					if missing != "" {
+						want = 403
+					}
+					if want != 200 {
+						wantWrites = 0
+					}
+					if w.Code != want {
+						t.Fatalf("want %d got %d: %s", want, w.Code, w.Body.String())
+					}
+					if writes != wantWrites {
+						t.Fatalf("writes=%d want=%d", writes, wantWrites)
+					}
+					if missing == "" && strings.Contains(tc.body, "http://new") {
+						var saved v1.Cluster
+						if err := store.Get(context.Background(), client.ObjectKeyFromObject(objects[0]), &saved); err != nil || saved.Spec.HostedCluster.Configuration == nil || saved.Spec.HostedCluster.Configuration.Proxy == nil || saved.Spec.HostedCluster.Configuration.Proxy.HTTPProxy != "http://new" {
+							t.Fatalf("configuration did not persist: %+v %v", saved.Spec.HostedCluster.Configuration, err)
+						}
+					}
+					if missing == "" && strings.Contains(tc.body, `"release":null`) {
+						var saved v1.Cluster
+						if err := store.Get(context.Background(), client.ObjectKeyFromObject(objects[0]), &saved); err != nil || saved.Spec.HostedCluster.Release.Image != "old" {
+							t.Fatalf("null changed release: %+v %v", saved.Spec.HostedCluster.Release, err)
+						}
+					}
+					if missing != "" {
+						var np v1.NodePool
+						if err := store.Get(context.Background(), client.ObjectKeyFromObject(objects[1]), &np); err != nil || *np.Spec.NodePool.Replicas != 3 {
+							t.Fatalf("denial changed stored candidate: %+v %v", np, err)
+						}
+					}
+				})
+			}
 		}
 	}
 }

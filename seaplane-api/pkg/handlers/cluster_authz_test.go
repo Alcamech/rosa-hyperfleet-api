@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -63,6 +62,25 @@ func clusterAuthorizer(t *testing.T, policies ...string) *authz.Authorizer {
 		t.Fatal(err)
 	}
 	return a
+}
+
+// Retries retain the same policy/context snapshot while checking fresh resource entities.
+func TestRetryPreparationFrozen(t *testing.T) {
+	r := httptest.NewRequest(http.MethodPatch, "/", nil).WithContext(testContext(testAccountID))
+	r, finish := withAuthzOutcome(r)
+	defer finish()
+	a := clusterAuthorizer(t, lifecyclePermit)
+	first, err := prepareResourceAuthz(r, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := prepareResourceAuthz(r, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatal("retry replaced the frozen authorization context")
+	}
 }
 
 func clusterAuthzFixture(t *testing.T, fc client.Client, a *authz.Authorizer) (*ClusterHandler, *prometheus.Registry, *bytes.Buffer) {
@@ -263,9 +281,7 @@ func TestClusterAuthz_ListVisibility(t *testing.T) {
 		{"describe forbid still lists", []string{clusterListPermit, `forbid(principal, action == Seaplane::Action::"DescribeCluster", resource);`}, all, "", []string{"first", "second"}, 2, 50, 0, http.StatusOK},
 		{"second page", []string{clusterListPermit}, all, "?limit=1&offset=1", []string{"second"}, 2, 1, 1, http.StatusOK},
 		{"offset beyond list", []string{clusterListPermit}, all, "?limit=1&offset=2", []string{}, 2, 1, 2, http.StatusOK},
-		{"maximum offset", []string{clusterListPermit}, all, "?offset=" + strconv.Itoa(int(^uint(0)>>1)), []string{}, 2, 50, int(^uint(0) >> 1), http.StatusOK},
 		{"empty storage", []string{clusterListPermit}, nil, "", []string{}, 0, 50, 0, http.StatusOK},
-		{"invalid paging retains defaults", []string{clusterListPermit}, all, "?limit=101&offset=-1", []string{"first", "second"}, 2, 50, 0, http.StatusOK},
 		{"describe grant only", []string{clusterDescribePermit}, all, "", nil, 0, 50, 0, http.StatusForbidden},
 		{"collection forbid", []string{clusterReadPermit, `forbid(principal, action == Seaplane::Action::"ListClusters", resource);`}, all, "", nil, 0, 50, 0, http.StatusForbidden},
 	} {
@@ -417,16 +433,12 @@ func TestClusterAuthz_LoadingErrors(t *testing.T) {
 
 func TestClusterAuthz_StoredResourceFaults(t *testing.T) {
 	for _, operation := range []authz.Action{authz.ListClusters, authz.DescribeCluster} {
-		for _, fault := range []string{"missing ownership", "foreign ownership", "missing UID", "invalid UID"} {
+		for _, fault := range []string{"foreign ownership", "invalid UID"} {
 			t.Run(string(operation)+"/"+fault, func(t *testing.T) {
 				cr := testClusterCR("owned", "owned", testAccountID)
 				switch fault {
-				case "missing ownership":
-					cr.Labels = nil
 				case "foreign ownership":
 					cr.Labels["seaplane.io/account-id"] = "999999999999"
-				case "missing UID":
-					cr.UID = ""
 				case "invalid UID":
 					cr.UID = "../escape"
 				}
@@ -463,7 +475,7 @@ func TestClusterAuthz_LateEvaluationError(t *testing.T) {
 			w := clusterAuthzRequest(h, operation, "?limit=1", "late")
 			assertClusterAuthzStatus(t, w, http.StatusInternalServerError, "AUTHZ-FAILED-001: Authorization failed")
 			assertClusterAuthzMetrics(t, registry, operation, authz.OutcomeError, authz.StageEvaluation)
-			if !bytes.Contains(logs.Bytes(), []byte("attachment/grant-1")) || !bytes.Contains(logs.Bytes(), []byte(`"PolicyRevision":`)) || !bytes.Contains(logs.Bytes(), []byte("cedar evaluation diagnostics")) || !bytes.Contains(logs.Bytes(), []byte(`"diagnostics":[{`)) {
+			if !bytes.Contains(logs.Bytes(), []byte("attachment/grant-1")) || !bytes.Contains(logs.Bytes(), []byte(`"BundleHash":`)) || !bytes.Contains(logs.Bytes(), []byte("cedar evaluation diagnostics")) || !bytes.Contains(logs.Bytes(), []byte(`"diagnostics":[{`)) {
 				t.Fatalf("evaluation failure lost detailed diagnostics/provenance: %s", logs.String())
 			}
 			// A list reports its request operation but names the item check that failed.

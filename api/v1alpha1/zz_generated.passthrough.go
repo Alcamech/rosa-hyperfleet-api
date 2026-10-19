@@ -233,6 +233,7 @@ type NodePoolSpecPassthrough struct {
 	// taints if specified, propagates a list of taints to Nodes, only once on creation.
 	// +k8s:openapi-gen=false
 	// +seaplane:write-mode=mutable
+	// +seaplane:resettable=true
 	// +optional
 	Taints []hypershiftv1beta1.Taint `json:"taints,omitempty"`
 	// pausedUntil is a field that can be used to pause reconciliation on the NodePool controller. Resulting in any change to the NodePool being ignored.

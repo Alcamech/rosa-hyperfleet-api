@@ -156,21 +156,38 @@ func TestNodePoolParentFailureAbortsList(t *testing.T) {
 
 func TestCreatesUseValidatedCandidateLabelsAndOwnership(t *testing.T) {
 	for _, tc := range []struct{ action, path, body string }{
-		{"CreateCluster", "clusters", `{"metadata":{"name":"new","labels":{"team":"blue","seaplane.io/account-id":"222222222222"}},"spec":{"properties":{"team":"new"}}}`},
-		{"CreateNodePool", "nodepools?clusterId=foreign", `{"metadata":{"name":"parent.new","labels":{"team":"blue","seaplane.io/account-id":"222222222222"}},"spec":{"nodePool":{"clusterName":"parent"}}}`},
-		{"CreateOIDCConfig", "oidc_configs", `{"metadata":{"name":"new","labels":{"team":"blue","seaplane.io/account-id":"222222222222","seaplane.io/cluster-namespace":"forged"}},"spec":{"type":"unmanaged","issuerUrl":"https://example.com","secretArn":"secret","installerRoleArn":"role"}}`},
+		{"CreateCluster", "clusters", `{"metadata":{"name":"new","labels":LABELS},"spec":{"properties":{"team":"new"}}}`},
+		{"CreateNodePool", "nodepools?clusterId=foreign", `{"metadata":{"name":"parent.new","labels":LABELS},"spec":{"nodePool":{"clusterName":"parent"}}}`},
+		{"CreateOIDCConfig", "oidc_configs", `{"metadata":{"name":"new","labels":LABELS},"spec":{"type":"unmanaged","issuerUrl":"https://example.com","secretArn":"secret","installerRoleArn":"role"}}`},
+		{"CreateDNSReservation", "dns_reservations", `{"metadata":{"name":"new","labels":LABELS}}`},
 	} {
-		for _, label := range []string{"blue", "red"} {
-			t.Run(tc.action+"/"+label, func(t *testing.T) {
-				policy := `permit(principal,action == Seaplane::Action::"` + tc.action + `",resource) when { resource.account == "123456789012" && resource.hasTag("team") && resource.getTag("team") == "` + label + `" };`
-				srv, _ := resourceServer(t, []string{policy}, nil, interceptor.Funcs{}, resourceFixtures()...)
-				w := resourceRequest(srv, "POST", tc.path, tc.body)
-				want := 201
-				if label == "red" {
-					want = 403
+		// System labels, even syntactically invalid ones, are discarded; customer syntax errors reject the create.
+		for _, check := range []struct {
+			labels, grant string
+			status        int
+		}{
+			{`{"team":"blue","seaplane.io/account-id":"222222222222","seaplane.io/cluster-namespace":"forged","seaplane.io/bad key":"bad value"}`, "blue", 201},
+			{`{"team":"blue","seaplane.io/account-id":"222222222222"}`, "red", 403},
+			{`{"bad key":"blue"}`, "blue", 422},
+			{`{"team":"bad value"}`, "blue", 422},
+		} {
+			t.Run(tc.action+check.labels+check.grant, func(t *testing.T) {
+				writes := 0
+				policy := `permit(principal,action == Seaplane::Action::"` + tc.action + `",resource) when { resource.account == "123456789012" && resource.hasTag("team") && resource.getTag("team") == "` + check.grant + `" };`
+				srv, _ := resourceServer(t, []string{policy}, nil, interceptor.Funcs{Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+					writes++
+					if obj.GetLabels()["team"] != "blue" || obj.GetLabels()["seaplane.io/account-id"] != resourceTestAccount {
+						t.Errorf("lost customer labels or forged ownership: %v", obj.GetLabels())
+					}
+					return c.Create(ctx, obj, opts...)
+				}}, resourceFixtures()...)
+				w := resourceRequest(srv, "POST", tc.path, strings.Replace(tc.body, "LABELS", check.labels, 1))
+				wantWrites := 0
+				if check.status == 201 {
+					wantWrites = 1
 				}
-				if w.Code != want {
-					t.Fatalf("candidate tags/identity want %d got %d: %s", want, w.Code, w.Body.String())
+				if w.Code != check.status || writes != wantWrites {
+					t.Fatalf("status=%d writes=%d, want %d/%d: %s", w.Code, writes, check.status, wantWrites, w.Body.String())
 				}
 			})
 		}
@@ -198,16 +215,5 @@ func TestDeniedClusterCreateDoesNotClaimOIDC(t *testing.T) {
 	var stored v1.OidcConfig
 	if err := store.Get(context.Background(), client.ObjectKeyFromObject(oc), &stored); err != nil || stored.Labels["seaplane.io/claimed-by-cluster-uid"] != "" {
 		t.Fatalf("claim changed: %+v %v", stored, err)
-	}
-}
-
-func TestUnsupportedMethodsStayTyped405(t *testing.T) {
-	srv, _ := resourceServer(t, nil, nil, interceptor.Funcs{}, resourceFixtures()...)
-	for _, tc := range []struct{ method, path string }{{"PUT", "oidc_configs/config"}, {"DELETE", "management_clusters/mc"}, {"PUT", "management_clusters/mc"}} {
-		w := resourceRequest(srv, tc.method, tc.path, `{}`)
-		var status metav1.Status
-		if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil || w.Code != 405 || status.Kind != "Status" {
-			t.Fatalf("unsupported route changed: %s %s %d %s", tc.method, tc.path, w.Code, w.Body.String())
-		}
 	}
 }

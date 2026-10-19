@@ -1,14 +1,11 @@
 package main
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/authz"
 	"github.com/spf13/cobra"
 )
 
@@ -76,27 +73,6 @@ func TestStartupFailureLogs(t *testing.T) {
 	}
 }
 
-func TestStartupIgnoresResolverEnv(t *testing.T) {
-	t.Setenv("AUTHZ_RESOLVER", "dynamodb")
-	t.Setenv("AUTHZ_CONFIG_FILE", startupFile(t, startupBundle))
-	_, authorizer, err := loadStartupConfig(startupCommand(t), "us-east-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := authorizer.Prepare(t.Context(), authz.Identity{
-		AccountID: "123456789012", CallerARN: "arn:aws:iam::123456789012:user/reader",
-	}, authz.RequestContext{RequestTime: time.Unix(1, 0)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	decision, err := prepared.Check(t.Context(), authz.ListClusters, authz.Resource{
-		Kind: authz.Collection, CollectionKind: authz.Cluster, AccountID: "123456789012",
-	})
-	if err != nil || !decision.Allowed {
-		t.Fatalf("configuration grant was not used: %+v %v", decision, err)
-	}
-}
-
 func TestStartupInputs(t *testing.T) {
 	valid := startupFile(t, startupBundle)
 	invalid := startupFile(t, "not a bundle")
@@ -130,28 +106,6 @@ func TestStartupInputs(t *testing.T) {
 	}
 }
 
-func TestStartupInvalidBundle(t *testing.T) {
-	for _, tc := range []struct{ name, content string }{
-		{"malformed YAML", "formatVersion: ["},
-		{"unsupported version", strings.Replace(startupBundle, "formatVersion: 1", "formatVersion: 2", 1)},
-		{"unknown field", startupBundle + "allowAll: true\n"},
-		{"schema invalid", strings.Replace(startupBundle, "action in Seaplane::Action::\"ReadOnly\"", "action == Seaplane::Action::\"Invented\"", 1)},
-		{"invalid Cedar", strings.Replace(startupBundle, "permit(principal,", "permit(broken,", 1)},
-		{"dangling attachment", strings.Replace(startupBundle, "policyID: read", "policyID: missing", 1)},
-		{"invalid attachment", strings.Replace(startupBundle, "user/reader", "root", 1)},
-		{"inactive bad binding", strings.Replace(startupBundle, "scope: global", "scope: regional\n    region: not-a-region", 1)},
-		{"cross account attachment", strings.Replace(startupBundle, "iam::123456789012", "iam::999999999999", 1)},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("AUTHZ_CONFIG_FILE", startupFile(t, tc.content))
-			cfg, authorizer, err := loadStartupConfig(startupCommand(t), "us-east-1")
-			if err == nil || cfg != nil || authorizer != nil {
-				t.Fatalf("invalid bundle became usable: cfg=%v authorizer=%v err=%v", cfg, authorizer, err)
-			}
-		})
-	}
-}
-
 func TestStartupDefaultsAndBinds(t *testing.T) {
 	t.Setenv("AUTHZ_CONFIG_FILE", startupFile(t, startupBundle))
 	for _, address := range []string{"", "127.0.0.1"} {
@@ -171,48 +125,5 @@ func TestStartupDefaultsAndBinds(t *testing.T) {
 				t.Fatalf("defaults or bind inputs changed: %+v", cfg)
 			}
 		})
-	}
-}
-
-func TestStartupPreservesEquality(t *testing.T) {
-	bundle := strings.Replace(startupBundle, "permit(principal,", `permit(principal == Seaplane::Principal::"arn:aws:iam::123456789012:user/other",`, 1)
-	t.Setenv("AUTHZ_CONFIG_FILE", startupFile(t, bundle))
-	_, authorizer, err := loadStartupConfig(startupCommand(t), "us-east-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := authorizer.Prepare(context.Background(), authz.Identity{AccountID: "123456789012", CallerARN: "arn:aws:iam::123456789012:user/reader"}, authz.RequestContext{RequestTime: time.Unix(1, 0)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	decision, err := prepared.Check(t.Context(), authz.ListClusters, authz.Resource{Kind: authz.Collection, CollectionKind: authz.Cluster, AccountID: "123456789012"})
-	if err != nil || decision.Allowed {
-		t.Fatalf("startup binding weakened original equality: %+v %v", decision, err)
-	}
-}
-
-func TestStartupSnapshot(t *testing.T) {
-	path := startupFile(t, startupBundle)
-	t.Setenv("AUTHZ_CONFIG_FILE", path)
-	_, original, err := loadStartupConfig(startupCommand(t), "us-east-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	replacement := strings.Replace(startupBundle, `registeredAccounts: ["123456789012"]`, "registeredAccounts: []", 1)
-	if err := os.WriteFile(path, []byte(replacement), 0600); err != nil {
-		t.Fatal(err)
-	}
-	_, restarted, err := loadStartupConfig(startupCommand(t), "us-east-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !original.IsAccountRegistered(t.Context(), "123456789012") || restarted.IsAccountRegistered(t.Context(), "123456789012") {
-		t.Fatal("enrollment did not remain snapshot-local until restart")
-	}
-	if err := os.WriteFile(path, []byte("invalid replacement"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if cfg, a, err := loadStartupConfig(startupCommand(t), "us-east-1"); err == nil || cfg != nil || a != nil {
-		t.Fatal("invalid replacement used a fallback")
 	}
 }

@@ -38,7 +38,7 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 	if authorizer == nil {
 		return nil, fmt.Errorf("authorizer is required")
 	}
-	logger = logger.With("region", cfg.Regional.AWSRegion)
+	logger = logger.With("region", cfg.Regional.AWSRegion, "bundle_hash", authorizer.BundleHash())
 
 	// Create handlers
 	healthHandler := apphandlers.NewHealthHandler(logger)
@@ -119,6 +119,7 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 	clusterRouter.HandleFunc("", clusterHandler.List).Methods(http.MethodGet)
 	clusterRouter.HandleFunc("", clusterHandler.Create).Methods(http.MethodPost)
 	clusterRouter.HandleFunc("/{id}", clusterHandler.Get).Methods(http.MethodGet)
+	clusterRouter.HandleFunc("/{id}/labels", clusterHandler.Labels).Methods(http.MethodGet, http.MethodPatch)
 	clusterRouter.HandleFunc("/{id}", clusterHandler.Update).Methods(http.MethodPatch, http.MethodPut)
 	clusterRouter.HandleFunc("/{id}", clusterHandler.Delete).Methods(http.MethodDelete)
 
@@ -127,6 +128,7 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 	nodePoolRouter.HandleFunc("", nodePoolHandler.List).Methods(http.MethodGet)
 	nodePoolRouter.HandleFunc("", nodePoolHandler.Create).Methods(http.MethodPost)
 	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Get).Methods(http.MethodGet)
+	nodePoolRouter.HandleFunc("/{id}/labels", nodePoolHandler.Labels).Methods(http.MethodGet, http.MethodPatch)
 	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Update).Methods(http.MethodPatch, http.MethodPut)
 	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Delete).Methods(http.MethodDelete)
 
@@ -135,6 +137,7 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 	oidcConfigRouter.HandleFunc("", oidcConfigHandler.List).Methods(http.MethodGet)
 	oidcConfigRouter.HandleFunc("", oidcConfigHandler.Create).Methods(http.MethodPost)
 	oidcConfigRouter.HandleFunc("/{id}", oidcConfigHandler.Get).Methods(http.MethodGet)
+	oidcConfigRouter.HandleFunc("/{id}/labels", oidcConfigHandler.Labels).Methods(http.MethodGet, http.MethodPatch)
 	oidcConfigRouter.HandleFunc("/{id}", oidcConfigHandler.Delete).Methods(http.MethodDelete)
 
 	// DNSReservation routes
@@ -142,6 +145,7 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 	dnsReservationRouter.HandleFunc("", dnsReservationHandler.List).Methods(http.MethodGet)
 	dnsReservationRouter.HandleFunc("", dnsReservationHandler.Create).Methods(http.MethodPost)
 	dnsReservationRouter.HandleFunc("/{id}", dnsReservationHandler.Get).Methods(http.MethodGet)
+	dnsReservationRouter.HandleFunc("/{id}/labels", dnsReservationHandler.Labels).Methods(http.MethodGet, http.MethodPatch)
 	dnsReservationRouter.HandleFunc("/{id}", dnsReservationHandler.Delete).Methods(http.MethodDelete)
 
 	// Health and info routes on API server (no auth required)

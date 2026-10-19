@@ -104,7 +104,6 @@ func TestAuthzHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(output, "authz-config.json")
-	authzWriteFile(t, configPath, bundle)
 
 	db := testinfra.StartPostgres(t)
 	start := func(t *testing.T, name string) *authzProcess {
@@ -123,6 +122,20 @@ func TestAuthzHTTP(t *testing.T) {
 	authzSeedClusters(t, store)
 	earlier, fault := authzMarkLateFault(t, store)
 	earlierID, faultID := string(earlier.UID), string(fault.UID)
+	// Exercise the deployed-test policy with exact identities from the disposable store.
+	policy, err := os.ReadFile("../e2e-platform-monitoring/testdata/authz-error.cedar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := strings.NewReplacer("@@ACCOUNT_ID@@", authzAccount, "@@REGION@@", authzRegion,
+		"@@RESOURCE_UID@@", faultID, "@@RUN_ID@@", authzFaultValue).Replace(string(policy))
+	encodedPolicy, err := json.Marshal(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle = bytes.ReplaceAll(bundle, []byte(`"@@RUNTIME_FAULT_POLICY@@"`), encodedPolicy)
+	bundle = bytes.ReplaceAll(bundle, []byte("@@BLUE_CLUSTER_UID@@"), []byte(authzStoredClusters[1].id))
+	authzWriteFile(t, configPath, bundle)
 	process := start(t, "initial")
 	t.Cleanup(process.stop)
 	if !t.Run("infrastructure", func(t *testing.T) {
@@ -188,7 +201,7 @@ func TestAuthzHTTP(t *testing.T) {
 		})
 	}
 
-	t.Run("runtime policy earlier item allow", func(t *testing.T) {
+	t.Run("runtime policy ignores matching label on another UID", func(t *testing.T) {
 		response := authzMeasuredGet(t, process, authzClustersPath+"/"+earlier.Name, authzUser("error-fixture"), authzAccount, "DescribeCluster", "allow")
 		authzAssertStatus(t, response, http.StatusOK)
 		var cluster public.Cluster
@@ -230,10 +243,10 @@ func TestAuthzHTTP(t *testing.T) {
 			if err != nil || len(log) < len(beforeLog) {
 				t.Fatalf("read request failure log: %v", err)
 			}
-			revision := fmt.Sprintf("%x", sha256.Sum256(bundle))
-			authzAssertFailureLog(t, log[len(beforeLog):], tc.operation, revision)
-			if bytes.Contains(response.Body, []byte(revision)) {
-				t.Error("failure response exposed configuration revision")
+			bundleHash := fmt.Sprintf("%x", sha256.Sum256(bundle))
+			authzAssertFailureLog(t, log[len(beforeLog):], tc.operation, bundleHash)
+			if bytes.Contains(response.Body, []byte(bundleHash)) {
+				t.Error("failure response exposed configuration bundle hash")
 			}
 			t.Logf("%s HTTP %d body %s", tc.operation, response.StatusCode, response.Body)
 		})
@@ -396,7 +409,8 @@ func authzSeedClusters(t *testing.T, store client.Client) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	for i, fixture := range authzStoredClusters {
-		labels := map[string]string{authzAccountLabel: fixture.account}
+		// A copied fault label must not extend the test policy beyond its target UID.
+		labels := map[string]string{authzAccountLabel: fixture.account, authzFaultLabel: authzFaultValue}
 		if fixture.team != "" {
 			labels[authzTeamLabel] = fixture.team
 		}
@@ -566,18 +580,19 @@ func authzAssertRejected(t *testing.T, process *authzProcess) {
 	}
 }
 
-func authzAssertFailureLog(t *testing.T, log []byte, operation, revision string) {
+func authzAssertFailureLog(t *testing.T, log []byte, operation, bundleHash string) {
 	t.Helper()
 	decoder := json.NewDecoder(bytes.NewReader(log))
 	failures := 0
 	for decoder.More() {
 		var entry struct {
 			Message    string `json:"msg"`
+			BundleHash string `json:"bundle_hash"`
 			Operation  string `json:"operation"`
 			Stage      string `json:"stage"`
 			Cause      string `json:"cause"`
 			Provenance []struct {
-				DiagnosticID, PolicyID, PolicyRevision, AttachmentID string
+				DiagnosticID, PolicyID, BundleHash, AttachmentID string
 			}
 			Diagnostics []struct {
 				Policy   string `json:"policy"`
@@ -594,13 +609,13 @@ func authzAssertFailureLog(t *testing.T, log []byte, operation, revision string)
 			continue
 		}
 		failures++
-		if entry.Operation != operation || entry.Stage != "evaluation" || entry.Cause != "cedar evaluation diagnostics" || len(entry.Provenance) != 1 || len(entry.Diagnostics) != 1 {
+		if entry.BundleHash != bundleHash || entry.Operation != operation || entry.Stage != "evaluation" || entry.Cause != "cedar evaluation diagnostics" || len(entry.Provenance) != 1 || len(entry.Diagnostics) != 1 {
 			t.Fatalf("failure log lost evaluation cause or unique provenance: %s", log)
 		}
 		provenance := entry.Provenance[0]
 		diagnostic := entry.Diagnostics[0]
-		if provenance.DiagnosticID != "attachment/error-forbid" || provenance.PolicyID != "runtime-fault" || provenance.AttachmentID != "error-forbid" || provenance.PolicyRevision != revision || diagnostic.Policy != provenance.DiagnosticID || !strings.Contains(diagnostic.Message, "integer overflow") || diagnostic.Position.Line < 1 {
-			t.Fatalf("failure log lost actual attachment revision or native overflow diagnostic: %s", log)
+		if provenance.DiagnosticID != "attachment/error-forbid" || provenance.PolicyID != "runtime-fault" || provenance.AttachmentID != "error-forbid" || provenance.BundleHash != bundleHash || diagnostic.Policy != provenance.DiagnosticID || !strings.Contains(diagnostic.Message, "integer overflow") || diagnostic.Position.Line < 1 {
+			t.Fatalf("failure log lost actual attachment bundle hash or native overflow diagnostic: %s", log)
 		}
 	}
 	if failures != 1 {

@@ -266,6 +266,9 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// internalPoolID is retained as a service-set implementation field; FleetDB UID
 	// is the public object identity.
 	internalPoolID := uuid.New().String()
+	if !validateCreateLabels(w, req.Labels, h.logger) {
+		return
+	}
 	cr := seaplanedb.PublicToInternalNodePool(&req, accountID, internalPoolID)
 	cr.Spec.NodePool.ClusterName = cluster.Name
 	cr.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(cluster, seaplanev1alpha1.GroupVersion.WithKind("Cluster"))}
@@ -362,6 +365,8 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	// Retry conflicts like upstream. Each attempt re-reads, re-validates, and
 	// re-authorizes, so no write uses a snapshot that was not checked.
+	r, finish := withAuthzOutcome(r)
+	defer finish()
 	var updated *seaplanev1alpha1.NodePool
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var attemptErr error

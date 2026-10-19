@@ -258,6 +258,9 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("fast-path issuer URL uniqueness check failed; falling through to async reservation", "error", err, "account_id", accountID, "config_name", configName)
 	}
 
+	if !validateCreateLabels(w, req.Labels, h.logger) {
+		return
+	}
 	cr := seaplanedb.PublicToInternalOidcConfig(&req, accountID)
 
 	if !authorizeResource(w, r, h.authorizer, h.logger, authz.CreateOIDCConfig, candidateResource(h.oidcConfigResource(cr), cr.Name)) {

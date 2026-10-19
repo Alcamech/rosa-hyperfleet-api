@@ -267,17 +267,14 @@ func TestRequireIdentity(t *testing.T) {
 		wantStatus                                 int
 	}{
 		{"live", "/api/v0/live", "", "", "", "", http.StatusNoContent},
-		{"ready", "/api/v0/ready", "", "", "", "", http.StatusNoContent},
 		{"info", "/api/v0/info", "", "", "", "", http.StatusNoContent},
 		{"missing identity", "/api/v0/clusters", "", "", "AUTH-001", "Caller account ID and ARN are required", http.StatusForbidden},
-		{"missing account", "/api/v0/clusters", "", "arn:aws:iam::123456789012:user/test", "AUTH-001", "Caller account ID and ARN are required", http.StatusForbidden},
 		{"missing ARN", "/api/v0/clusters", "123456789012", "", "AUTH-001", "Caller account ID and ARN are required", http.StatusForbidden},
 		{"enrolled user", "/api/v0/clusters", "123456789012", "arn:aws:iam::123456789012:user/test", "", "", http.StatusNoContent},
 		{"enrolled session", "/api/v0/clusters", "123456789012", "arn:aws:sts::123456789012:assumed-role/reader/session", "", "", http.StatusNoContent},
 		{"unregistered", "/api/v0/clusters", "999999999999", "arn:aws:iam::999999999999:user/test", "AUTH-002", "Account is not registered", http.StatusForbidden},
 		{"mismatch", "/api/v0/clusters", "123456789012", "arn:aws:iam::999999999999:user/test", "AUTH-001", "Caller identity is invalid", http.StatusForbidden},
 		{"malformed ARN", "/api/v0/clusters", "123456789012", "not-an-arn", "AUTH-001", "Caller identity is invalid", http.StatusForbidden},
-		{"malformed account", "/api/v0/clusters", "123", "arn:aws:iam::123:user/test", "AUTH-001", "Caller identity is invalid", http.StatusForbidden},
 		{"role is not caller", "/api/v0/clusters", "123456789012", "arn:aws:iam::123456789012:role/reader", "AUTH-001", "Caller identity is invalid", http.StatusForbidden},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

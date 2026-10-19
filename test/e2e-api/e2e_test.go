@@ -97,6 +97,28 @@ var _ = Describe("Platform API", Ordered, func() {
 		Expect(response.Headers).To(HaveKey("X-Amz-Apigw-Id"))
 	})
 
+	It("should deny customer ManagementCluster access", Label("authz"), func() {
+		// Assert the API's typed denial, not an unrelated gateway rejection.
+		for _, method := range []string{http.MethodGet, http.MethodPost} {
+			var body interface{}
+			if method == http.MethodPost {
+				body = map[string]string{"id": "authz-denied-customer", "accountId": accountID, "region": "us-east-1"}
+			}
+			response, err := apiClient.Do(method, "/api/v0/management_clusters", body, accountID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(response.StatusCode).To(Equal(http.StatusForbidden))
+			var status struct {
+				Kind    string
+				Code    int
+				Message string
+			}
+			Expect(json.Unmarshal(response.Body, &status)).To(Succeed())
+			Expect(status.Kind).To(Equal("Status"))
+			Expect(status.Code).To(Equal(http.StatusForbidden))
+			Expect(status.Message).To(Equal("AUTHZ-DENIED-001: Access denied"))
+		}
+	})
+
 	It("should be able to list all the registered management clusters", func() {
 		response := getAndExpectOK(operatorClient, "/api/v0/management_clusters", accountID, "")
 		Expect(response.StatusCode).To(Equal(http.StatusOK))

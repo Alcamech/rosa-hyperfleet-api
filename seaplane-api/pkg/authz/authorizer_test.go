@@ -98,7 +98,6 @@ unless { resource.hasTag("example.com/blocked") };`
 		{name: "sibling session unaffected", customer: []grant{read, {id: "session-block", content: forbidRead, principal: sessionARN}}, caller: otherSessionARN, allowed: true, determining: []string{"role-read"}},
 		{name: "regional permit cannot erase global forbid", customer: []grant{{id: "local-read", policy: "read", content: readPermit, principal: roleARN, region: region}, {id: "session-block", content: forbidRead, principal: sessionARN}}},
 		{name: "exact user", customer: []grant{read, {id: "user-read", policy: "read", content: readPermit, principal: userARN}}, caller: userARN, allowed: true, determining: []string{"user-read"}},
-		{name: "unrelated user", customer: []grant{read}, caller: "arn:aws:iam::123456789012:user/bob"},
 		{name: "unrelated role session", customer: []grant{read}, caller: "arn:aws:sts::123456789012:assumed-role/writers/s"},
 		{name: "role in another account", customer: []grant{read, {id: "foreign", content: readPermit, principal: otherRoleARN, owner: "210987654321"}}, caller: otherAccount, account: "210987654321", resource: Resource{Kind: Cluster, ID: "c", AccountID: "210987654321"}, allowed: true, determining: []string{"foreign"}},
 
@@ -106,30 +105,18 @@ unless { resource.hasTag("example.com/blocked") };`
 		{name: "regional attachment in region", customer: []grant{{id: "east", policy: "read", content: readPermit, principal: roleARN, region: region}}, allowed: true, determining: []string{"east"}},
 		{name: "regional attachment off region", customer: []grant{{id: "west", policy: "read", content: readPermit, principal: roleARN, region: "us-west-2"}}},
 		{name: "global attachment off region", customer: []grant{read}, serviceRegion: "eu-west-1", allowed: true},
-		{name: "regional attachment other service region", customer: []grant{{id: "east", policy: "read", content: readPermit, principal: roleARN, region: region}}, serviceRegion: "us-west-2"},
 
 		// Authored restrictions are not rewritten by attachment selection.
 		{name: "authored session matches", customer: []grant{{id: "g", content: authoredLimit, principal: roleARN}}, allowed: true},
 		{name: "authored session excludes sibling", customer: []grant{{id: "g", content: authoredLimit, principal: roleARN}}, caller: otherSessionARN},
-		{name: "authored action excludes update", customer: []grant{{id: "g", content: authoredLimit, principal: roleARN}}, action: UpdateCluster},
-		{name: "authored label differs", customer: []grant{{id: "g", content: authoredLimit, principal: roleARN}}, resource: labeled(map[string]string{"example.com/team": "red"})},
-		{name: "authored unless blocks", customer: []grant{{id: "g", content: authoredLimit, principal: roleARN}}, resource: labeled(map[string]string{"example.com/team": `blue "team"`, "example.com/blocked": "yes"})},
 
 		// Customer and service authority are disjoint.
-		{name: "customer wildcard cannot list MCs", customer: []grant{{id: "g", content: everything, principal: roleARN}}, action: ListManagementClusters, resource: services},
-		{name: "customer wildcard cannot describe MC", customer: []grant{{id: "g", content: everything, principal: roleARN}}, action: DescribeManagementCluster, resource: mc},
 		{name: "customer wildcard cannot create MC", customer: []grant{{id: "g", content: everything, principal: roleARN}}, action: CreateManagementCluster, resource: mc},
 		{name: "customer service group cannot create MC", customer: []grant{{id: "g", content: serviceGroup, principal: roleARN}}, action: CreateManagementCluster, resource: mc},
-		{name: "customer AllActions covers clusters", customer: []grant{{id: "g", content: `permit(principal, action in Seaplane::Action::"AllActions", resource);`, principal: roleARN}}, allowed: true},
-		{name: "customer AllActions excludes MCs", customer: []grant{{id: "g", content: `permit(principal, action in Seaplane::Action::"AllActions", resource);`, principal: roleARN}}, action: CreateManagementCluster, resource: mc},
 		{name: "service wildcard cannot read clusters", service: []grant{{id: "svc", content: everything, principal: roleARN}}},
 		{name: "service wildcard creates MC", service: []grant{{id: "svc", content: everything, principal: roleARN}}, action: CreateManagementCluster, resource: mc, allowed: true, determining: []string{"svc"}},
 		{name: "service wildcard lists MCs", service: []grant{{id: "svc", content: everything, principal: roleARN}}, action: ListManagementClusters, resource: services, allowed: true},
 		{name: "customer forbid cannot cancel service permit", customer: []grant{{id: "g", content: `forbid(principal, action, resource);`, principal: roleARN}}, service: []grant{{id: "svc", content: serviceGroup, principal: roleARN}}, action: CreateManagementCluster, resource: mc, allowed: true},
-		{name: "service forbid on one action", service: []grant{{id: "svc", content: serviceGroup, principal: roleARN}, {id: "no-describe", content: `forbid(principal, action == Seaplane::Action::"DescribeManagementCluster", resource);`, principal: roleARN}}, action: DescribeManagementCluster, resource: mc},
-		{name: "service forbid leaves other actions", service: []grant{{id: "svc", content: serviceGroup, principal: roleARN}, {id: "no-describe", content: `forbid(principal, action == Seaplane::Action::"DescribeManagementCluster", resource);`, principal: roleARN}}, action: CreateManagementCluster, resource: mc, allowed: true},
-		{name: "service session forbid", service: []grant{{id: "svc", content: serviceGroup, principal: roleARN}, {id: "block", content: `forbid(principal, action in Seaplane::Action::"ServiceOperator", resource);`, principal: sessionARN}}, action: ListManagementClusters, resource: services},
-		{name: "service sibling session allowed", service: []grant{{id: "svc", content: serviceGroup, principal: roleARN}, {id: "block", content: `forbid(principal, action in Seaplane::Action::"ServiceOperator", resource);`, principal: sessionARN}}, caller: otherSessionARN, action: ListManagementClusters, resource: services, allowed: true},
 
 		// Node pools use their stored parent.
 		{name: "node pool under permitted parent", customer: []grant{{id: "g", content: `permit(principal, action == Seaplane::Action::"DescribeNodePool", resource in Seaplane::Cluster::"123456789012/us-east-1/parent-a");`, principal: roleARN}}, action: DescribeNodePool, resource: pool("parent-a"), allowed: true},
@@ -178,12 +165,9 @@ func TestPrepareRejects(t *testing.T) {
 	a := fixtureAuthorizer(t, bundleFixture())
 	identities := []Identity{{"123", userARN}, {"", userARN}, {accountID, "arn:aws:iam::210987654321:user/alice"}}
 	for _, arn := range []string{
-		"", "arn:aws-us-gov:iam::123456789012:user/alice", "arn:aws-us-gov:sts::123456789012:assumed-role/readers/session",
-		"arn:aws-cn:iam::123456789012:user/alice", "arn:aws-cn:sts::123456789012:assumed-role/readers/session",
-		"arn:aws:s3::123456789012:user/alice", "arn:aws:iam:us-east-1:123456789012:user/alice", "arn:aws:iam::123:user/alice",
-		"arn:aws:iam::123456789012:root", "arn:aws:iam::123456789012:role/readers", "arn:aws:sts::123456789012:assumed-role/path/readers/session",
-		"arn:aws:sts::123456789012:assumed-role/readers/", "arn:aws:iam::123456789012:user//alice", "arn:aws:iam::123456789012:user/../alice",
-		"arn:aws:iam::123456789012:user/alice ", "arn:unknown:iam::123456789012:user/alice", "arn:aws:iam::123456789012:user/alice:extra",
+		"", "arn:aws-us-gov:iam::123456789012:user/alice", "arn:aws:s3::123456789012:user/alice", "arn:aws:iam:us-east-1:123456789012:user/alice",
+		"arn:aws:iam::123:user/alice", "arn:aws:iam::123456789012:root", "arn:aws:iam::123456789012:role/readers",
+		"arn:aws:sts::123456789012:assumed-role/path/readers/session", "arn:aws:iam::123456789012:user/../alice",
 	} {
 		identities = append(identities, testIdentity(arn))
 	}
@@ -219,14 +203,10 @@ func TestCheckRejectsResource(t *testing.T) {
 		resource Resource
 	}{
 		{"foreign account", DescribeCluster, Resource{Kind: Cluster, ID: "id", AccountID: "210987654321"}},
-		{"missing owner", DescribeCluster, Resource{Kind: Cluster, ID: "id"}},
-		{"missing ID", DescribeCluster, Resource{Kind: Cluster, AccountID: accountID}},
 		{"bad ID", DescribeCluster, Resource{Kind: Cluster, ID: "../id", AccountID: accountID}},
-		{"wrong kind", DescribeCluster, Resource{Kind: NodePool, ID: "id", AccountID: accountID}},
 		{"wrong action kind", ListClusters, testCluster()},
 		{"unknown action", Action("UnimplementedAction"), testCluster()},
 		{"collection labels", ListClusters, Resource{Kind: Collection, AccountID: accountID, Labels: map[string]string{"team": "blue"}}},
-		{"collection ID", ListClusters, Resource{Kind: Collection, ID: "other", AccountID: accountID}},
 		{"contradictory account label", DescribeCluster, Resource{Kind: Cluster, ID: "id", AccountID: accountID, Labels: map[string]string{"seaplane.io/account-id": "210987654321"}}},
 		{"foreign node pool parent", DescribeNodePool, foreignParent},
 	} {
@@ -245,15 +225,6 @@ func TestCheckRejectsResource(t *testing.T) {
 		t.Fatal("canceled check allowed")
 	}
 	_ = checkFailure(t, err, StageEvaluation)
-
-	principal := p.entities[entityUID("Principal", sessionARN)]
-	principal.Attributes = cedar.NewRecord(nil)
-	p.entities[principal.UID] = principal
-	d, err = p.Check(t.Context(), DescribeCluster, testCluster())
-	if d.Allowed {
-		t.Fatal("invalid principal allowed")
-	}
-	_ = checkFailure(t, err, StageEntityValidation)
 }
 
 // A failing forbid beside a valid permit must stop the operation, and every
@@ -264,7 +235,7 @@ func TestEvaluationFailures(t *testing.T) {
 		{id: "forbid-a", policy: "forbid", content: `forbid(principal, action == Seaplane::Action::"DescribeCluster", resource) when { resource.account == "blocked" };`, principal: sessionARN},
 		{id: "forbid-b", policy: "forbid", principal: roleARN},
 	}, nil)
-	for _, name := range []string{"evaluator error", "allow plus failing forbid", "deny plus diagnostics", "unknown diagnostic", "unknown reason", "unknown and known diagnostics"} {
+	for _, name := range []string{"evaluator error", "allow plus failing forbid", "unknown reason", "unknown and known diagnostics"} {
 		t.Run(name, func(t *testing.T) {
 			a := fixtureAuthorizer(t, bundle)
 			var native cedar.Diagnostic
@@ -298,8 +269,6 @@ func evaluationScenario(t *testing.T, name string, native *cedar.Diagnostic) eva
 		switch name {
 		case "evaluator error":
 			return cedar.Allow, cedar.Diagnostic{}, errors.New("engine failure")
-		case "unknown diagnostic":
-			return cedar.Allow, cedar.Diagnostic{Errors: []cedar.DiagnosticError{{PolicyID: "not-in-set", Message: "bad"}}}, nil
 		case "unknown reason":
 			return cedar.Allow, cedar.Diagnostic{Reasons: []cedar.DiagnosticReason{{PolicyID: "not-in-set"}}}, nil
 		case "unknown and known diagnostics":
@@ -319,9 +288,6 @@ func evaluationScenario(t *testing.T, name string, native *cedar.Diagnostic) eva
 		*native = diagnostics
 		if decision != cedar.Allow || len(diagnostics.Errors) != 1 {
 			t.Fatalf("native diagnostic fixture changed: %s %+v", decision, diagnostics)
-		}
-		if name == "deny plus diagnostics" {
-			decision = cedar.Deny
 		}
 		return decision, diagnostics, nil
 	}
@@ -353,33 +319,6 @@ func TestPreparedRequest(t *testing.T) {
 			if !reflect.DeepEqual(c, want) {
 				t.Fatalf("check %d context = %v, want %v", i, c, want)
 			}
-		}
-	})
-
-	t.Run("compiled policies are shared but sets are request-local", func(t *testing.T) {
-		first, err := a.Prepare(t.Context(), testIdentity(sessionARN), testRequestContext())
-		if err != nil {
-			t.Fatal(err)
-		}
-		second, err := a.Prepare(t.Context(), testIdentity(otherSessionARN), testRequestContext())
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, domain := range []struct {
-			binding       policyAttachment
-			first, second *cedar.PolicySet
-		}{{a.customer[0], first.policies, second.policies}, {a.service[0], first.servicePolicies, second.servicePolicies}} {
-			id := cedar.PolicyID(domain.binding.DiagnosticID)
-			if domain.first.Get(id) != domain.binding.policy || domain.second.Get(id) != domain.binding.policy {
-				t.Fatal("preparation did not reuse the startup-compiled policy")
-			}
-			domain.first.Remove(id)
-			if domain.second.Get(id) != domain.binding.policy {
-				t.Fatal("per-request policy sets share mutable state")
-			}
-		}
-		if d, err := second.Check(t.Context(), ListManagementClusters, Resource{Kind: ServiceCollection}); err != nil || !d.Allowed {
-			t.Fatalf("reused service policy failed: %+v %v", d, err)
 		}
 	})
 

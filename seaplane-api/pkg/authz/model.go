@@ -15,6 +15,9 @@ type Identity struct {
 type Action string
 
 const (
+	ListLabelsForResource     Action = "ListLabelsForResource"
+	LabelResource             Action = "LabelResource"
+	UnlabelResource           Action = "UnlabelResource"
 	ListClusters              Action = "ListClusters"
 	DescribeCluster           Action = "DescribeCluster"
 	CreateCluster             Action = "CreateCluster"
@@ -75,12 +78,12 @@ type Resource struct {
 	RegistrationRegion string
 }
 
-// Provenance identifies the attachment and file revision behind a decision.
+// Provenance identifies the policy, attachment, and startup bundle hash behind a decision.
 type Provenance struct {
-	DiagnosticID   string
-	PolicyID       string
-	PolicyRevision string
-	AttachmentID   string
+	DiagnosticID string
+	PolicyID     string
+	BundleHash   string
+	AttachmentID string
 }
 
 type Decision struct {

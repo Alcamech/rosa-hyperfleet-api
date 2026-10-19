@@ -1609,6 +1609,7 @@
     "fieldPath": "spec.nodePool.taints",
     "writeMode": "mutable",
     "hidden": true,
+    "resettable": true,
     "ownerType": "NodePool",
     "ownerGVK": "seaplane.io/v1alpha1.NodePool"
   },

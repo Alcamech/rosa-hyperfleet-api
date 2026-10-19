@@ -26,6 +26,11 @@ namespace Seaplane {
     action OIDCConfigAdmin in [AllActions];
     action DNSReservationAdmin in [AllActions];
     action ServiceOperator;
+    action LabelAdmin in [AllActions];
+
+    action ListLabelsForResource in [ReadOnly, AllActions] appliesTo { principal: [Principal, Role], resource: [Cluster, NodePool, OIDCConfig, DNSReservation], context: RequestContext };
+    action LabelResource in [LabelAdmin, AllActions] appliesTo { principal: [Principal, Role], resource: [Cluster, NodePool, OIDCConfig, DNSReservation], context: RequestContext };
+    action UnlabelResource in [LabelAdmin, AllActions] appliesTo { principal: [Principal, Role], resource: [Cluster, NodePool, OIDCConfig, DNSReservation], context: RequestContext };
 
     // cedar-go v1.8.0 validates action entities against the complete parent closure.
     action ListClusters in [ReadOnly, AllActions] appliesTo { principal: [Principal, Role], resource: Collection, context: RequestContext };

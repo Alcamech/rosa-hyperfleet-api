@@ -43,7 +43,7 @@ type policyAttachment struct {
 }
 
 // LoadConfig validates a startup snapshot for a fixed service region.
-// The file hash identifies its revision. Requests never reread the file.
+// The SHA-256 hash identifies the exact file contents. Requests never reread the file.
 func LoadConfig(path, serviceRegion string) (*Authorizer, error) {
 	if !regionPattern.MatchString(serviceRegion) {
 		return nil, newFailure(StageParsing, fmt.Errorf("invalid service region"))
@@ -56,13 +56,13 @@ func LoadConfig(path, serviceRegion string) (*Authorizer, error) {
 	if err != nil {
 		return nil, newFailure(StageResolution, err)
 	}
-	revision := fmt.Sprintf("%x", sha256.Sum256(content))
+	bundleHash := fmt.Sprintf("%x", sha256.Sum256(content))
 	bundle, err := decodeBundle(content)
 	if err != nil {
 		return nil, newFailure(StageParsing, err)
 	}
-	authorizer := &Authorizer{region: serviceRegion, accounts: make(map[string]struct{}), model: model, validator: v, evaluate: nativeEvaluate}
-	if err := authorizer.addBundle(bundle, revision); err != nil {
+	authorizer := &Authorizer{bundleHash: bundleHash, region: serviceRegion, accounts: make(map[string]struct{}), model: model, validator: v, evaluate: nativeEvaluate}
+	if err := authorizer.addBundle(bundle, bundleHash); err != nil {
 		return nil, err
 	}
 	return authorizer, nil
@@ -70,7 +70,7 @@ func LoadConfig(path, serviceRegion string) (*Authorizer, error) {
 
 // addBundle validates all records, including off-region and unattached material.
 // Customer and service-operator policies and attachments stay separate.
-func (a *Authorizer) addBundle(bundle configBundle, revision string) error {
+func (a *Authorizer) addBundle(bundle configBundle, bundleHash string) error {
 	for _, account := range bundle.RegisteredAccounts {
 		if !accountPattern.MatchString(account) {
 			return newFailure(StageParsing, fmt.Errorf("invalid registered account %q", account))
@@ -96,7 +96,7 @@ func (a *Authorizer) addBundle(bundle configBundle, revision string) error {
 		}
 		policies := make(map[string]compiledPolicy, len(domain.policies))
 		for _, policy := range domain.policies {
-			provenance := Provenance{PolicyID: policy.ID, PolicyRevision: revision}
+			provenance := Provenance{PolicyID: policy.ID, BundleHash: bundleHash}
 			if !idPattern.MatchString(policy.ID) || !accountPattern.MatchString(policy.OwnerAccountID) {
 				return newFailure(StageParsing, fmt.Errorf("invalid policy ID or owner"), provenance)
 			}
@@ -111,7 +111,7 @@ func (a *Authorizer) addBundle(bundle configBundle, revision string) error {
 		}
 		ids := make(map[string]struct{}, len(domain.attachments))
 		for _, attachment := range domain.attachments {
-			provenance := Provenance{DiagnosticID: domain.prefix + attachment.ID, PolicyID: attachment.PolicyID, PolicyRevision: revision, AttachmentID: attachment.ID}
+			provenance := Provenance{DiagnosticID: domain.prefix + attachment.ID, PolicyID: attachment.PolicyID, BundleHash: bundleHash, AttachmentID: attachment.ID}
 			if !idPattern.MatchString(attachment.ID) {
 				return newFailure(StageBinding, fmt.Errorf("invalid attachment ID"), provenance)
 			}

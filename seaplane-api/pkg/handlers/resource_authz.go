@@ -38,7 +38,7 @@ func (h *NodePoolHandler) nodePoolResource(ctx context.Context, np *v1.NodePool)
 func (h *NodePoolHandler) authorizeNodePool(w http.ResponseWriter, r *http.Request, operation authz.Action, np *v1.NodePool, additional ...authz.Action) bool {
 	resource, err := h.nodePoolResource(r.Context(), np)
 	if err != nil {
-		attempt := authz.DefaultMetrics.Start(operation)
+		attempt := startResourceAuthz(r, operation)
 		writeResourceAuthzError(w, r, attempt, operation, err, h.logger)
 		return false
 	}

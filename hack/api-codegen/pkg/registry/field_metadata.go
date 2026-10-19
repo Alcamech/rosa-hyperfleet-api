@@ -1654,11 +1654,12 @@ var FieldRegistry = TypedFieldRegistry{
 			OwnerGVK:  "seaplane.io/v1alpha1.NodePool",
 		},
 		"spec.nodePool.taints": {
-			FieldPath: "spec.nodePool.taints",
-			WriteMode: Mutable,
-			Hidden:    true,
-			OwnerType: "NodePool",
-			OwnerGVK:  "seaplane.io/v1alpha1.NodePool",
+			FieldPath:  "spec.nodePool.taints",
+			WriteMode:  Mutable,
+			Hidden:     true,
+			Resettable: true,
+			OwnerType:  "NodePool",
+			OwnerGVK:   "seaplane.io/v1alpha1.NodePool",
 		},
 		"spec.nodePool.tuningConfig": {
 			FieldPath: "spec.nodePool.tuningConfig",
