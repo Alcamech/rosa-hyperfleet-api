@@ -373,7 +373,7 @@ func TestCustomerObjectMeta_SetsAccountNamespaceAndProtectsMetadata(t *testing.T
 		ResourceVersion:   "client-rv",
 		CreationTimestamp: created,
 		Labels: map[string]string{
-			"app":                                  "test",
+			"app":                                "test",
 			"seaplane.io/account-id":             "attacker",
 			"seaplane.io/claimed-by-cluster-uid": "attacker-cluster",
 		},
