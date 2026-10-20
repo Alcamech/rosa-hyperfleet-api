@@ -4,12 +4,12 @@ This repository builds container images on Konflux (`rosa-tenant` on `kflux-prd-
 
 | Component             | Quay repository                                                 | PipelineRun names                                                              |
 | --------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `platform-api`        | `quay.io/redhat-user-workloads/rosa-tenant/platform-api`        | `rosa-seaplane-api-on-pull-request`, `rosa-seaplane-api-on-push`           |
-| `seaplane-operator` | `quay.io/redhat-user-workloads/rosa-tenant/seaplane-operator` | `rosa-seaplane-operator-on-pull-request`, `rosa-seaplane-operator-on-push` |
+| `rosa-seaplane-api`      | `quay.io/redhat-user-workloads/rosa-tenant/rosa-seaplane-api`      | `rosa-seaplane-api-on-pull-request`, `rosa-seaplane-api-on-push`           |
+| `rosa-seaplane-operator` | `quay.io/redhat-user-workloads/rosa-tenant/rosa-seaplane-operator` | `rosa-seaplane-operator-on-pull-request`, `rosa-seaplane-operator-on-push` |
 
 Pull-request and push builds **share the same Quay repository** (one ImageRepository per component). That is expected Konflux behavior, not a separate “PR” vs “release” repo.
 
-Konflux **component** names in this repo (`rosa-seaplane-api`, `rosa-seaplane-operator`) differ from the **Quay image** names (`platform-api`, `seaplane-operator`).
+Each Quay repository is named after its Konflux **component** (`rosa-seaplane-api`, `rosa-seaplane-operator`).
 
 ## When pipelines run
 
@@ -20,7 +20,7 @@ Konflux **component** names in this repo (`rosa-seaplane-api`, `rosa-seaplane-op
 | `rosa-seaplane-operator-on-push`         | Push to `main` only when `seaplane-operator/`, `seaplane-db/`, or related Tekton/Containerfile paths change |
 | `rosa-seaplane-operator-on-pull-request` | Same path filter on pull requests                                                                               |
 
-A commit SHA tag for `seaplane-operator` exists on Quay **only if** that commit triggered the operator on-push (or on-pull-request) pipeline. A `platform-api`-only merge still produces a new `platform-api:<sha>` image on every push to `main`, but does not necessarily rebuild the operator image at that SHA.
+A commit SHA tag for `rosa-seaplane-operator` exists on Quay **only if** that commit triggered the operator on-push (or on-pull-request) pipeline. A `platform-api`-only merge still produces a new `rosa-seaplane-api:<sha>` image on every push to `main`, but does not necessarily rebuild the operator image at that SHA.
 
 ## Tag naming
 
@@ -64,11 +64,11 @@ Use this when updating deployment repos (for example `argocd/config/regional-clu
 
    ```yaml
    image:
-     repository: quay.io/redhat-user-workloads/rosa-tenant/platform-api
+     repository: quay.io/redhat-user-workloads/rosa-tenant/rosa-seaplane-api
      tag: "<full-commit-sha>"
    ```
 
-4. For operator images, use the `seaplane-operator` repository and the same SHA rules, but only at commits where the operator pipeline actually ran (see **When pipelines run** above).
+4. For operator images, use the `rosa-seaplane-operator` repository and the same SHA rules, but only at commits where the operator pipeline actually ran (see **When pipelines run** above).
 
 If e2e or regional tests fail after a change merges to `platform-api` on `main` but pins in `rosa-seaplane` still point at an older SHA, update the pin — pre-merge CI may have used a freshly built image while deployment values still point to an older image.
 
