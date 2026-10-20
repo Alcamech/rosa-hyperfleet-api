@@ -45,8 +45,8 @@ type IndexSpec struct{}
 //
 // A higher-level resource can derive the key or discover Indexes by owner UID.
 //
-// Callers commonly label entries with hyperfleet.io/account-id (owning AWS
-// account) for filtering and cleanup. Claims use hyperfleet.io/owner-uid to
+// Callers commonly label entries with seaplane.io/account-id (owning AWS
+// account) for filtering and cleanup. Claims use seaplane.io/owner-uid to
 // associate the Index with the database UID of their owning resource.
 type Index struct {
 	metav1.TypeMeta `json:",inline"`

@@ -1,0 +1,29 @@
+package reader
+
+import "github.com/openshift-online/rosa-seaplane-api/seaplane-db/internal/model"
+
+type EventType int
+
+const (
+	EventAdded EventType = iota
+	EventModified
+	EventDeleted
+)
+
+func (e EventType) String() string {
+	switch e {
+	case EventAdded:
+		return "ADDED"
+	case EventModified:
+		return "MODIFIED"
+	case EventDeleted:
+		return "DELETED"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+type Event struct {
+	Type     EventType
+	Resource model.Resource
+}

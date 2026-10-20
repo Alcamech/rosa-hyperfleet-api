@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -44,6 +45,7 @@ func TestConfigurationUsesLocalType(t *testing.T) {
 	t.Run("proxy configuration", func(t *testing.T) { assertProxyConfiguration(t, output) })
 	t.Run("kubelet configuration", func(t *testing.T) { assertKubeletConfiguration(t, output) })
 	t.Run("cluster autoscaling", func(t *testing.T) { assertClusterAutoscaling(t, output) })
+	t.Run("capabilities", func(t *testing.T) { assertCapabilities(t, output) })
 }
 
 func generateConfigurationSchema(t *testing.T) schemaOutput {
@@ -223,6 +225,93 @@ func assertClusterAutoscaling(t *testing.T, output schemaOutput) {
 	}
 	if _, found := hc.Properties["autoscaling"]; !found {
 		t.Error("autoscaling property not found in HostedClusterSpecPassthrough")
+	}
+}
+
+func assertCapabilities(t *testing.T, output schemaOutput) {
+	t.Helper()
+	// Capabilities must resolve to the local mirror type via $ref so the
+	// standalone HostedClusterSpecPassthrough schema is not collapsed to an
+	// opaque object.
+	hc, ok := output.Definitions["HostedClusterSpecPassthrough"]
+	if !ok {
+		t.Fatal("HostedClusterSpecPassthrough definition not found")
+	}
+	capsRef := hc.Properties["capabilities"].Ref
+	if capsRef == nil || *capsRef != "#/definitions/Capabilities" {
+		t.Fatalf("capabilities property must be a $ref to the Capabilities definition, got %v", capsRef)
+	}
+
+	caps, ok := output.Definitions["Capabilities"]
+	if !ok {
+		t.Fatal("Capabilities definition not found")
+	}
+	for _, list := range []string{"enabled", "disabled"} {
+		prop, found := caps.Properties[list]
+		if !found {
+			t.Errorf("expected visible property %q in Capabilities", list)
+			continue
+		}
+		if prop.Type != "array" {
+			t.Errorf("Capabilities.%s type = %q, want array", list, prop.Type)
+		}
+		if prop.MaxItems == nil || *prop.MaxItems != 25 {
+			t.Errorf("Capabilities.%s maxItems = %v, want 25", list, prop.MaxItems)
+		}
+		if prop.XListType == nil || *prop.XListType != "atomic" {
+			t.Errorf("Capabilities.%s list type = %v, want atomic", list, prop.XListType)
+		}
+		// The enum of allowed capability names must come from the upstream
+		// OptionalCapability type.
+		wantValues := map[string]bool{
+			`"ImageRegistry"`:     true,
+			`"openshift-samples"`: true,
+			`"Insights"`:          true,
+			`"baremetal"`:         true,
+			`"Console"`:           true,
+			`"NodeTuning"`:        true,
+			`"Ingress"`:           true,
+		}
+		if prop.Items == nil || prop.Items.Schema == nil {
+			t.Errorf("Capabilities.%s has no items schema", list)
+			continue
+		}
+		for _, value := range prop.Items.Schema.Enum {
+			delete(wantValues, string(value.Raw))
+		}
+		if len(wantValues) != 0 {
+			t.Errorf("Capabilities.%s enum is missing values: %v", list, wantValues)
+		}
+		// Per-list immutability CEL rule must survive the passthrough collapse.
+		foundImmutable := false
+		for _, rule := range prop.XValidations {
+			if rule.Rule == "self == oldSelf" {
+				foundImmutable = true
+			}
+		}
+		if !foundImmutable {
+			t.Errorf("Capabilities.%s is missing the self == oldSelf immutability rule", list)
+		}
+	}
+	// The Ingress-requires-Console rule applies to the disabled list only.
+	foundIngressRule := false
+	for _, rule := range caps.Properties["disabled"].XValidations {
+		if strings.Contains(rule.Rule, "Ingress") {
+			foundIngressRule = true
+		}
+	}
+	if !foundIngressRule {
+		t.Error("Capabilities.disabled is missing the Ingress/Console validation rule")
+	}
+	// Cross-field rule lives on the object itself.
+	foundCrossField := false
+	for _, rule := range caps.XValidations {
+		if strings.Contains(rule.Rule, "self.disabled") {
+			foundCrossField = true
+		}
+	}
+	if !foundCrossField {
+		t.Error("Capabilities is missing the enabled/disabled cross-field validation rule")
 	}
 }
 

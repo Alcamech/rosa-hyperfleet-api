@@ -70,7 +70,7 @@ const responseProjectionFixture = `package fixture
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-// +hyperfleet:rest-response-projection=PROJECTION
+// +seaplane:rest-response-projection=PROJECTION
 
 // Cluster is a fixture resource for response projection generation.
 type Cluster struct {

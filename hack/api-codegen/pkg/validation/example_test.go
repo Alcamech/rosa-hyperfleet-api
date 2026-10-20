@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/featuregate"
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/validation"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/featuregate"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/validation"
 )
 
 // Example of validating a cluster create request
@@ -95,7 +95,7 @@ func ExampleValidator_Validate_featureGate() {
 	fmt.Printf("Error: %v\n", err)
 	// Output:
 	// Error: validation failed:
-	//   field spec.hostedCluster.configuration.kubelet.registryPullQPS: requires feature gate HyperFleetKubeletAdvanced which is not enabled in Default feature set
+	//   field spec.hostedCluster.configuration.kubelet.registryPullQPS: requires feature gate SeaplaneKubeletAdvanced which is not enabled in Default feature set
 }
 
 // Example of feature gate allowing access

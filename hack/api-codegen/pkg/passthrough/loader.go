@@ -255,7 +255,11 @@ func (g *Generator) getMarkersForField(jsonTagName string) []string {
 			}
 
 			if meta.WriteMode != "" {
-				markers = append(markers, fmt.Sprintf("+hyperfleet:write-mode=%s", meta.WriteMode))
+				markers = append(markers, fmt.Sprintf("+seaplane:write-mode=%s", meta.WriteMode))
+			}
+
+			if meta.Resettable {
+				markers = append(markers, "+seaplane:resettable=true")
 			}
 
 			if meta.FeatureGate != "" {
@@ -269,7 +273,7 @@ func (g *Generator) getMarkersForField(jsonTagName string) []string {
 	// Apply safe defaults for new fields not in the registry
 	return []string{
 		"+k8s:openapi-gen=false",
-		"+hyperfleet:write-mode=service-set",
+		"+seaplane:write-mode=service-set",
 	}
 }
 

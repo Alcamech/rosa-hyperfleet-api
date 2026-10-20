@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/authz"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/authz/client"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/config"
-	apphandlers "github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/handlers"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/ratelimit"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/api"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/authz"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/authz/client"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/clients/seaplanedb"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/config"
+	apphandlers "github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/handlers"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/middleware"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/ratelimit"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 )
@@ -35,7 +35,7 @@ type Server struct {
 
 // New creates a new Server instance. The dbClient is used by cluster,
 // nodepool, and management cluster handlers.
-func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger) (*Server, error) {
+func New(cfg *config.Config, dbClient *seaplanedb.Client, logger *slog.Logger) (*Server, error) {
 	ctx := context.Background()
 
 	// Create handlers
@@ -231,7 +231,7 @@ func New(cfg *config.Config, dbClient *hyperfleetdb.Client, logger *slog.Logger)
 	nodePoolRouter.HandleFunc("", nodePoolHandler.List).Methods(http.MethodGet)
 	nodePoolRouter.HandleFunc("", nodePoolHandler.Create).Methods(http.MethodPost)
 	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Get).Methods(http.MethodGet)
-	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Update).Methods(http.MethodPut)
+	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Update).Methods(http.MethodPatch, http.MethodPut)
 	nodePoolRouter.HandleFunc("/{id}", nodePoolHandler.Delete).Methods(http.MethodDelete)
 
 	// OidcConfig routes (user-facing, require authz)

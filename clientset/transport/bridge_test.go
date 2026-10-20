@@ -90,7 +90,7 @@ func TestRoundTrip_KubernetesNativeBodyPassesThrough(t *testing.T) {
 // --- RoundTrip: response passthrough ---
 
 func TestRoundTrip_SuccessResponsePassesThrough(t *testing.T) {
-	apiBody := `{"apiVersion":"hyperfleet.io/v1alpha1","kind":"Cluster","metadata":{"name":"my-cluster","uid":"uid-1"},"spec":{"foo":"bar"}}`
+	apiBody := `{"apiVersion":"seaplane.io/v1alpha1","kind":"Cluster","metadata":{"name":"my-cluster","uid":"uid-1"},"spec":{"foo":"bar"}}`
 
 	a, srvURL := testServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -214,14 +214,14 @@ func TestAdaptListQuery_NonGETNotRewritten(t *testing.T) {
 func TestAdaptListQueryPreservesClusterUIDSelector(t *testing.T) {
 	a := newAdapter()
 	uid := "550e8400-e29b-41d4-a716-446655440000"
-	req := getRequest("https://example.com/api/v0/namespaces/account-123/nodepools?continue=10&labelSelector=hyperfleet.io/cluster-uid%3D" + uid)
+	req := getRequest("https://example.com/api/v0/namespaces/account-123/nodepools?continue=10&labelSelector=seaplane.io/cluster-uid%3D" + uid)
 
 	out := a.adaptListQuery(req)
 	query := out.URL.Query()
 	if got := query.Get("offset"); got != "10" {
 		t.Errorf("offset = %q, want 10", got)
 	}
-	if got := query.Get("labelSelector"); got != "hyperfleet.io/cluster-uid="+uid {
+	if got := query.Get("labelSelector"); got != "seaplane.io/cluster-uid="+uid {
 		t.Errorf("labelSelector = %q, want cluster UID selector", got)
 	}
 	if query.Get("clusterId") != "" {

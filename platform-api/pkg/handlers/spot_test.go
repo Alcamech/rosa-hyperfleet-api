@@ -22,9 +22,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/clients/seaplanedb"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/middleware"
 )
 
 const spotUnitTestAccountID = "123456789012"
@@ -36,24 +36,24 @@ func newSpotUnitTestHandler(t *testing.T, objects ...client.Object) *ClusterHand
 	if err := corev1.AddToScheme(scheme); err != nil {
 		t.Fatalf("registering core API types: %v", err)
 	}
-	if err := hyperfleetv1alpha1.AddToScheme(scheme); err != nil {
-		t.Fatalf("registering Hyperfleet API types: %v", err)
+	if err := seaplanev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("registering Seaplane API types: %v", err)
 	}
 
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewClusterHandler(hyperfleetdb.NewClientFrom(fakeClient, logger), "", 0, logger)
+	return NewClusterHandler(seaplanedb.NewClientFrom(fakeClient, logger), "", 0, logger)
 }
 
-func spotUnitTestCluster(clusterName string) *hyperfleetv1alpha1.Cluster {
-	return &hyperfleetv1alpha1.Cluster{
+func spotUnitTestCluster(clusterName string) *seaplanev1alpha1.Cluster {
+	return &seaplanev1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      clusterName,
 			Namespace: "account-" + spotUnitTestAccountID,
-			Labels:    map[string]string{"hyperfleet.io/account-id": spotUnitTestAccountID},
+			Labels:    map[string]string{"seaplane.io/account-id": spotUnitTestAccountID},
 		},
-		Spec: hyperfleetv1alpha1.ClusterSpec{
-			HostedCluster: hyperfleetv1alpha1.HostedClusterSpecPassthrough{
+		Spec: seaplanev1alpha1.ClusterSpec{
+			HostedCluster: seaplanev1alpha1.HostedClusterSpecPassthrough{
 				Platform: hypershiftv1beta1.PlatformSpec{
 					Type: hypershiftv1beta1.AWSPlatform,
 					AWS:  &hypershiftv1beta1.AWSPlatformSpec{Region: "us-east-1"},
@@ -159,8 +159,8 @@ func TestSpotUnit_UpdateSkipsQueueLookupWhenUnchanged(t *testing.T) {
 	if err := corev1.AddToScheme(scheme); err != nil {
 		t.Fatalf("registering core API types: %v", err)
 	}
-	if err := hyperfleetv1alpha1.AddToScheme(scheme); err != nil {
-		t.Fatalf("registering Hyperfleet API types: %v", err)
+	if err := seaplanev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("registering Seaplane API types: %v", err)
 	}
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(target).WithInterceptorFuncs(interceptor.Funcs{
 		List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
@@ -175,7 +175,7 @@ func TestSpotUnit_UpdateSkipsQueueLookupWhenUnchanged(t *testing.T) {
 		},
 	}).Build()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := NewClusterHandler(hyperfleetdb.NewClientFrom(fakeClient, logger), "", 0, logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fakeClient, logger), "", 0, logger)
 	request := newSpotUnitUpdateRequest(t, map[string]any{"displayName": "updated-display"})
 	response := httptest.NewRecorder()
 	handler.Update(response, request)
@@ -237,13 +237,13 @@ func TestSpotUnit_UpdateClaimsChangedTerminationQueue(t *testing.T) {
 
 func TestSpotUnit_CreateMapsQueueClaimConflictToValidation(t *testing.T) {
 	const queueURL = "https://sqs.us-east-1.amazonaws.com/123456789012/spot-termination"
-	reservation := &hyperfleetv1alpha1.Index{
+	reservation := &seaplanev1alpha1.Index{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: hyperfleetv1alpha1.SpotTerminationQueueReservationsNamespace,
-			Name:      hyperfleetv1alpha1.SpotTerminationQueueIndexName(spotUnitTestAccountID, queueURL),
-			Labels:    map[string]string{hyperfleetv1alpha1.SpotTerminationQueueOwnerLabel: "cluster-other"},
+			Namespace: seaplanev1alpha1.SpotTerminationQueueReservationsNamespace,
+			Name:      seaplanev1alpha1.SpotTerminationQueueIndexName(spotUnitTestAccountID, queueURL),
+			Labels:    map[string]string{seaplanev1alpha1.SpotTerminationQueueOwnerLabel: "cluster-other"},
 			Annotations: map[string]string{
-				hyperfleetv1alpha1.SpotTerminationQueueClaimedAtAnnotation: time.Now().UTC().Format(time.RFC3339Nano),
+				seaplanev1alpha1.SpotTerminationQueueClaimedAtAnnotation: time.Now().UTC().Format(time.RFC3339Nano),
 			},
 		},
 	}

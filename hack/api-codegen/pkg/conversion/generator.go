@@ -15,13 +15,13 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/registry"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/registry"
 )
 
 var (
 	clientgenMarkerRE          = regexp.MustCompile(`\+genclient\b|\+bridge:|\+resourceName=`)
-	responseProjectionMarkerRE = regexp.MustCompile(`\+hyperfleet:rest-response-projection=(\w+)`)
-	responseRedactMarkerRE     = regexp.MustCompile(`\+hyperfleet:response-redact(?:=true)?`)
+	responseProjectionMarkerRE = regexp.MustCompile(`\+seaplane:rest-response-projection=(\w+)`)
+	responseRedactMarkerRE     = regexp.MustCompile(`\+seaplane:response-redact(?:=true)?`)
 )
 
 // Generator generates REST types and conversion functions from CRD types.
@@ -967,7 +967,7 @@ func (g *Generator) renderRESTType(ti *typeInfo, restTypeSet map[string]bool, is
 		}
 
 		// Substitute mirror types: if this field's HyperShift type has a
-		// HyperFleet-owned reduced mirror, use the local type instead so the
+		// Seaplane-owned reduced mirror, use the local type instead so the
 		// generated REST passthrough references our type, not HyperShift's.
 		effectiveGoType := fi.GoType
 		{
@@ -1516,7 +1516,7 @@ func Unproject{{ .Resource }}(spec *rest.{{ .SpecType }}, enrichment *conversion
 	return &crdSpec
 }
 {{ range .MirrorTypes }}
-// Convert{{ .BaseType }}_v1beta1_to_v1alpha1 converts upstream HyperShift to HyperFleet mirror type via JSON roundtrip.
+// Convert{{ .BaseType }}_v1beta1_to_v1alpha1 converts upstream HyperShift to Seaplane mirror type via JSON roundtrip.
 func Convert{{ .BaseType }}_v1beta1_to_v1alpha1(in interface{}) interface{} {
 	data, _ := json.Marshal(in)
 	var out interface{}
@@ -1524,7 +1524,7 @@ func Convert{{ .BaseType }}_v1beta1_to_v1alpha1(in interface{}) interface{} {
 	return out
 }
 
-// Convert{{ .BaseType }}_v1alpha1_to_v1beta1 converts HyperFleet mirror type to upstream HyperShift via JSON roundtrip.
+// Convert{{ .BaseType }}_v1alpha1_to_v1beta1 converts Seaplane mirror type to upstream HyperShift via JSON roundtrip.
 func Convert{{ .BaseType }}_v1alpha1_to_v1beta1(in interface{}) interface{} {
 	data, _ := json.Marshal(in)
 	var out interface{}
@@ -1657,7 +1657,7 @@ func (g *Generator) outputImportPath() string {
 	if g.OutputPackage != "" {
 		return g.OutputPackage
 	}
-	return "github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/conversion"
+	return "github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/conversion"
 }
 
 func (g *Generator) ensureDir(dir string) error {

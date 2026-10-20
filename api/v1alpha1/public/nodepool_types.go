@@ -19,7 +19,7 @@ import (
 // +genclient:nonNamespaced
 // +bridge:watch=disabled
 // +bridge:wait
-// +bridge:parent=Cluster,label=hyperfleet.io/cluster-uid
+// +bridge:parent=Cluster,label=seaplane.io/cluster-uid
 type NodePool struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

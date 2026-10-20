@@ -11,10 +11,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
+	v1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/clientset/pathbind"
+	"github.com/openshift-online/rosa-seaplane-api/clientset/pathbind"
 )
 
 // clusterInput is a flat consumer struct representing cluster creation inputs.
@@ -56,6 +56,12 @@ type nodePoolAdditionalFieldsInput struct {
 	NodeDrainTimeout string                        `hfsdk:"spec.nodePool.nodeDrainTimeout"`
 	Taints           []hypershiftv1beta1.Taint     `hfsdk:"spec.nodePool.taints"`
 	TuningConfig     []corev1.LocalObjectReference `hfsdk:"spec.nodePool.tuningConfig"`
+}
+
+type nodePoolUpdateInput struct {
+	Labels   map[string]string `hfsdk:"spec.labels"`
+	Taints   string            `hfsdk:"spec.nodePool.taints"`
+	Replicas *int32            `hfsdk:"spec.nodePool.replicas"`
 }
 
 type networkInput struct {
@@ -375,6 +381,170 @@ func TestNodePoolAdditionalFieldsExpandAndFlatten(t *testing.T) {
 	if !reflect.DeepEqual(flattened.TuningConfig, input.TuningConfig) {
 		t.Errorf("Flattened TuningConfig = %#v, want %#v", flattened.TuningConfig, input.TuningConfig)
 	}
+}
+
+func TestUpdateDocument_NodePoolChanges(t *testing.T) {
+	ctx := context.Background()
+	before := nodePoolUpdateInput{
+		Labels:   map[string]string{"env": "dev"},
+		Taints:   `[{"key":"old","value":"value","effect":"NoSchedule"}]`,
+		Replicas: pointer(int32(1)),
+	}
+	after := nodePoolUpdateInput{
+		Labels:   map[string]string{"env": "prod", "team": "platform"},
+		Taints:   `[{"key":"dedicated","value":"batch","effect":"NoSchedule"}]`,
+		Replicas: pointer(int32(3)),
+	}
+	destination := &v1alpha1.NodePool{}
+
+	document, err := pathbind.UpdateDocument(ctx, before, after, destination)
+	if err != nil {
+		t.Fatalf("UpdateDocument: %v", err)
+	}
+	assertJSON(t, document, `{
+		"spec": {
+			"labels": {"env": "prod", "team": "platform"},
+			"nodePool": {
+				"replicas": 3,
+				"taints": [{"key": "dedicated", "value": "batch", "effect": "NoSchedule"}]
+			}
+		}
+	}`)
+	if !reflect.DeepEqual(*destination, v1alpha1.NodePool{}) {
+		t.Fatalf("destination was modified: %#v", *destination)
+	}
+}
+
+func TestUpdateDocument_ClearCollectionsAndOptionalValues(t *testing.T) {
+	ctx := context.Background()
+	before := nodePoolUpdateInput{
+		Labels:   map[string]string{"env": "dev"},
+		Taints:   `[{"key":"old","value":"value","effect":"NoSchedule"}]`,
+		Replicas: pointer(int32(1)),
+	}
+	after := nodePoolUpdateInput{}
+
+	document, err := pathbind.UpdateDocument(ctx, before, after, &v1alpha1.NodePool{})
+	if err != nil {
+		t.Fatalf("UpdateDocument: %v", err)
+	}
+	assertJSON(t, document, `{
+		"spec": {
+			"labels": {},
+			"nodePool": {"replicas": null, "taints": []}
+		}
+	}`)
+}
+
+func TestUpdateDocument_UnchangedValues(t *testing.T) {
+	ctx := context.Background()
+	before := nodePoolUpdateInput{
+		Labels: map[string]string{},
+		Taints: "",
+	}
+	after := nodePoolUpdateInput{
+		Labels: nil,
+		Taints: "",
+	}
+
+	document, err := pathbind.UpdateDocument(ctx, before, after, &v1alpha1.NodePool{})
+	if err != nil {
+		t.Fatalf("UpdateDocument: %v", err)
+	}
+	if len(document) != 0 {
+		t.Fatalf("UpdateDocument() = %#v, want an empty document", document)
+	}
+}
+
+func TestUpdateDocument_NestedConsumerBundle(t *testing.T) {
+	ctx := context.Background()
+	type input struct {
+		Scaling nodePoolAutoscalingInput
+	}
+	before := input{Scaling: nodePoolAutoscalingInput{Min: pointer(int32(1)), Max: pointer(int32(3))}}
+	after := input{Scaling: nodePoolAutoscalingInput{Min: pointer(int32(2)), Max: pointer(int32(3))}}
+
+	document, err := pathbind.UpdateDocument(ctx, before, after, &v1alpha1.NodePool{})
+	if err != nil {
+		t.Fatalf("UpdateDocument: %v", err)
+	}
+	assertJSON(t, document, `{"spec": {"nodePool": {"autoScaling": {"min": 2}}}}`)
+}
+
+func TestUpdateDocument_Errors(t *testing.T) {
+	ctx := context.Background()
+	if _, err := pathbind.UpdateDocument(ctx, nil, nodePoolUpdateInput{}, &v1alpha1.NodePool{}); err == nil {
+		t.Fatal("UpdateDocument should reject nil before")
+	}
+	if _, err := pathbind.UpdateDocument(ctx, nodePoolUpdateInput{}, nil, &v1alpha1.NodePool{}); err == nil {
+		t.Fatal("UpdateDocument should reject nil after")
+	}
+	if _, err := pathbind.UpdateDocument(ctx, nodePoolUpdateInput{}, nodePoolUpdateInput{}, nil); err == nil {
+		t.Fatal("UpdateDocument should reject nil destination")
+	}
+	if _, err := pathbind.UpdateDocument(ctx, nodePoolUpdateInput{}, nodePoolUpdateInput{}, v1alpha1.NodePool{}); err == nil {
+		t.Fatal("UpdateDocument should reject a non-pointer destination")
+	}
+
+	type invalidInput struct {
+		Value string `hfsdk:"metadata.notAField"`
+	}
+	if _, err := pathbind.UpdateDocument(ctx, invalidInput{Value: "old"}, invalidInput{Value: "new"}, &v1alpha1.Cluster{}); err == nil {
+		t.Fatal("UpdateDocument should reject an invalid destination path")
+	}
+}
+
+func TestIsUnset(t *testing.T) {
+	var nilPointer *int
+	zero := 0
+	zeroPointer := &zero
+
+	tests := []struct {
+		name  string
+		value any
+		want  bool
+	}{
+		{name: "nil", value: nil, want: true},
+		{name: "nil pointer", value: nilPointer, want: true},
+		{name: "pointer to zero", value: zeroPointer, want: false},
+		{name: "false", value: false, want: false},
+		{name: "empty string", value: "", want: true},
+		{name: "empty map", value: map[string]string{}, want: true},
+		{name: "empty slice", value: []string{}, want: true},
+		{name: "set map", value: map[string]string{"key": "value"}, want: false},
+		{name: "set slice", value: []string{"value"}, want: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := pathbind.IsUnset(test.value); got != test.want {
+				t.Fatalf("IsUnset(%#v) = %t, want %t", test.value, got, test.want)
+			}
+		})
+	}
+}
+
+func assertJSON(t *testing.T, value any, want string) {
+	t.Helper()
+	got, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal document: %v", err)
+	}
+	var gotValue any
+	if err := json.Unmarshal(got, &gotValue); err != nil {
+		t.Fatalf("unmarshal document: %v", err)
+	}
+	var wantValue any
+	if err := json.Unmarshal([]byte(want), &wantValue); err != nil {
+		t.Fatalf("unmarshal expected JSON: %v", err)
+	}
+	if !reflect.DeepEqual(gotValue, wantValue) {
+		t.Fatalf("document JSON = %s, want %s", got, want)
+	}
+}
+
+func pointer[Value any](value Value) *Value {
+	return &value
 }
 
 func assertNodePoolRequestScaling(t *testing.T, np *v1alpha1.NodePool, wantAutoScaling bool, wantMin, wantMax int32, wantReplicas *int32) {

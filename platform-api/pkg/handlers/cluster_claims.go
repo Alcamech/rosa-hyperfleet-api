@@ -5,11 +5,11 @@ import (
 
 	"k8s.io/client-go/util/retry"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/clients/seaplanedb"
 )
 
-const claimedByClusterUIDLabel = "hyperfleet.io/claimed-by-cluster-uid"
+const claimedByClusterUIDLabel = "seaplane.io/claimed-by-cluster-uid"
 
 // ClusterClaimableResource adapts an account-scoped resource to the common
 // Cluster-claim workflow. Implementations provide lookup, readiness, persistence,
@@ -28,10 +28,10 @@ type ClusterClaimableResource interface {
 }
 
 type dnsReservationClaimableResource struct {
-	db        *hyperfleetdb.Client
+	db        *seaplanedb.Client
 	accountID string
 	uid       string
-	resource  *hyperfleetv1alpha1.DNSReservation
+	resource  *seaplanev1alpha1.DNSReservation
 }
 
 func (r *dnsReservationClaimableResource) LoadByUID(ctx context.Context) error {
@@ -57,7 +57,7 @@ func (r *dnsReservationClaimableResource) SetClaimedByClusterUID(uid string) {
 }
 func (r *dnsReservationClaimableResource) ReadyForClusterClaim() bool {
 	return r.resource.DeletionTimestamp.IsZero() &&
-		r.resource.Status.Phase == hyperfleetv1alpha1.DNSReservationPhaseReady &&
+		r.resource.Status.Phase == seaplanev1alpha1.DNSReservationPhaseReady &&
 		r.resource.Status.BaseDomain != "" &&
 		r.resource.Status.InternalHostedClusterName != ""
 }
@@ -75,10 +75,10 @@ func (r *dnsReservationClaimableResource) InUseAPIError() *APIError {
 }
 
 type oidcConfigClaimableResource struct {
-	db        *hyperfleetdb.Client
+	db        *seaplanedb.Client
 	accountID string
 	uid       string
-	resource  *hyperfleetv1alpha1.OidcConfig
+	resource  *seaplanev1alpha1.OidcConfig
 }
 
 func (r *oidcConfigClaimableResource) LoadByUID(ctx context.Context) error {
@@ -119,13 +119,13 @@ func (r *oidcConfigClaimableResource) InUseAPIError() *APIError {
 	return &apiErr
 }
 
-func (h *ClusterHandler) resolveDNSReservation(ctx context.Context, accountID, reservationUID string) (*hyperfleetv1alpha1.DNSReservation, *APIError) {
+func (h *ClusterHandler) resolveDNSReservation(ctx context.Context, accountID, reservationUID string) (*seaplanev1alpha1.DNSReservation, *APIError) {
 	if reservationUID == "" {
 		return nil, &ErrClusterCreateDNSReservationRequired
 	}
 	reservation, err := h.db.GetDNSReservationByUID(ctx, accountID, reservationUID)
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			return nil, &ErrClusterCreateDNSReservationNotFound
 		}
 		h.logger.Error("failed to look up DNS reservation", "error", err, "account_id", accountID, "reservation_uid", reservationUID)
@@ -135,7 +135,7 @@ func (h *ClusterHandler) resolveDNSReservation(ctx context.Context, accountID, r
 		return nil, &ErrClusterCreateDNSReservationNotFound
 	}
 	if !reservation.DeletionTimestamp.IsZero() ||
-		reservation.Status.Phase != hyperfleetv1alpha1.DNSReservationPhaseReady ||
+		reservation.Status.Phase != seaplanev1alpha1.DNSReservationPhaseReady ||
 		reservation.Status.BaseDomain == "" || reservation.Status.InternalHostedClusterName == "" {
 		return nil, &ErrClusterCreateDNSReservationNotReady
 	}
@@ -145,13 +145,13 @@ func (h *ClusterHandler) resolveDNSReservation(ctx context.Context, accountID, r
 	return reservation, nil
 }
 
-func (h *ClusterHandler) resolveOidcConfig(ctx context.Context, accountID, oidcConfigUID string) (*hyperfleetv1alpha1.OidcConfig, *APIError) {
+func (h *ClusterHandler) resolveOidcConfig(ctx context.Context, accountID, oidcConfigUID string) (*seaplanev1alpha1.OidcConfig, *APIError) {
 	if oidcConfigUID == "" {
 		return nil, nil
 	}
 	oidcConfig, err := h.db.GetOidcConfigByUID(ctx, accountID, oidcConfigUID)
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			return nil, &ErrClusterCreateOidcConfigNotFound
 		}
 		h.logger.Error("failed to look up OIDC config", "error", err, "account_id", accountID, "oidc_config_uid", oidcConfigUID)
@@ -207,7 +207,7 @@ func claimResource(ctx context.Context, clusterUID string, resource ClusterClaim
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		claimAPIError = nil
 		if err := resource.LoadByUID(ctx); err != nil {
-			if hyperfleetdb.IsNotFound(err) {
+			if seaplanedb.IsNotFound(err) {
 				claimAPIError = resource.NotFoundAPIError()
 				return nil
 			}
@@ -239,10 +239,10 @@ func claimResource(ctx context.Context, clusterUID string, resource ClusterClaim
 	return nil, err
 }
 
-func oidcConfigUsable(oidcConfig *hyperfleetv1alpha1.OidcConfig) bool {
-	if oidcConfig.Status.Phase == hyperfleetv1alpha1.OidcConfigPhaseError {
+func oidcConfigUsable(oidcConfig *seaplanev1alpha1.OidcConfig) bool {
+	if oidcConfig.Status.Phase == seaplanev1alpha1.OidcConfigPhaseError {
 		return false
 	}
-	return oidcConfig.Spec.Type != hyperfleetv1alpha1.OidcConfigTypeUnmanaged ||
-		oidcConfig.Status.Phase == hyperfleetv1alpha1.OidcConfigPhaseReady
+	return oidcConfig.Spec.Type != seaplanev1alpha1.OidcConfigTypeUnmanaged ||
+		oidcConfig.Status.Phase == seaplanev1alpha1.OidcConfigPhaseReady
 }

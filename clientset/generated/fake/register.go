@@ -19,7 +19,7 @@ limitations under the License.
 package fake
 
 import (
-	v1alpha1public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
+	v1alpha1public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"

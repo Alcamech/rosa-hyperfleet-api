@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/registry"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/internal/codegen/featuregate"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/registry"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/internal/codegen/featuregate"
 )
 
 type Operation string
@@ -15,6 +15,8 @@ type Operation string
 const (
 	OperationCreate Operation = "create"
 	OperationUpdate Operation = "update"
+
+	immutableFieldErrorReason = "field is immutable and cannot be changed after creation"
 )
 
 type ValidationError struct {
@@ -68,8 +70,14 @@ func (v *FieldValidator) ValidateCreate(spec any, fs featuregate.FeatureSet) Val
 }
 
 // ValidateUpdate checks that an update request does not change service-set or
-// immutable fields, or use feature-gated fields without the gate enabled.
+// immutable fields, or use feature-gated fields without the gate enabled. When
+// newSpec is a raw map, its explicit null and zero values are used for immutable
+// field checks as well.
 func (v *FieldValidator) ValidateUpdate(newSpec, existingSpec any, fs featuregate.FeatureSet) ValidationErrors {
+	return v.validateUpdate(newSpec, newSpec, existingSpec, fs)
+}
+
+func (v *FieldValidator) validateUpdate(newSpec, rawSpec, existingSpec any, fs featuregate.FeatureSet) ValidationErrors {
 	if newSpec == nil {
 		return nil
 	}
@@ -80,7 +88,85 @@ func (v *FieldValidator) ValidateUpdate(newSpec, existingSpec any, fs featuregat
 	if existingSpec != nil {
 		existingFields = flattenToFieldPaths(existingSpec)
 	}
-	return v.validate(newFields, existingFields, OperationUpdate, fs, pointers)
+	errs := v.validate(newFields, existingFields, OperationUpdate, fs, pointers)
+	if rawSpec != nil && existingFields != nil {
+		rawFields := flattenToFieldPaths(rawSpec)
+		errs = appendUniqueValidationErrors(errs, v.validateRawImmutableChanges(rawFields, existingFields, fs))
+	}
+	return errs
+}
+
+// ValidateUpdateWithRawSpec validates an update using both its decoded form and
+// the original JSON spec. newSpec is the typed value used by the regular field
+// checks; rawSpec is the request spec as a map and preserves which fields were
+// explicitly sent, including null and zero values that typed omitempty fields
+// may lose. A missing or empty raw spec is rejected so immutable-field checks
+// cannot silently fall back to the typed representation.
+func (v *FieldValidator) ValidateUpdateWithRawSpec(newSpec any, rawSpec map[string]any, existingSpec any, fs featuregate.FeatureSet) ValidationErrors {
+	if newSpec == nil {
+		return ValidationErrors{&ValidationError{Field: "spec", Reason: "typed spec is required for update validation"}}
+	}
+	if len(rawSpec) == 0 {
+		return ValidationErrors{&ValidationError{Field: "spec", Reason: "raw spec is required for update validation"}}
+	}
+	return v.validateUpdate(newSpec, rawSpec, existingSpec, fs)
+}
+
+func (v *FieldValidator) validateRawImmutableChanges(rawFields, existingFields map[string]any, fs featuregate.FeatureSet) ValidationErrors {
+	var errs ValidationErrors
+	fieldMetaMap := v.typedRegistry[v.resourceType]
+
+	for fieldPath, meta := range fieldMetaMap {
+		if meta.Hidden || isStructuralContainer(fieldPath, fieldMetaMap) || effectiveWriteMode(meta, fs) != registry.Immutable {
+			continue
+		}
+
+		oldValue, oldExists := existingFields[fieldPath]
+		newValue, newExists := rawFields[fieldPath]
+		if newExists && !reflect.DeepEqual(oldValue, newValue) {
+			errs = append(errs, &ValidationError{Field: fieldPath, Reason: immutableFieldErrorReason})
+			continue
+		}
+
+		// A null parent object clears all of its descendants during JSON merge,
+		// even though the flattened raw spec has no entry for the immutable leaf.
+		if oldExists && !isZeroValue(oldValue) && hasNullAncestor(fieldPath, rawFields) {
+			errs = append(errs, &ValidationError{Field: fieldPath, Reason: immutableFieldErrorReason})
+		}
+	}
+
+	return errs
+}
+
+func hasNullAncestor(fieldPath string, fields map[string]any) bool {
+	parts := strings.Split(fieldPath, ".")
+	for i := 1; i < len(parts); i++ {
+		ancestor := strings.Join(parts[:i], ".")
+		if value, exists := fields[ancestor]; exists && value == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func appendUniqueValidationErrors(existing, additional ValidationErrors) ValidationErrors {
+	if len(additional) == 0 {
+		return existing
+	}
+
+	seen := make(map[string]struct{}, len(existing))
+	for _, err := range existing {
+		seen[err.Field+"\x00"+err.Reason] = struct{}{}
+	}
+	for _, err := range additional {
+		key := err.Field + "\x00" + err.Reason
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		existing = append(existing, err)
+	}
+	return existing
 }
 
 func (v *FieldValidator) validate(fields, existingFields map[string]any, op Operation, fs featuregate.FeatureSet, pointers map[string]bool) ValidationErrors {
@@ -123,6 +209,9 @@ func (v *FieldValidator) validate(fields, existingFields map[string]any, op Oper
 		if err := validateAdditionalTrustBundle(fields); err != nil {
 			errs = append(errs, err)
 		}
+		if err := validateAdditionalAllowedPrincipals(fields); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	if len(errs) > 0 {
@@ -150,26 +239,7 @@ func isStructuralContainer(fieldPath string, fieldMetaMap map[string]registry.Fi
 }
 
 func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.FieldMeta, op Operation, fields, existingFields map[string]any, fs featuregate.FeatureSet, pointers map[string]bool) *ValidationError {
-	effectiveMode := meta.WriteMode
-
-	if len(meta.FeatureGateAwareWriteModes) > 0 {
-		matched := false
-		for _, override := range meta.FeatureGateAwareWriteModes {
-			if override.FeatureGate != "" && featuregate.IsGateEnabled(override.FeatureGate, fs) {
-				effectiveMode = override.WriteMode
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			for _, override := range meta.FeatureGateAwareWriteModes {
-				if override.FeatureGate == "" {
-					effectiveMode = override.WriteMode
-					break
-				}
-			}
-		}
-	}
+	effectiveMode := effectiveWriteMode(meta, fs)
 
 	switch effectiveMode {
 	case registry.ServiceSet:
@@ -200,7 +270,7 @@ func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.Field
 			// treated as nil so that "unset" and "explicitly zero" compare as equal.
 			return &ValidationError{
 				Field:  fieldPath,
-				Reason: "field is immutable and cannot be changed after creation",
+				Reason: immutableFieldErrorReason,
 			}
 		}
 		return nil
@@ -209,6 +279,31 @@ func (v *FieldValidator) validateWriteMode(fieldPath string, meta registry.Field
 	default:
 		return nil
 	}
+}
+
+func effectiveWriteMode(meta registry.FieldMeta, fs featuregate.FeatureSet) registry.WriteMode {
+	effectiveMode := meta.WriteMode
+	if len(meta.FeatureGateAwareWriteModes) == 0 {
+		return effectiveMode
+	}
+
+	matched := false
+	for _, override := range meta.FeatureGateAwareWriteModes {
+		if override.FeatureGate != "" && featuregate.IsGateEnabled(override.FeatureGate, fs) {
+			effectiveMode = override.WriteMode
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		for _, override := range meta.FeatureGateAwareWriteModes {
+			if override.FeatureGate == "" {
+				effectiveMode = override.WriteMode
+				break
+			}
+		}
+	}
+	return effectiveMode
 }
 
 func flattenToFieldPaths(v any) map[string]any {

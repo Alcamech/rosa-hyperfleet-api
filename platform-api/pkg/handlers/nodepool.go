@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/google/uuid"
@@ -15,22 +17,22 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/util/retry"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/internal/codegen/featuregate"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/validation"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/internal/codegen/featuregate"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/api"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/clients/seaplanedb"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/middleware"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/validation"
 )
 
 type NodePoolHandler struct {
-	db        *hyperfleetdb.Client
+	db        *seaplanedb.Client
 	validator *validation.FieldValidator
 	logger    *slog.Logger
 }
 
-func NewNodePoolHandler(db *hyperfleetdb.Client, logger *slog.Logger) *NodePoolHandler {
+func NewNodePoolHandler(db *seaplanedb.Client, logger *slog.Logger) *NodePoolHandler {
 	return &NodePoolHandler{
 		db:        db,
 		validator: validation.NewFieldValidator("NodePool"),
@@ -50,72 +52,17 @@ func validateNodePoolReplicas(spec *public.NodePoolSpec) validation.ValidationEr
 	}
 }
 
-// validateRootVolumeNullOnUpdate rejects an explicit null anywhere along
-// nodePool.platform.aws.rootVolume when the existing RootVolume is non-nil.
-func validateRootVolumeNullOnUpdate(rawSpec map[string]any, existing *hyperfleetv1alpha1.NodePoolSpec) validation.ValidationErrors {
-	if existing == nil || existing.NodePool.Platform.AWS == nil || existing.NodePool.Platform.AWS.RootVolume == nil {
-		return nil
-	}
-
-	node := rawSpec
-	for _, key := range []string{"nodePool", "platform", "aws", "rootVolume"} {
-		val, exists := node[key]
-		if !exists {
-			return nil
-		}
-		if val == nil {
-			return rootVolumeSizeImmutableError()
-		}
-		next, ok := val.(map[string]any)
-		if !ok {
-			return nil
-		}
-		node = next
-	}
-	return nil
-}
-
-func rootVolumeSizeImmutableError() validation.ValidationErrors {
-	return validation.ValidationErrors{
-		&validation.ValidationError{
-			Field:  "spec.nodePool.platform.aws.rootVolume.size",
-			Reason: "field is immutable and cannot be changed after creation",
-		},
-	}
-}
-
-// validateImageTypeClearedOnUpdate rejects an update that blanks imageType on a
-// pool that has one. imageType is omitempty, so an explicit "" or null is
-// dropped from the flattened spec and never reaches the FieldValidator's
-// immutable check, yet the spec merge would convert a Windows (License
-// Included) pool back to the Linux default. A differing non-empty value is
-// already rejected by the FieldValidator, so it is left alone here to avoid
-// reporting the same field twice.
-func validateImageTypeClearedOnUpdate(rawSpec map[string]any, existing *hyperfleetv1alpha1.NodePoolSpec) validation.ValidationErrors {
-	if existing == nil || existing.NodePool.Platform.AWS == nil || existing.NodePool.Platform.AWS.ImageType == "" {
-		return nil
-	}
-
-	node := rawSpec
-	for _, key := range []string{"nodePool", "platform", "aws"} {
-		next, ok := node[key].(map[string]any)
-		if !ok {
-			return nil
-		}
-		node = next
-	}
-
-	supplied, exists := node["imageType"]
-	if !exists {
-		return nil
-	}
-	if value, isString := supplied.(string); isString && value != "" {
+func validateNodePoolEC2InstanceMetadataHttpTokens(value public.EC2InstanceMetadataHttpTokens) validation.ValidationErrors {
+	if slices.Contains([]public.EC2InstanceMetadataHttpTokens{
+		public.EC2InstanceMetadataHttpTokensRequired,
+		public.EC2InstanceMetadataHttpTokensOptional,
+	}, value) {
 		return nil
 	}
 	return validation.ValidationErrors{
 		&validation.ValidationError{
-			Field:  "spec.nodePool.platform.aws.imageType",
-			Reason: "field is immutable and cannot be changed after creation",
+			Field:  "spec.ec2InstanceMetadataHttpTokens",
+			Reason: "must be either required or optional",
 		},
 	}
 }
@@ -191,7 +138,7 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	nodepools := make([]*public.NodePool, 0, len(list.Items))
 	for i := range list.Items {
-		nodepools = append(nodepools, hyperfleetdb.InternalToPublicNodePool(&list.Items[i]))
+		nodepools = append(nodepools, seaplanedb.InternalToPublicNodePool(&list.Items[i]))
 	}
 
 	total := len(nodepools)
@@ -222,8 +169,18 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
 
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeAPIError(w, ErrNodePoolCreateInvalidBody, h.logger)
+		return
+	}
 	var req public.NodePool
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&req); err != nil {
+		writeAPIError(w, ErrNodePoolCreateInvalidBody, h.logger)
+		return
+	}
+	var rawRequest map[string]any
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&rawRequest); err != nil {
 		writeAPIError(w, ErrNodePoolCreateInvalidBody, h.logger)
 		return
 	}
@@ -244,15 +201,22 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// ClusterName is derived from the validated metadata.name prefix; do not
 	// trust a separately supplied passthrough value to select a parent.
 	req.Spec.NodePool.ClusterName = clusterName
+	// Apply defaults only to omitted fields; explicit empty or null values are
+	// retained for enum validation below.
+	if !validation.HasJSONField(rawRequest, "spec.ec2InstanceMetadataHttpTokens") {
+		req.Spec.EC2InstanceMetadataHttpTokens = public.EC2InstanceMetadataHttpTokensRequired
+	}
 
-	if errs := append(h.validator.ValidateCreate(&req.Spec, featuregate.Default), validateNodePoolReplicas(&req.Spec)...); len(errs) > 0 {
+	errs := append(h.validator.ValidateCreate(&req.Spec, featuregate.Default), validateNodePoolReplicas(&req.Spec)...)
+	errs = append(errs, validateNodePoolEC2InstanceMetadataHttpTokens(req.Spec.EC2InstanceMetadataHttpTokens)...)
+	if len(errs) > 0 {
 		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
 		return
 	}
 
 	cluster, err := h.db.GetCluster(ctx, accountID, clusterName)
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolCreateClusterNotFound, h.logger)
 			return
 		}
@@ -269,14 +233,14 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// internalPoolID is retained as a service-set implementation field; FleetDB UID
 	// is the public object identity.
 	internalPoolID := uuid.New().String()
-	cr := hyperfleetdb.PublicToInternalNodePool(&req, accountID, internalPoolID)
+	cr := seaplanedb.PublicToInternalNodePool(&req, accountID, internalPoolID)
 	cr.Spec.NodePool.ClusterName = cluster.Name
-	cr.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(cluster, hyperfleetv1alpha1.GroupVersion.WithKind("Cluster"))}
-	cr.Labels["hyperfleet.io/cluster-uid"] = string(cluster.UID)
+	cr.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(cluster, seaplanev1alpha1.GroupVersion.WithKind("Cluster"))}
+	cr.Labels["seaplane.io/cluster-uid"] = string(cluster.UID)
 
 	if err := h.db.CreateNodePool(ctx, accountID, cr); err != nil {
 		h.logger.Error("failed to create nodepool", "error", err, "account_id", accountID)
-		if hyperfleetdb.IsAlreadyExists(err) {
+		if seaplanedb.IsAlreadyExists(err) {
 			writeAPIError(w, ErrNodePoolCreateNameConflict, h.logger)
 			return
 		}
@@ -284,7 +248,7 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := api.Write(w, http.StatusCreated, hyperfleetdb.InternalToPublicNodePool(cr)); err != nil {
+	if err := api.Write(w, http.StatusCreated, seaplanedb.InternalToPublicNodePool(cr)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }
@@ -299,7 +263,7 @@ func (h *NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	cr, err := h.db.GetNodePool(ctx, accountID, nodepoolName)
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolGetNotFound, h.logger)
 			return
 		}
@@ -308,7 +272,7 @@ func (h *NodePoolHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := api.Write(w, http.StatusOK, hyperfleetdb.InternalToPublicNodePool(cr)); err != nil {
+	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicNodePool(cr)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }
@@ -358,7 +322,7 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var updated *hyperfleetv1alpha1.NodePool
+	var updated *seaplanev1alpha1.NodePool
 	var validationErr validation.ValidationErrors
 	var mergeErr error
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -366,15 +330,13 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		errs := h.validator.ValidateUpdate(&req.Spec, &current.Spec, featuregate.Default)
+		errs := h.validator.ValidateUpdateWithRawSpec(&req.Spec, rawSpec, &current.Spec, featuregate.Default)
 		errs = append(errs, validateNodePoolReplicas(&req.Spec)...)
-		errs = append(errs, validateRootVolumeNullOnUpdate(rawSpec, &current.Spec)...)
-		errs = append(errs, validateImageTypeClearedOnUpdate(rawSpec, &current.Spec)...)
 		if len(errs) > 0 {
 			validationErr = errs
 			return fmt.Errorf("invalid nodepool update: %w", errs)
 		}
-		if err := hyperfleetdb.MergeSpecJSON(&current.Spec, envelope.Spec); err != nil {
+		if err := seaplanedb.MergeSpecJSON(&current.Spec, envelope.Spec); err != nil {
 			mergeErr = err
 			return fmt.Errorf("merge nodepool spec: %w", err)
 		}
@@ -394,11 +356,11 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolUpdateNotFound, h.logger)
 			return
 		}
-		if hyperfleetdb.IsConflict(err) {
+		if seaplanedb.IsConflict(err) {
 			writeAPIError(w, ErrNodePoolUpdateConflict, h.logger)
 			return
 		}
@@ -407,7 +369,7 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := api.Write(w, http.StatusOK, hyperfleetdb.InternalToPublicNodePool(updated)); err != nil {
+	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicNodePool(updated)); err != nil {
 		h.logger.Error("failed to write response", "error", err)
 	}
 }
@@ -422,7 +384,7 @@ func (h *NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	err := h.db.DeleteNodePool(ctx, accountID, nodepoolName)
 	if err != nil {
-		if hyperfleetdb.IsNotFound(err) {
+		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrNodePoolDeleteNotFound, h.logger)
 			return
 		}

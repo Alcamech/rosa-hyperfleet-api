@@ -27,7 +27,7 @@ func getAndExpectOK(client *APIClient, path, accountID, bodyContains string) *AP
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Hyperfleet API E2E Suite")
+	RunSpecs(t, "Seaplane API E2E Suite")
 }
 
 // Ordered for now, as our test size is small
@@ -150,7 +150,7 @@ var _ = Describe("Platform API", Ordered, func() {
 	})
 
 	// it should be able to GET /clusters endpoint and return an array
-	// Uses Eventually because in CI the platform-api depends on hyperfleet-operator,
+	// Uses Eventually because in CI the platform-api depends on seaplane-operator,
 	// which may not be fully routable until ArgoCD finishes all sync cycles.
 	It("should have the clusters endpoint defined", func() {
 		Eventually(func() bool {
@@ -175,6 +175,6 @@ var _ = Describe("Platform API", Ordered, func() {
 			Expect(err).To(BeNil())
 			Expect(list.Items).NotTo(BeNil())
 			return true
-		}, "2m", "5s").Should(BeTrue(), "clusters endpoint did not return 200 - hyperfleet-operator may not be ready")
+		}, "2m", "5s").Should(BeTrue(), "clusters endpoint did not return 200 - seaplane-operator may not be ready")
 	})
 })

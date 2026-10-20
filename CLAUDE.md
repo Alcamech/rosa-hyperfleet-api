@@ -2,13 +2,13 @@
 
 ## Project Overview
 
-ROSA Hyperfleet API — ROSA HCP regional cluster management.
+ROSA Seaplane API — ROSA HCP regional cluster management.
 
 Three components:
 
 - **platform-api/** — Stateless REST gateway (SigV4 auth, Cedar/AVP authz)
-- **hyperfleet-operator/** — Kubernetes operator (Cluster, ClusterNetworking, DNSReservation, Index, ManagementCluster, Manifest, NodePool, OIDCConfig, Placement, UpgradePolicies CRDs)
-- **hyperfleet-db/** — PostgreSQL-backed controller-runtime library
+- **seaplane-operator/** — Kubernetes operator (Cluster, ClusterNetworking, DNSReservation, Index, ManagementCluster, Manifest, NodePool, OIDCConfig, Placement, UpgradePolicies CRDs)
+- **seaplane-db/** — PostgreSQL-backed controller-runtime library
 
 ## Build & Test
 
@@ -21,11 +21,11 @@ make deps               # Download and tidy all modules
 
 make build-api          # Platform API
 make build-operator     # Fleet operator (manager + compactor)
-make build-hyperfleet-db      # FleetDB library
+make build-seaplane-db      # FleetDB library
 
 make test-api           # API unit tests
 make test-operator      # Operator unit tests
-make test-hyperfleet-db       # FleetDB unit tests
+make test-seaplane-db       # FleetDB unit tests
 make test-operator-int  # Operator integration tests (Postgres + DynamoDB)
 
 make generate           # Run all code generators (passthrough, deepcopy, registry, CRDs, conversion, clientset, openapi)
@@ -51,10 +51,10 @@ make test-clientset     # Clientset tests
 ## Module Layout
 
 ```
-hyperfleet-db/go.mod                    ← standalone
+seaplane-db/go.mod                    ← standalone
 api/go.mod                              ← standalone (CRD types, v1alpha1)
-clientset/go.mod                        ← generated typed K8s client for HyperFleet CRDs
-hyperfleet-operator/go.mod              ← requires: fleetdb, api
+clientset/go.mod                        ← generated typed K8s client for Seaplane CRDs
+seaplane-operator/go.mod              ← requires: fleetdb, api
 platform-api/go.mod                     ← requires: fleetdb, api
 hack/api-codegen/go.mod                 ← codegen tools (openapi-gen, crd-variants, conversion-gen)
 hack/clientset/cmd/bridge-gen/go.mod      ← bridge and platform generation for clientset
@@ -68,5 +68,5 @@ Cross-module refs use permanent `replace` directives to sibling dirs.
 - Multi-module monorepo: separate go.mod per component
 - Ginkgo/Gomega for testing
 - OpenAPI-first API design
-- CRD types in standalone `api/` module, imported by hyperfleet-operator and platform-api
+- CRD types in standalone `api/` module, imported by seaplane-operator and platform-api
 - golangci-lint v2 with custom logcheck plugin

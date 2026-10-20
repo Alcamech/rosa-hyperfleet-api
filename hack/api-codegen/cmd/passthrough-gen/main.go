@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/markers"
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/passthrough"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/markers"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/passthrough"
 )
 
 func main() {

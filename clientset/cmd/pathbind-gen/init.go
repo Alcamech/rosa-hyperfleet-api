@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/clientset/cmd/pathbind-gen/pkg"
+	"github.com/openshift-online/rosa-seaplane-api/clientset/cmd/pathbind-gen/pkg"
 	"gopkg.in/yaml.v3"
 )
 
@@ -111,6 +111,7 @@ func runInit(registryPath, openapiPath, outputPath string) error {
 						Path:       leaf.path,
 						GoType:     leaf.goType,
 						Operations: ops,
+						Resettable: e.Resettable,
 					})
 				}
 			} else {
@@ -120,6 +121,7 @@ func runInit(registryPath, openapiPath, outputPath string) error {
 					res.Fields = append(res.Fields, pkg.DraftField{
 						Path:       e.FieldPath,
 						Operations: ops,
+						Resettable: e.Resettable,
 					})
 				}
 			}

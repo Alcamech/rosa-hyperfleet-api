@@ -38,8 +38,13 @@ type FieldMeta struct {
 
 	// Hidden indicates if the field is excluded from generated Kubernetes OpenAPI
 	// (+k8s:openapi-gen=false). Mutable hidden fields can still be exposed by
-	// HyperFleet's custom public API schema.
+	// Seaplane's custom public API schema.
 	Hidden bool
+
+	// Resettable indicates whether an update may explicitly clear the field.
+	// Mutable means a field can be changed; resettable means an empty
+	// collection or null is a meaningful update rather than an invalid value.
+	Resettable bool `json:"resettable,omitempty"`
 
 	// FeatureGateAwareWriteModes allows write-mode to vary based on enabled feature gates
 	// Empty FeatureGate in an entry means "default" (when no gates are enabled)
@@ -50,12 +55,12 @@ type FieldMeta struct {
 	OwnerType string `json:"ownerType"`
 
 	// OwnerGVK is the GroupVersionKind of the CRD that owns this field
-	// (e.g., "hyperfleet.io/v1alpha1.Cluster")
+	// (e.g., "seaplane.io/v1alpha1.Cluster")
 	OwnerGVK string `json:"ownerGVK"`
 }
 
 // HiddenFromPublicAPI reports whether the field should be omitted from
-// HyperFleet-managed public API types and schemas. A mutable field explicitly
+// Seaplane-managed public API types and schemas. A mutable field explicitly
 // opts into that API even when standard Kubernetes OpenAPI generation is off.
 func (m FieldMeta) HiddenFromPublicAPI() bool {
 	return m.Hidden && m.WriteMode != Mutable
@@ -80,7 +85,7 @@ type EmbeddedUpstreamType struct {
 	LocalType          string // e.g., "ClusterConfiguration"
 	UpstreamType       string // e.g., "hypershiftv1beta1.ClusterConfiguration"
 	CRDOwner           string // e.g., "Cluster"
-	CRDOwnerGVK        string // e.g., "hyperfleet.io/v1alpha1.Cluster"
+	CRDOwnerGVK        string // e.g., "seaplane.io/v1alpha1.Cluster"
 }
 
 // MarkerScanner extracts markers from Go source files

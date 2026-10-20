@@ -14,9 +14,9 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/spf13/cobra"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/config"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/server"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/clients/seaplanedb"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/config"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/server"
 )
 
 var (
@@ -42,9 +42,9 @@ func main() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "rosa-hyperfleet-api",
-	Short: "Hyperfleet Platform API",
-	Long:  "Hyperfleet platform API for ROSA HCP regional cluster management",
+	Use:   "rosa-seaplane-api",
+	Short: "Seaplane Platform API",
+	Long:  "Seaplane platform API for ROSA HCP regional cluster management",
 }
 
 var serveCmd = &cobra.Command{
@@ -73,7 +73,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Create logger
 	logger := createLogger(logLevel, logFormat)
 
-	logger.Info("starting rosa-hyperfleet-api",
+	logger.Info("starting rosa-seaplane-api",
 		"log_level", logLevel,
 		"log_format", logFormat,
 	)
@@ -176,10 +176,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Create hyperfleet DB client (Postgres via pgruntime)
-	dbClient, err := hyperfleetdb.NewClient(context.Background(), cfg.DB.DSN, logger)
+	// Create seaplane DB client (Postgres via pgruntime)
+	dbClient, err := seaplanedb.NewClient(context.Background(), cfg.DB.DSN, logger)
 	if err != nil {
-		return fmt.Errorf("failed to create hyperfleetdb client: %w", err)
+		return fmt.Errorf("failed to create seaplanedb client: %w", err)
 	}
 	defer dbClient.Close()
 

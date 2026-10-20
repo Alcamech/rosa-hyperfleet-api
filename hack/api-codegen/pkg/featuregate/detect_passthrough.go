@@ -133,7 +133,7 @@ func DetectPassthroughTargets(apiDir, crdDir string) ([]PassthroughTarget, error
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
 			continue
 		}
-		// File names look like hyperfleet.io_clusters.yaml
+		// File names look like seaplane.io_clusters.yaml
 		parts := strings.SplitN(strings.TrimSuffix(e.Name(), ".yaml"), "_", 2)
 		if len(parts) == 2 {
 			crdByPlural[parts[1]] = filepath.Join(crdDir, e.Name())

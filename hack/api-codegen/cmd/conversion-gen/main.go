@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/conversion"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/conversion"
 )
 
 func main() {
@@ -37,10 +37,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Example usage:\n")
 		fmt.Fprintf(os.Stderr, "  %s \\\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "    --api-version=v1alpha1 \\\n")
-		fmt.Fprintf(os.Stderr, "    --crd-package=github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1 \\\n")
+		fmt.Fprintf(os.Stderr, "    --crd-package=github.com/openshift-online/rosa-seaplane-api/api/v1alpha1 \\\n")
 		fmt.Fprintf(os.Stderr, "    --input-dirs=./api/v1alpha1 \\\n")
 		fmt.Fprintf(os.Stderr, "    --output-dir=./platform-api/pkg/conversion/v1alpha1 \\\n")
-		fmt.Fprintf(os.Stderr, "    --output-package=github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/conversion\n")
+		fmt.Fprintf(os.Stderr, "    --output-package=github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/conversion\n")
 		os.Exit(1)
 	}
 

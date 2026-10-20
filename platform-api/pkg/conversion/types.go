@@ -3,7 +3,7 @@
 package conversion
 
 import (
-	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
+	v1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
 	configv1 "github.com/openshift/api/config/v1"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -30,8 +30,6 @@ type ServiceSetFieldsHostedCluster struct {
 	AllowedUnsafeSysctls string `json:"allowedUnsafeSysctls,omitempty"`
 	// AuditWebhook is service-set (platform-managed, hidden from API)
 	AuditWebhook *corev1.LocalObjectReference `json:"auditWebhook,omitempty"`
-	// Capabilities is service-set (platform-managed, hidden from API)
-	Capabilities *hypershiftv1beta1.Capabilities `json:"capabilities,omitempty"`
 	// ClusterID is service-set (platform-managed, hidden from API)
 	ClusterID string `json:"clusterID,omitempty"`
 	// ControlPlaneRelease is service-set (platform-managed, hidden from API)

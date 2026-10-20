@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-tools/pkg/loader"
 	"sigs.k8s.io/controller-tools/pkg/markers"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/registry"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/registry"
 )
 
 // schemaOutput is the top-level JSON structure written to the output file.
@@ -172,7 +172,7 @@ var typeToRegistryPrefix = map[string]string{
 
 // filterHiddenFields removes fields hidden from the public API in the registry
 // from all schema definitions. Mutable fields marked +k8s:openapi-gen=false
-// remain in HyperFleet's custom public schema.
+// remain in Seaplane's custom public schema.
 //
 // Every definition that carries hidden fields must have an entry in
 // typeToRegistryPrefix; an unmapped definition whose properties match
@@ -262,7 +262,7 @@ func removeRequired(schema *apiextensionsv1.JSONSchemaProps, field string) {
 var refTargets = map[string]map[string]string{
 	"ClusterSpec":                  {"hostedCluster": "HostedClusterSpecPassthrough"},
 	"NodePoolSpec":                 {"nodePool": "NodePoolSpecPassthrough"},
-	"HostedClusterSpecPassthrough": {"configuration": "ClusterConfiguration", "platform": "PlatformSpec"},
+	"HostedClusterSpecPassthrough": {"configuration": "ClusterConfiguration", "platform": "PlatformSpec", "capabilities": "Capabilities"},
 	"NodePoolSpecPassthrough":      {"platform": "NodePoolPlatform"},
 	"ClusterConfiguration":         {"kubelet": "KubeletConfig", "machineConfig": "MachineConfigSpec"},
 }

@@ -51,13 +51,13 @@ HTTP Response
 
 ### Storage Layer
 
-FleetDB (`hyperfleet-db/`) already uses K8s-native types:
+FleetDB (`seaplane-db/`) already uses K8s-native types:
 
 ```go
-// From platform-api/pkg/clients/hyperfleetdb/client.go
+// From platform-api/pkg/clients/seaplanedb/client.go
 scheme := runtime.NewScheme()
-hyperfleetv1alpha1.AddToScheme(scheme)
-c, cleanup, err := hyperfleetdb.NewClient(hyperfleetdb.Options{
+seaplanev1alpha1.AddToScheme(scheme)
+c, cleanup, err := seaplanedb.NewClient(seaplanedb.Options{
     Scheme: scheme,  // ← Registered with v1alpha1 types
     DSN:    dsn,
 })
@@ -67,7 +67,7 @@ c, cleanup, err := hyperfleetdb.NewClient(hyperfleetdb.Options{
 
 - Table: `kubernetes_resources`
 - Columns: `spec` (JSONB), `status` (JSONB), `metadata` (JSONB)
-- GVK identifier: `"hyperfleet.io/v1alpha1/Cluster"`
+- GVK identifier: `"seaplane.io/v1alpha1/Cluster"`
 - Data format: JSON serialization of v1alpha1 types
 - Already K8s-native under the hood
 
@@ -87,11 +87,11 @@ HTTP Request
     ↓
 types.ClusterCreateRequest (custom REST format)
     ↓
-hyperfleetdb.PlatformCreateToClusterCR()
+seaplanedb.PlatformCreateToClusterCR()
     ↓
-v1alpha1.Cluster (K8s type) → FleetDB (JSONB, GVK: "hyperfleet.io/v1alpha1/Cluster")
+v1alpha1.Cluster (K8s type) → FleetDB (JSONB, GVK: "seaplane.io/v1alpha1/Cluster")
     ↓
-hyperfleetdb.ClusterCRToPlatform()
+seaplanedb.ClusterCRToPlatform()
     ↓
 types.Cluster (custom REST format) → HTTP Response
 ```
@@ -109,11 +109,11 @@ HTTP Request
     ↓
 public.Cluster (K8s-native format)
     ↓
-hyperfleetdb.PublicToInternalCluster()
+seaplanedb.PublicToInternalCluster()
     ↓
-v1alpha1.Cluster (K8s type) → FleetDB (JSONB, GVK: "hyperfleet.io/v1alpha1/Cluster")
+v1alpha1.Cluster (K8s type) → FleetDB (JSONB, GVK: "seaplane.io/v1alpha1/Cluster")
     ↓
-hyperfleetdb.InternalToPublicCluster()
+seaplanedb.InternalToPublicCluster()
     ↓
 public.Cluster (K8s-native format) → HTTP Response
 ```
@@ -150,7 +150,7 @@ No conversion to custom types:
 
 ```json
 {
-  "apiVersion": "hyperfleet.openshift.io/v1alpha1",
+  "apiVersion": "seaplane.openshift.io/v1alpha1",
   "kind": "Cluster",
   "metadata": {
     "name": "my-cluster",
@@ -160,7 +160,7 @@ No conversion to custom types:
     "resourceVersion": "12345",
     "creationTimestamp": "2026-08-20T09:00:00Z",
     "labels": {
-      "hyperfleet.io/account-id": "account-123"
+      "seaplane.io/account-id": "account-123"
     }
   },
   "spec": { ... },
@@ -172,7 +172,7 @@ No conversion to custom types:
 
 - `id` → `metadata.uid`
 - `name` → `metadata.name`
-- `target_project_id` → `metadata.labels["hyperfleet.io/account-id"]`
+- `target_project_id` → `metadata.labels["seaplane.io/account-id"]`
 - `created_by` → `spec.creatorARN` (service-set, filtered in public response)
 - `oidc_issuer_url` → `spec.hostedCluster.issuerURL`
 - `generation` → `metadata.generation`
@@ -186,7 +186,7 @@ No conversion to custom types:
 
 Create wrapper functions that reuse existing Project/Unproject from conversion/v1alpha1:
 
-**New file**: `platform-api/pkg/clients/hyperfleetdb/convert.go`
+**New file**: `platform-api/pkg/clients/seaplanedb/convert.go`
 
 Functions:
 
@@ -243,7 +243,7 @@ Update handler tests and add conversion tests:
 
 **New file:**
 
-- `platform-api/pkg/clients/hyperfleetdb/convert_test.go`
+- `platform-api/pkg/clients/seaplanedb/convert_test.go`
 
 Test coverage:
 
@@ -263,8 +263,8 @@ FleetDB storage layer is **completely unaffected**:
 
 - Stores v1alpha1.Cluster and v1alpha1.NodePool CRD types
 - Uses PostgreSQL JSONB columns (spec, status, metadata)
-- GVK identifier: `"hyperfleet.io/v1alpha1/Cluster"`
-- Scheme registration: v1alpha1 types only (`hyperfleetv1alpha1.AddToScheme()`)
+- GVK identifier: `"seaplane.io/v1alpha1/Cluster"`
+- Scheme registration: v1alpha1 types only (`seaplanev1alpha1.AddToScheme()`)
 
 **Why no migration needed:**
 
@@ -319,7 +319,7 @@ POST /api/v0/clusters
   "metadata": {
     "name": "my-cluster",
     "labels": {
-      "hyperfleet.io/account-id": "account-123"
+      "seaplane.io/account-id": "account-123"
     }
   },
   "spec": { ... }
@@ -379,8 +379,8 @@ PATCH /api/v0/clusters/{id}
 - **Conversion**: `platform-api/pkg/conversion/v1alpha1/`
 - **Existing Handlers**: `platform-api/pkg/handlers/`
 - **Validation**: `platform-api/pkg/validation/field_validator.go`
-- **FleetDB**: `hyperfleet-db/` (storage layer, uses v1alpha1.AddToScheme)
-- **Current Client**: `platform-api/pkg/clients/hyperfleetdb/client.go` (line 31: `hyperfleetv1alpha1.AddToScheme`)
+- **FleetDB**: `seaplane-db/` (storage layer, uses v1alpha1.AddToScheme)
+- **Current Client**: `platform-api/pkg/clients/seaplanedb/client.go` (line 31: `seaplanev1alpha1.AddToScheme`)
 
 ## Related Issues
 

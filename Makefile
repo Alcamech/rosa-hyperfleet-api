@@ -1,6 +1,6 @@
 .PHONY: help build test test-unit test-integration lint clean \
-	build-hyperfleet-db build-operator build-api build-api-codegen \
-	test-hyperfleet-db test-operator test-operator-int test-api test-api-codegen test-clientset \
+	build-seaplane-db build-operator build-api build-api-codegen \
+	test-seaplane-db test-operator test-operator-int test-api test-api-codegen test-clientset \
 	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-zoa test-e2e-authz test-e2e-sdk test-e2e-rosa-cli \
 	test-e2e test-e2e-api test-e2e-cli test-e2e-platform-monitoring test-e2e-authz test-e2e-sdk \
 	e2e-authz-infra-up e2e-authz-infra-down e2e-init-db \
@@ -14,8 +14,8 @@
 
 # ── Configuration ────────────────────────────────────────────────────────
 
-IMAGE_REPO_API      ?= quay.io/openshift-online/rosa-hyperfleet-api
-IMAGE_REPO_OPERATOR ?= quay.io/openshift-online/hyperfleet-operator
+IMAGE_REPO_API      ?= quay.io/openshift-online/rosa-seaplane-api
+IMAGE_REPO_OPERATOR ?= quay.io/openshift-online/seaplane-operator
 IMAGE_TAG           ?= latest
 GIT_SHA             := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GOOS                ?= linux
@@ -32,8 +32,8 @@ FOCUS       ?=
 SKIP        ?= Authz
 
 ROSA_REPO_URL          ?= https://github.com/openshift/rosa
-ROSA_REPO_BRANCH       ?= hyperfleet-v2
-ROSA_MAKE_TARGET       ?= e2e-hyperfleet
+ROSA_REPO_BRANCH       ?= seaplane-v2
+ROSA_MAKE_TARGET       ?= e2e-seaplane
 ROSA_BUILD_TARGET      ?= install
 ROSA_FOCUS      ?=
 ROSA_SKIP       ?=
@@ -53,7 +53,7 @@ GINKGO           := $(abspath $(TOOLS_BIN_DIR)/ginkgo)
 COVERAGE         ?=
 
 # ── SDK generation ───────────────────────────────────────────────────────
-SDK_MODULE        ?= github.com/openshift-online/rosa-hyperfleet-api
+SDK_MODULE        ?= github.com/openshift-online/rosa-seaplane-api
 SDK_API_PKG       ?= $(SDK_MODULE)/api
 SDK_INPUT         ?= v1alpha1/public
 SDK_CLIENTSET     ?= generated
@@ -102,20 +102,20 @@ help:
 	@echo "Build:"
 	@echo "  build                Build all components"
 	@echo "  build-api            Platform API server"
-	@echo "  build-operator       Hyperfleet operator (manager + compactor)"
-	@echo "  build-hyperfleet-db  Hyperfleet DB library"
+	@echo "  build-operator       Seaplane operator (manager + compactor)"
+	@echo "  build-seaplane-db  Seaplane DB library"
 	@echo "  build-api-codegen    API codegen tools (build-time generators)"
 	@echo ""
 	@echo "Test:"
 	@echo "  test                 All tests (unit + integration)"
 	@echo "  test-unit            Unit tests: API + operator + codegen + clientset (no external services)"
 	@echo "  test-clientset       Clientset unit tests (transport, platform)"
-	@echo "  test-integration     Integration tests: HyperFleet DB + operator"
+	@echo "  test-integration     Integration tests: Seaplane DB + operator"
 	@echo "  test-e2e-authz       E2E authz (starts local infra)"
 	@echo "  test-e2e-api         E2E API"
 	@echo "  test-e2e-cli         E2E CLI"
 	@echo "  test-e2e-sdk         E2E SDK (Go clientset lifecycle)"
-	@echo "  test-e2e-rosa-cli    E2E rosa CLI (clones rosa repo, builds CLI, runs hyperfleet tests)"
+	@echo "  test-e2e-rosa-cli    E2E rosa CLI (clones rosa repo, builds CLI, runs seaplane tests)"
 	@echo "                       Supports ROSA_FOCUS, ROSA_SKIP, ROSA_LABEL_FILTER"
 	@echo "  test-e2e-platform-monitoring  E2E monitoring"
 	@echo ""
@@ -147,21 +147,21 @@ help:
 	@echo ""
 	@echo "Images:"
 	@echo "  image-api            Platform API image"
-	@echo "  image-operator       Hyperfleet operator image"
+	@echo "  image-operator       Seaplane operator image"
 
 # ── Build ────────────────────────────────────────────────────────────────
 
-build: build-hyperfleet-db build-operator build-api
+build: build-seaplane-db build-operator build-api
 
-build-hyperfleet-db:
-	cd hyperfleet-db && go build ./...
+build-seaplane-db:
+	cd seaplane-db && go build ./...
 
 build-operator:
-	cd hyperfleet-operator && go build -o ../bin/manager ./cmd/manager
-	cd hyperfleet-operator && go build -o ../bin/compactor ./cmd/compactor
+	cd seaplane-operator && go build -o ../bin/manager ./cmd/manager
+	cd seaplane-operator && go build -o ../bin/compactor ./cmd/compactor
 
 build-api:
-	cd platform-api && go build -o ../bin/rosa-hyperfleet-api ./cmd
+	cd platform-api && go build -o ../bin/rosa-seaplane-api ./cmd
 
 build-api-codegen:
 	cd hack/api-codegen && go build -o ../../bin/passthrough-gen ./cmd/passthrough-gen
@@ -179,7 +179,7 @@ test: test-unit test-integration
 
 test-unit: test-api test-operator test-api-codegen test-clientset
 
-test-integration: test-hyperfleet-db test-operator-int
+test-integration: test-seaplane-db test-operator-int
 
 test-api:
 	cd platform-api && go test -v -race -count=1 $(if $(COVERAGE),-covermode=atomic -coverprofile=../coverage-platform-api.out,) $$(go list ./... | grep -v '/test/e2e')
@@ -196,14 +196,14 @@ test-clientset:
 test-operator: $(SETUP_ENVTEST)
 	@ASSETS=$$($(SETUP_ENVTEST) use -p path --bin-dir $(ENVTEST_BIN_DIR)) && \
 		echo "envtest assets: $$ASSETS" && \
-		cd hyperfleet-operator && KUBEBUILDER_ASSETS="$$ASSETS" go test -v -race -count=1 $(if $(COVERAGE),-covermode=atomic -coverprofile=../coverage-hyperfleet-operator.out,) ./internal/...
-	$(if $(filter html,$(COVERAGE)),cd hyperfleet-operator && go tool cover -html=../coverage-hyperfleet-operator.out -o ../coverage-hyperfleet-operator.html,)
+		cd seaplane-operator && KUBEBUILDER_ASSETS="$$ASSETS" go test -v -race -count=1 $(if $(COVERAGE),-covermode=atomic -coverprofile=../coverage-seaplane-operator.out,) ./internal/...
+	$(if $(filter html,$(COVERAGE)),cd seaplane-operator && go tool cover -html=../coverage-seaplane-operator.out -o ../coverage-seaplane-operator.html,)
 
-test-hyperfleet-db:
-	cd hyperfleet-db && go test -v -race -count=1 ./...
+test-seaplane-db:
+	cd seaplane-db && go test -v -race -count=1 ./...
 
 test-operator-int:
-	cd hyperfleet-operator && go test -v -race -count=1 ./test/...
+	cd seaplane-operator && go test -v -race -count=1 ./test/...
 
 test-e2e: test-e2e-api
 
@@ -253,7 +253,7 @@ test-e2e-rosa-cli:
 	export PATH="$$PWD:$$PATH" && \
 	echo "Running rosa cli E2E tests..." && \
 	name=$${CLUSTER_NAME:-hf-e2e-$$(date +%s)} && \
-	export HYPERFLEET_URL="$${HYPERFLEET_URL}" && \
+	export SEAPLANE_URL="$${SEAPLANE_URL}" && \
 	export CLUSTER_NAME="$$name" && \
 	export OPERATOR_ROLES_PREFIX="$${OPERATOR_ROLES_PREFIX:-$$name}" && \
 	export AWS_DEFAULT_REGION="$${AWS_DEFAULT_REGION:-$${AWS_REGION}}" && \
@@ -270,7 +270,7 @@ test-e2e-rosa-cli:
 			$(if $(ROSA_LABEL_FILTER),--label-filter="$(ROSA_LABEL_FILTER)") \
 			./tests/e2e/; \
 	else \
-		echo "Running default rosa e2e-hyperfleet target..." && \
+		echo "Running default rosa e2e-seaplane target..." && \
 		$(MAKE) \
 			TEST_PROFILE="$${TEST_PROFILE}" \
 			TEST_PROFILE_DIR="$$ROSA_TMPDIR/tests/ci/data/profiles" \
@@ -299,31 +299,31 @@ test-e2e-authz: e2e-authz-infra-up
 # ── Code Quality ─────────────────────────────────────────────────────────
 
 fmt:
-	cd hyperfleet-db && go fmt ./...
-	cd hyperfleet-operator && go fmt ./...
+	cd seaplane-db && go fmt ./...
+	cd seaplane-operator && go fmt ./...
 	cd platform-api && go fmt ./...
 	cd hack/api-codegen && go fmt ./...
 	cd clientset && go fmt ./...
 	cd hack/clientset/cmd/bridge-gen && go fmt ./...
 
 vet:
-	cd hyperfleet-db && go vet ./...
-	cd hyperfleet-operator && go vet ./...
+	cd seaplane-db && go vet ./...
+	cd seaplane-operator && go vet ./...
 	cd platform-api && go vet ./...
 	cd hack/api-codegen && go vet ./...
 	cd clientset && go vet ./...
 	cd hack/clientset/cmd/bridge-gen && go vet ./...
 
 lint: $(GOLANGCI_LINT)
-	cd hyperfleet-db && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
-	cd hyperfleet-operator && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
+	cd seaplane-db && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
+	cd seaplane-operator && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
 	cd platform-api && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
 	cd hack/api-codegen && $(GOLANGCI_LINT) run --config ../../.golangci.yml --timeout 5m ./...
 	cd clientset && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
 	cd hack/clientset/cmd/bridge-gen && $(GOLANGCI_LINT) run --config $(abspath .golangci.yml) --timeout 5m ./...
 
 # All Go modules in the repo (used by verify and MintMaker/Renovate post-upgrade).
-override MOD_TIDY_DIRS := hyperfleet-db api hyperfleet-operator platform-api test clientset hack/tools hack/api-codegen
+override MOD_TIDY_DIRS := seaplane-db api seaplane-operator platform-api test clientset hack/tools hack/api-codegen
 MOD_TIDY_FILES := $(foreach d,$(MOD_TIDY_DIRS),$(d)/go.mod $(d)/go.sum)
 
 mod-tidy:
@@ -343,10 +343,10 @@ deps:
 # ── Code Generation ──────────────────────────────────────────────────────
 
 CRD_VARIANTS     := $(abspath bin/crd-variants)
-CRD_BASES_DIR    := hyperfleet-operator/config/crd/bases
+CRD_BASES_DIR    := seaplane-operator/config/crd/bases
 
 manifests: codegen-passthrough codegen-conversion $(CONTROLLER_GEN) build-api-codegen
-	cd hyperfleet-operator && $(CONTROLLER_GEN) crd:allowDangerousTypes=true paths="../api/v1alpha1" output:crd:dir=config/crd/bases
+	cd seaplane-operator && $(CONTROLLER_GEN) crd:allowDangerousTypes=true paths="../api/v1alpha1" output:crd:dir=config/crd/bases
 	$(CRD_VARIANTS) --strip-passthrough-cel --api-dir api/v1alpha1 --crd-dir $(CRD_BASES_DIR)
 
 generate-deepcopy: codegen-passthrough $(CONTROLLER_GEN)
@@ -428,10 +428,10 @@ verify-pathbind-draft: generate-pathbind-draft
 verify: verify-codegen verify-conversion verify-clientset verify-openapi verify-pathbind-draft verify-mod
 
 CONVERSION_OUTPUT_DIR   ?= platform-api/pkg/conversion/v1alpha1
-CONVERSION_OUTPUT_PKG   ?= github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/conversion
-CONVERSION_CRD_PKG      ?= github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1
+CONVERSION_OUTPUT_PKG   ?= github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/conversion
+CONVERSION_CRD_PKG      ?= github.com/openshift-online/rosa-seaplane-api/api/v1alpha1
 CONVERSION_REST_DIR     ?= api/v1alpha1/public
-CONVERSION_REST_PKG     ?= github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public
+CONVERSION_REST_PKG     ?= github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public
 
 codegen-conversion: codegen-passthrough codegen-registry build-api-codegen
 	./bin/conversion-gen \
@@ -453,13 +453,13 @@ generate-openapi: codegen-conversion
 	./bin/openapi-gen \
 		-input-dirs ./api/v1alpha1/public \
 		-output-file $(OPENAPI_GENERATED)
-	# TODO: auto-discover schemas via +hyperfleet:public-api=true marker so new CRDs
+	# TODO: auto-discover schemas via +seaplane:public-api=true marker so new CRDs
 	# are included automatically — requires extending openapi-merge to scan
 	# generated-schemas.json description fields for the marker text.
 	./bin/openapi-merge \
 		-spec $(OPENAPI_SPEC) \
 		-generated $(OPENAPI_GENERATED) \
-		-schemas Cluster,ClusterList,ClusterSpec,ClusterStatus,NodePool,NodePoolList,NodePoolSpec,NodePoolStatus,OidcConfig,OidcConfigList,OidcConfigStatus,DNSReservation,DNSReservationList,DNSReservationSpec,DNSReservationStatus,PlacementReference,HostedClusterSpecPassthrough,NodePoolSpecPassthrough,ClusterConfiguration,KubeletConfig,MachineConfigSpec,PlatformSpec,NodePoolPlatform
+		-schemas Cluster,ClusterList,ClusterSpec,ClusterStatus,NodePool,NodePoolList,NodePoolSpec,NodePoolStatus,OidcConfig,OidcConfigList,OidcConfigStatus,DNSReservation,DNSReservationList,DNSReservationSpec,DNSReservationStatus,PlacementReference,Capabilities,HostedClusterSpecPassthrough,NodePoolSpecPassthrough,ClusterConfiguration,KubeletConfig,MachineConfigSpec,PlatformSpec,NodePoolPlatform
 
 verify-openapi: generate-openapi
 	git diff --exit-code $(OPENAPI_SPEC)
@@ -485,7 +485,7 @@ image-api:
 	$(CONTAINER_ENGINE) tag $(IMAGE_REPO_API):$(IMAGE_TAG) $(IMAGE_REPO_API):$(GIT_SHA)
 
 image-operator:
-	$(CONTAINER_ENGINE) build -f hyperfleet-operator/Containerfile \
+	$(CONTAINER_ENGINE) build -f seaplane-operator/Containerfile \
 		--platform $(GOOS)/$(GOARCH) \
 		-t $(IMAGE_REPO_OPERATOR):$(IMAGE_TAG) .
 	$(CONTAINER_ENGINE) tag $(IMAGE_REPO_OPERATOR):$(IMAGE_TAG) $(IMAGE_REPO_OPERATOR):$(GIT_SHA)

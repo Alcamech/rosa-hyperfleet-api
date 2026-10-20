@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/markers"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/markers"
 )
 
 // ResolvePackageDir uses `go list` to find the directory for a Go package import path.

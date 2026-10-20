@@ -4,7 +4,7 @@ import (
 	"go/ast"
 	"testing"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/markers"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/markers"
 )
 
 func TestLoadHyperShiftTypes(t *testing.T) {
@@ -53,7 +53,7 @@ func TestGetMarkersForField_WithRegistry(t *testing.T) {
 			"spec.hostedCluster.etcd": markers.FieldMeta{
 				FieldPath:   "spec.hostedCluster.etcd",
 				WriteMode:   markers.Mutable,
-				FeatureGate: "HyperFleetEtcd",
+				FeatureGate: "SeaplaneEtcd",
 				Hidden:      false,
 				OwnerType:   "Cluster",
 			},
@@ -78,29 +78,29 @@ func TestGetMarkersForField_WithRegistry(t *testing.T) {
 			name:           "visible field gets openapi-gen=true",
 			jsonTagName:    "autoNode",
 			wantOpenAPIGen: "+k8s:openapi-gen=true",
-			wantWriteMode:  "+hyperfleet:write-mode=service-set",
+			wantWriteMode:  "+seaplane:write-mode=service-set",
 			wantLen:        2,
 		},
 		{
 			name:           "hidden field gets openapi-gen=false",
 			jsonTagName:    "release",
 			wantOpenAPIGen: "+k8s:openapi-gen=false",
-			wantWriteMode:  "+hyperfleet:write-mode=service-set",
+			wantWriteMode:  "+seaplane:write-mode=service-set",
 			wantLen:        2,
 		},
 		{
 			name:           "field with feature gate emits gate marker",
 			jsonTagName:    "etcd",
 			wantOpenAPIGen: "+k8s:openapi-gen=true",
-			wantWriteMode:  "+hyperfleet:write-mode=mutable",
-			wantGate:       "+openshift:enable:FeatureGate=HyperFleetEtcd",
+			wantWriteMode:  "+seaplane:write-mode=mutable",
+			wantGate:       "+openshift:enable:FeatureGate=SeaplaneEtcd",
 			wantLen:        3,
 		},
 		{
 			name:           "field not in registry gets defaults",
 			jsonTagName:    "unknownField",
 			wantOpenAPIGen: "+k8s:openapi-gen=false",
-			wantWriteMode:  "+hyperfleet:write-mode=service-set",
+			wantWriteMode:  "+seaplane:write-mode=service-set",
 			wantLen:        2,
 		},
 	}

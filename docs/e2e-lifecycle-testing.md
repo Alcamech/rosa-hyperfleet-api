@@ -108,9 +108,9 @@ The e2e runner has no direct network path to the regional Alertmanager. Manual v
    - Linux (podman `--network host`): `http://127.0.0.1:9093`
    - macOS: run e2e on the host (not in podman) with `http://127.0.0.1:9093` — podman user-mode networking cannot reach the SSM forward
 
-The hyperfleet-operator writes silences in-cluster via `ALERTMANAGER_URL` (e.g. `http://monitoring-alertmanager.monitoring.svc:9093`). The e2e specs only **read** silences through the tunnel to assert reconciler behaviour.
+The seaplane-operator writes silences in-cluster via `ALERTMANAGER_URL` (e.g. `http://monitoring-alertmanager.monitoring.svc:9093`). The e2e specs only **read** silences through the tunnel to assert reconciler behaviour.
 
-Operator integration tests (`hyperfleet-operator/test`) exercise the silence reconciler against a real Alertmanager container and are the automated CI gate for reconciler logic.
+Operator integration tests (`seaplane-operator/test`) exercise the silence reconciler against a real Alertmanager container and are the automated CI gate for reconciler logic.
 
 #### `hcp:post-monitor`
 

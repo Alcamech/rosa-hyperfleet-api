@@ -9,7 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	awstest "github.com/openshift-online/rosa-hyperfleet-api/test/helpers/aws"
+	awstest "github.com/openshift-online/rosa-seaplane-api/test/helpers/aws"
 )
 
 type lokiQueryResponse struct {

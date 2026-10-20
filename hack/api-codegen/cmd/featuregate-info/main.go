@@ -5,25 +5,25 @@ import (
 	"os"
 	"sort"
 
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/featuregate"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/featuregate"
 )
 
 func main() {
-	fmt.Println("=== HyperFleet Feature Gate Registry ===")
+	fmt.Println("=== Seaplane Feature Gate Registry ===")
 	fmt.Println()
 
 	// List all feature gates
 	fmt.Println("Registered Feature Gates:")
 	fmt.Println()
 
-	gates := make([]string, 0, len(featuregate.HyperFleetFeatureGates))
-	for gate := range featuregate.HyperFleetFeatureGates {
+	gates := make([]string, 0, len(featuregate.SeaplaneFeatureGates))
+	for gate := range featuregate.SeaplaneFeatureGates {
 		gates = append(gates, gate)
 	}
 	sort.Strings(gates)
 
 	for _, gate := range gates {
-		info := featuregate.HyperFleetFeatureGates[gate]
+		info := featuregate.SeaplaneFeatureGates[gate]
 		fmt.Printf("  %-30s  Stage: %-12s  %s\n", gate, info.Stage, info.Description)
 	}
 

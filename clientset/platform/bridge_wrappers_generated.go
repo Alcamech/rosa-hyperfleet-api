@@ -28,12 +28,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 
-	v1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	typedclient "github.com/openshift-online/rosa-hyperfleet-api/clientset/generated/typed/v1alpha1/public"
+	v1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	typedclient "github.com/openshift-online/rosa-seaplane-api/clientset/generated/typed/v1alpha1/public"
 )
 
 // ClusterInterface is the platform-scoped client for Cluster resources.
-// Only operations and options supported by the Hyperfleet platform API are exposed.
+// Only operations and options supported by the Seaplane platform API are exposed.
 // Watch is intentionally absent — the platform API does not support the Kubernetes
 // watch stream protocol; use WaitUntil for polling-based synchronization instead.
 type ClusterInterface interface {
@@ -124,7 +124,7 @@ func (c *clusterClient) WaitUntil(ctx context.Context, id string, condition func
 }
 
 // DNSReservationInterface is the platform-scoped client for DNSReservation resources.
-// Only operations and options supported by the Hyperfleet platform API are exposed.
+// Only operations and options supported by the Seaplane platform API are exposed.
 // Watch is intentionally absent — the platform API does not support the Kubernetes
 // watch stream protocol; use WaitUntil for polling-based synchronization instead.
 type DNSReservationInterface interface {
@@ -222,7 +222,7 @@ type NodePoolListOptions struct {
 }
 
 // NodePoolInterface is the platform-scoped client for NodePool resources.
-// Only operations and options supported by the Hyperfleet platform API are exposed.
+// Only operations and options supported by the Seaplane platform API are exposed.
 // Watch is intentionally absent — the platform API does not support the Kubernetes
 // watch stream protocol; use WaitUntil for polling-based synchronization instead.
 type NodePoolInterface interface {
@@ -261,7 +261,7 @@ func (c *nodePoolClient) List(ctx context.Context, opts NodePoolListOptions) (*v
 		mo.Continue = strconv.FormatInt(opts.Offset, 10)
 	}
 	if opts.ClusterUID != "" {
-		mo.LabelSelector = "hyperfleet.io/cluster-uid=" + opts.ClusterUID
+		mo.LabelSelector = "seaplane.io/cluster-uid=" + opts.ClusterUID
 	}
 	return c.inner.List(ctx, mo)
 }
@@ -316,7 +316,7 @@ func (c *nodePoolClient) WaitUntil(ctx context.Context, id string, condition fun
 }
 
 // OidcConfigInterface is the platform-scoped client for OidcConfig resources.
-// Only operations and options supported by the Hyperfleet platform API are exposed.
+// Only operations and options supported by the Seaplane platform API are exposed.
 // Watch is intentionally absent — the platform API does not support the Kubernetes
 // watch stream protocol; use WaitUntil for polling-based synchronization instead.
 type OidcConfigInterface interface {
@@ -406,7 +406,7 @@ func (c *oidcConfigClient) WaitUntil(ctx context.Context, id string, condition f
 	}
 }
 
-// V1alpha1PublicInterface is the platform-scoped typed client for the hyperfleet.io/v1alpha1 group.
+// V1alpha1PublicInterface is the platform-scoped typed client for the seaplane.io/v1alpha1 group.
 type V1alpha1PublicInterface interface {
 	RESTClient() rest.Interface
 	Clusters() ClusterInterface

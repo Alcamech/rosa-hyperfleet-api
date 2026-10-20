@@ -1,4 +1,4 @@
-# ROSA Hyperfleet API
+# ROSA Seaplane API
 
 ROSA HCP regional cluster management — platform API, operator, and backing database library.
 
@@ -6,9 +6,9 @@ ROSA HCP regional cluster management — platform API, operator, and backing dat
 | ---------------------- | ------------------------------------------------------- |
 | `api/`                 | CRD types and API definitions (v1alpha1)                |
 | `platform-api/`        | REST gateway (SigV4 auth, Cedar/AVP authz)              |
-| `hyperfleet-operator/` | Kubernetes operator (Cluster, NodePool, Placement CRDs) |
-| `hyperfleet-db/`       | PostgreSQL-backed controller-runtime library            |
-| `clientset/`           | Generated typed Kubernetes client for HyperFleet CRDs   |
+| `seaplane-operator/` | Kubernetes operator (cluster lifecycle controller for Cluster, NodePool, DNSReservation, OidcConfig, Placement, ManagementCluster, Manifest, and other CRDs) |
+| `seaplane-db/`       | PostgreSQL-backed controller-runtime library            |
+| `clientset/`           | Generated typed Kubernetes client for Seaplane CRDs   |
 | `hack/`                | Code generation tools and dev tooling                   |
 | `test/`                | E2E tests (API, CLI, monitoring)                        |
 
@@ -24,10 +24,10 @@ make help    # full target list
 ## Module Layout
 
 ```
-hyperfleet-db/go.mod             ← standalone
+seaplane-db/go.mod             ← standalone
 api/go.mod                       ← standalone (CRD types)
-hyperfleet-operator/go.mod       ← requires: hyperfleet-db, api
-platform-api/go.mod              ← requires: hyperfleet-db, api
+seaplane-operator/go.mod       ← requires: seaplane-db, api
+platform-api/go.mod              ← requires: seaplane-db, api
 ```
 
 ## Docs

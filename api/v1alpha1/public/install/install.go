@@ -1,7 +1,7 @@
 package install
 
 import (
-	public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
+	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 

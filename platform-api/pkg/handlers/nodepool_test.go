@@ -17,17 +17,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/clients/seaplanedb"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 )
 
-func testNodePoolCR(npName, accountID string) *hyperfleetv1alpha1.NodePool {
-	return &hyperfleetv1alpha1.NodePool{
+func testNodePoolCR(npName, accountID string) *seaplanev1alpha1.NodePool {
+	return &seaplanev1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      npName,
 			Namespace: "account-" + accountID,
-			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+			Labels:    map[string]string{"seaplane.io/account-id": accountID},
 		},
 	}
 }
@@ -37,7 +37,7 @@ func newTestNodePoolHandler(t *testing.T, objects ...client.Object) *NodePoolHan
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	return NewNodePoolHandler(hyperfleetdb.NewClientFrom(fc, logger), logger)
+	return NewNodePoolHandler(seaplanedb.NewClientFrom(fc, logger), logger)
 }
 
 // TestNodePoolHandler_Update_MissingSpec verifies that PUT /nodepools/{id} with
@@ -85,9 +85,9 @@ func TestNodePoolHandler_Update_AllowsUnchangedServiceManagedManagement(t *testi
 	autoRepair := true
 	replicas := int32(2)
 	nodePool := testNodePoolCR("my-cluster.workers", testAccountID)
-	nodePool.Spec = hyperfleetv1alpha1.NodePoolSpec{
+	nodePool.Spec = seaplanev1alpha1.NodePoolSpec{
 		AutoRepair: &autoRepair,
-		NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
+		NodePool: seaplanev1alpha1.NodePoolSpecPassthrough{
 			ClusterName: "my-cluster",
 			Replicas:    &replicas,
 			Management: hypershiftv1beta1.NodePoolManagement{
@@ -99,8 +99,8 @@ func TestNodePoolHandler_Update_AllowsUnchangedServiceManagedManagement(t *testi
 	scheme := newTestScheme()
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(nodePool).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewNodePoolHandler(hyperfleetdb.NewClientFrom(fc, logger), logger)
-	request := hyperfleetdb.InternalToPublicNodePool(nodePool)
+	handler := NewNodePoolHandler(seaplanedb.NewClientFrom(fc, logger), logger)
+	request := seaplanedb.InternalToPublicNodePool(nodePool)
 	updatedReplicas := int32(3)
 	request.Spec.NodePool.Replicas = &updatedReplicas
 
@@ -114,7 +114,7 @@ func TestNodePoolHandler_Update_AllowsUnchangedServiceManagedManagement(t *testi
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	var updated hyperfleetv1alpha1.NodePool
+	var updated seaplanev1alpha1.NodePool
 	if err := fc.Get(context.Background(), types.NamespacedName{Namespace: nodePool.Namespace, Name: nodePool.Name}, &updated); err != nil {
 		t.Fatalf("get updated NodePool: %v", err)
 	}
@@ -178,12 +178,12 @@ func TestNodePoolHandler_List_InvalidSelector(t *testing.T) {
 		},
 		{
 			name:        "unsupported label selector operator",
-			query:       "labelSelector=hyperfleet.io%2Fcluster-uid!%3D" + clusterUID,
+			query:       "labelSelector=seaplane.io%2Fcluster-uid!%3D" + clusterUID,
 			wantErrCode: ErrNodePoolListInvalidLabelSelector.Code,
 		},
 		{
 			name:        "label selector conflicts with cluster UID",
-			query:       "clusterUID=" + clusterUID + "&labelSelector=hyperfleet.io%2Fcluster-uid%3D550e8400-e29b-41d4-a716-446655440001",
+			query:       "clusterUID=" + clusterUID + "&labelSelector=seaplane.io%2Fcluster-uid%3D550e8400-e29b-41d4-a716-446655440001",
 			wantErrCode: ErrNodePoolListInvalidLabelSelector.Code,
 		},
 	}
@@ -374,14 +374,14 @@ func TestNodePoolHandler_Create_MissingMetadata(t *testing.T) {
 
 func TestNodePoolHandler_Create_ResolvesParentFromDottedName(t *testing.T) {
 	scheme := newTestScheme()
-	cluster := &hyperfleetv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
+	cluster := &seaplanev1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
 		Name:      "my-cluster",
 		Namespace: "account-" + testAccountID,
 		UID:       types.UID("550e8400-e29b-41d4-a716-446655440000"),
 	}}
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewNodePoolHandler(hyperfleetdb.NewClientFrom(fc, logger), logger)
+	handler := NewNodePoolHandler(seaplanedb.NewClientFrom(fc, logger), logger)
 	body := mustMarshal(t, map[string]any{
 		"metadata": map[string]any{"name": "my-cluster.workers"},
 		"spec": map[string]any{"nodePool": map[string]any{
@@ -399,12 +399,15 @@ func TestNodePoolHandler_Create_ResolvesParentFromDottedName(t *testing.T) {
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}
-	var stored hyperfleetv1alpha1.NodePool
+	var stored seaplanev1alpha1.NodePool
 	if err := fc.Get(context.Background(), types.NamespacedName{Namespace: "account-" + testAccountID, Name: "my-cluster.workers"}, &stored); err != nil {
 		t.Fatalf("get created NodePool: %v", err)
 	}
 	if got := stored.Spec.NodePool.ClusterName; got != "my-cluster" {
 		t.Errorf("stored parent ClusterName = %q, want %q", got, "my-cluster")
+	}
+	if got := stored.Spec.EC2InstanceMetadataHttpTokens; got != seaplanev1alpha1.EC2InstanceMetadataHttpTokensRequired {
+		t.Errorf("stored ec2InstanceMetadataHttpTokens = %q, want %q", got, seaplanev1alpha1.EC2InstanceMetadataHttpTokensRequired)
 	}
 	if got := stored.Labels[clusterUIDLabel]; got != string(cluster.UID) {
 		t.Errorf("cluster UID label = %q, want %q", got, cluster.UID)
@@ -421,6 +424,48 @@ func TestNodePoolHandler_Create_ResolvesParentFromDottedName(t *testing.T) {
 		if _, exists := spec["clusterId"]; exists {
 			t.Error("response must not expose spec.clusterId")
 		}
+		if got := spec["ec2InstanceMetadataHttpTokens"]; got != "required" {
+			t.Errorf("response ec2InstanceMetadataHttpTokens = %v, want required", got)
+		}
+	}
+}
+
+func TestNodePoolHandler_Create_AcceptsOptionalEC2InstanceMetadataHttpTokens(t *testing.T) {
+	scheme := newTestScheme()
+	cluster := &seaplanev1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
+		Name:      "my-cluster",
+		Namespace: "account-" + testAccountID,
+		UID:       types.UID("550e8400-e29b-41d4-a716-446655440000"),
+	}}
+	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cluster).Build()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	handler := NewNodePoolHandler(seaplanedb.NewClientFrom(fc, logger), logger)
+	body := mustMarshal(t, map[string]any{
+		"metadata": map[string]any{"name": "my-cluster.optional-workers"},
+		"spec": map[string]any{
+			"EC2InstanceMetadataHttpTokens": "optional",
+			"nodePool": map[string]any{
+				"clusterName": "my-cluster",
+				"release":     map[string]any{"image": "quay.io/openshift-release-dev/ocp-release:4.17.0"},
+				"platform":    map[string]any{"type": "AWS"},
+			},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v0/nodepools", bytes.NewReader(body))
+	req = req.WithContext(testContext(testAccountID))
+	w := httptest.NewRecorder()
+
+	handler.Create(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var stored seaplanev1alpha1.NodePool
+	if err := fc.Get(context.Background(), types.NamespacedName{Namespace: "account-" + testAccountID, Name: "my-cluster.optional-workers"}, &stored); err != nil {
+		t.Fatalf("get created NodePool: %v", err)
+	}
+	if got := stored.Spec.EC2InstanceMetadataHttpTokens; got != seaplanev1alpha1.EC2InstanceMetadataHttpTokensOptional {
+		t.Errorf("stored ec2InstanceMetadataHttpTokens = %q, want %q", got, seaplanev1alpha1.EC2InstanceMetadataHttpTokensOptional)
 	}
 }
 

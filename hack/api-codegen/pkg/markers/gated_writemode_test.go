@@ -20,16 +20,16 @@ type Spec struct {
 	// GA field with customer-tier-based write-mode control
 	// Standard customers: immutable
 	// Premium customers (with gate enabled): mutable
-	// +hyperfleet:write-mode=immutable
-	// +hyperfleet:validation:FeatureGateAwareWriteMode:featureGate="",writeMode="immutable"
-	// +hyperfleet:validation:FeatureGateAwareWriteMode:featureGate="PremiumFeature",writeMode="mutable"
+	// +seaplane:write-mode=immutable
+	// +seaplane:validation:FeatureGateAwareWriteMode:featureGate="",writeMode="immutable"
+	// +seaplane:validation:FeatureGateAwareWriteMode:featureGate="PremiumFeature",writeMode="mutable"
 	ReleaseChannel string ` + "`json:\"releaseChannel\"`" + `
 
 	// TechPreview field - default service-set, mutable when gated
-	// +hyperfleet:write-mode=service-set
-	// +hyperfleet:validation:FeatureGateAwareWriteMode:featureGate="",writeMode="service-set"
-	// +hyperfleet:validation:FeatureGateAwareWriteMode:featureGate="HyperFleetEtcdConfig",writeMode="mutable"
-	// +openshift:enable:FeatureGate=HyperFleetEtcdConfig
+	// +seaplane:write-mode=service-set
+	// +seaplane:validation:FeatureGateAwareWriteMode:featureGate="",writeMode="service-set"
+	// +seaplane:validation:FeatureGateAwareWriteMode:featureGate="SeaplaneEtcdConfig",writeMode="mutable"
+	// +openshift:enable:FeatureGate=SeaplaneEtcdConfig
 	Etcd string ` + "`json:\"etcd\"`" + `
 }
 `
@@ -90,8 +90,8 @@ type Spec struct {
 		t.Errorf("Base WriteMode = %v, want %v", etcdMeta.WriteMode, ServiceSet)
 	}
 
-	if etcdMeta.FeatureGate != "HyperFleetEtcdConfig" {
-		t.Errorf("FeatureGate = %q, want %q", etcdMeta.FeatureGate, "HyperFleetEtcdConfig")
+	if etcdMeta.FeatureGate != "SeaplaneEtcdConfig" {
+		t.Errorf("FeatureGate = %q, want %q", etcdMeta.FeatureGate, "SeaplaneEtcdConfig")
 	}
 
 	if len(etcdMeta.FeatureGateAwareWriteModes) != 2 {
@@ -106,9 +106,9 @@ type Spec struct {
 		t.Errorf("First override WriteMode = %v, want %v", etcdMeta.FeatureGateAwareWriteModes[0].WriteMode, ServiceSet)
 	}
 
-	// Check gated mode (mutable when HyperFleetEtcdConfig enabled)
-	if etcdMeta.FeatureGateAwareWriteModes[1].FeatureGate != "HyperFleetEtcdConfig" {
-		t.Errorf("Second override FeatureGate = %q, want %q", etcdMeta.FeatureGateAwareWriteModes[1].FeatureGate, "HyperFleetEtcdConfig")
+	// Check gated mode (mutable when SeaplaneEtcdConfig enabled)
+	if etcdMeta.FeatureGateAwareWriteModes[1].FeatureGate != "SeaplaneEtcdConfig" {
+		t.Errorf("Second override FeatureGate = %q, want %q", etcdMeta.FeatureGateAwareWriteModes[1].FeatureGate, "SeaplaneEtcdConfig")
 	}
 	if etcdMeta.FeatureGateAwareWriteModes[1].WriteMode != Mutable {
 		t.Errorf("Second override WriteMode = %v, want %v", etcdMeta.FeatureGateAwareWriteModes[1].WriteMode, Mutable)

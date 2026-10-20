@@ -27,11 +27,11 @@ const SpotTerminationQueueReservationsNamespace = "spot-termination-queue-reserv
 
 // SpotTerminationQueueOwnerLabel stores the Cluster namespace that owns a
 // queue reservation.
-const SpotTerminationQueueOwnerLabel = "hyperfleet.io/spot-termination-queue-owner"
+const SpotTerminationQueueOwnerLabel = "seaplane.io/spot-termination-queue-owner"
 
 // SpotTerminationQueueClaimedAtAnnotation records when an Index claim began,
 // allowing stale in-flight claims to be reclaimed after a bounded wait.
-const SpotTerminationQueueClaimedAtAnnotation = "hyperfleet.io/spot-termination-queue-claimed-at"
+const SpotTerminationQueueClaimedAtAnnotation = "seaplane.io/spot-termination-queue-claimed-at"
 
 // SpotTerminationQueueIndexName returns a stable, Kubernetes-safe reservation
 // name for the account and SQS queue URL pair.

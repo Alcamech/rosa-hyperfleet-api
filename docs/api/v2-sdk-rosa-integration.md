@@ -6,7 +6,7 @@
 
 This document explores how the `rosa` CLI can support **both** the v1 SDK
 (`ocm-sdk-go`, against the OCM API) and the v2 SDK (`clientset/`, against
-the HyperFleet Platform API) side by side, with v1 remaining the default and v2
+the Seaplane Platform API) side by side, with v1 remaining the default and v2
 selected per-invocation via a flag. It is a companion to
 [v2-sdk-initiative.md](v2-sdk-initiative.md), which covers the SDK itself; this
 doc covers the **consumer integration** (Story 3 of that initiative).
@@ -70,12 +70,12 @@ Measured by distinct `OCMClient` method calls:
 | `cmd/describe/cluster/cmd.go` | ~11                | `GetSubscriptionBySubscriptionID`, `GetLimitedSupportReasons`, `GetInflightChecks`, `FetchClusterMigrations`, `GetScheduledUpgrade`                                                        |
 | `pkg/machinepool`             | ~19                | `GetDefaultClusterFlavors`, `ListKubeletConfigNames`, `GetTuningConfigsName`, `GetClusterAutoscaler`                                                                                       |
 
-The HyperFleet Platform API's initial surface is **Cluster + NodePool only**
+The Seaplane Platform API's initial surface is **Cluster + NodePool only**
 (see [v2-sdk-initiative.md](v2-sdk-initiative.md)). Today there is nothing to
 back versions, regions, machine types, billing, subscriptions, or quota. Any
 design premised on "same command code, different backend" hits this wall: those
 calls either fail at runtime, require keeping a live OCM connection alongside
-HyperFleet (defeating the migration), or must be skipped — and "skip this step"
+Seaplane (defeating the migration), or must be skipped — and "skip this step"
 is a change to the command flow, not to the transport.
 
 Most of these features are expected to reach the Platform API eventually —
@@ -91,13 +91,13 @@ the SDK through `r.OCMClient.*` and `r.FetchCluster()` (`pkg/rosa/runner.go`,
 
 ### 4. Auth models diverge
 
-|                       | v1 (OCM)                                       | v2 (HyperFleet)                                            |
+|                       | v1 (OCM)                                       | v2 (Seaplane)                                            |
 | --------------------- | ---------------------------------------------- | ---------------------------------------------------------- |
 | Credential            | OCM SSO tokens (`rosa login`, `config.Load()`) | AWS IAM (SigV4)                                            |
 | Endpoint              | Global `api.openshift.com`                     | Per-region Platform API endpoint                           |
 | Runtime support today | `WithOCM()`                                    | needs AWS creds (`WithAWS()` exists) + endpoint resolution |
 
-`--hyperfleet` mode cannot reuse the login config; it needs AWS credentials
+`--seaplane` mode cannot reuse the login config; it needs AWS credentials
 (the Runtime already obtains these via `WithAWS()`) plus regional endpoint
 resolution. Notably, in v2 mode **no OCM login should be required at all**.
 
@@ -106,10 +106,10 @@ resolution. Notably, in v2 mode **no OCM login should be required at all**.
 Dispatch at the top of each HCP lifecycle command, not inside the client:
 
 ```bash
-rosa create cluster --hosted-cp [--hyperfleet]
+rosa create cluster --hosted-cp [--seaplane]
   run()
    ├── default:      existing run path (untouched — all OCM calls intact)
-   └── --hyperfleet: runHyperFleet()
+   └── --seaplane: runSeaplane()
                       · flags → v1alpha1.Cluster (struct literal)
                       · v2 SDK client-go-style verbs, natively
                       · no OCM connection; OCM-only steps skipped by design
@@ -119,7 +119,7 @@ rosa create cluster --hosted-cp [--hyperfleet]
 
 ### Design elements
 
-1. **Persistent `--hyperfleet` flag** (final name TBD), registered globally.
+1. **Persistent `--seaplane` flag** (final name TBD), registered globally.
    Each HCP lifecycle command that supports v2 checks it first thing in `run`
    and dispatches to its v2-native implementation. Commands without a v2 path
    fail fast with a clear error when the flag is set — no silent fallthrough
@@ -132,13 +132,13 @@ rosa create cluster --hosted-cp [--hyperfleet]
    silently ignored.
 
 3. **v2-native run functions** live alongside the v1 code (e.g.
-   `cmd/create/cluster/hyperfleet.go`, or a shared `pkg/hyperfleet/`). They
+   `cmd/create/cluster/seaplane.go`, or a shared `pkg/seaplane/`). They
    build `v1alpha1.Cluster` / `v1alpha1.NodePool` struct literals from flags
    and call the v2 SDK's client-go-style verbs directly — exactly the
    consumption model the initiative doc intends for v2 consumers. No
    `ocm.Spec`, no builders.
 
-4. **`Runtime.WithHyperFleet()`** constructs the v2 SDK client: AWS SigV4 creds
+4. **`Runtime.WithSeaplane()`** constructs the v2 SDK client: AWS SigV4 creds
    via the existing `WithAWS()` machinery, plus regional endpoint resolution
    (see [Endpoint-Resolution Contract](#endpoint-resolution-contract) below).
    It does **not** call `WithOCM()` — v2 mode must work without `rosa login`.
@@ -150,7 +150,7 @@ rosa create cluster --hosted-cp [--hyperfleet]
    radius), the v2 path maps `v1alpha1.Cluster → cmv1.Cluster` **only for
    display**, populating only fields the printers read. `cmv1` types are
    constructible via builders (`cmv1.NewCluster().ID(...).Build()`), so this is
-   mechanical. Fields with no HyperFleet equivalent _yet_ (subscription,
+   mechanical. Fields with no Seaplane equivalent _yet_ (subscription,
    limited support, billing) render as absent; the mapper grows alongside the
    Platform API surface and the commands wired to it.
 
@@ -166,7 +166,7 @@ rosa create cluster --hosted-cp [--hyperfleet]
 | `rosa logs`, log forwarders                               | TBD — depends on Platform API logs surface (initiative Open Question 4) |
 
 Everything else (`idp`, `ingress`, `addons`, roles, upgrades, …) has no v2
-path and errors fast under `--hyperfleet`.
+path and errors fast under `--seaplane`.
 
 ## Alternative Considered: Swapped Backend Behind a Narrow Interface
 
@@ -178,11 +178,11 @@ implementation on the flag, and having the v2 implementation map
 **Why it was rejected** — the premise "command code unchanged" is false:
 
 - The lifecycle commands make **dozens of OCM calls beyond CRUD** (see table
-  above) that have no HyperFleet equivalent. Under `--hyperfleet` with no OCM
+  above) that have no Seaplane equivalent. Under `--seaplane` with no OCM
   login these calls cannot succeed. The options are all bad: widen the
   interface to ~40 methods that mostly map to nothing; keep a dual
-  OCM+HyperFleet connection (defeats the migration and still requires OCM
-  SSO); or riddle the shared code with `if hyperfleet { skip }` branches —
+  OCM+Seaplane connection (defeats the migration and still requires OCM
+  SSO); or riddle the shared code with `if seaplane { skip }` branches —
   which is command-level routing, just smeared through the code instead of
   cleanly separated.
 - It required a **bidirectional** mapper (`ocm.Spec → v1alpha1` on requests,
@@ -203,7 +203,7 @@ Two other alternatives were rejected earlier and remain rejected:
 - **Refactor the ~151 files onto a neutral domain model** — a big-bang rewrite
   contradicting "v1 remains the default, side by side."
 - **OCM-compatible facade on the Platform API** (server-side shim so the v1 SDK
-  talks to HyperFleet) — explicitly dropped from the initiative.
+  talks to Seaplane) — explicitly dropped from the initiative.
 
 ## Risks and Mitigations
 
@@ -211,8 +211,8 @@ Two other alternatives were rejected earlier and remain rejected:
 | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Output drift between v1 and v2 paths                                                               | Reuse v1 printers via the display mapper; acceptance e2e tests (`hcp_cluster_test.go`, `hcp_machine_pool_test.go`) are the contract                                     |
 | Duplicated command-flow logic                                                                      | The duplicated part is precisely what _must_ differ (validation backed by endpoints that don't exist in v2); keep v2 run functions thin and share flag parsing/printing |
-| Interactive mode in v2 (`--interactive` prompts source region/version/machine-type lists from OCM) | Phase 1: disable interactive under `--hyperfleet`; later source lists from AWS APIs or Platform API when available                                                      |
-| Flag surface ambiguity (~300 create-cluster flags, many meaningless in v2)                         | Explicit allowlist per v2 command; anything else errors with "not supported with --hyperfleet"                                                                          |
+| Interactive mode in v2 (`--interactive` prompts source region/version/machine-type lists from OCM) | Phase 1: disable interactive under `--seaplane`; later source lists from AWS APIs or Platform API when available                                                      |
+| Flag surface ambiguity (~300 create-cluster flags, many meaningless in v2)                         | Explicit allowlist per v2 command; anything else errors with "not supported with --seaplane"                                                                          |
 | Display mapper completeness                                                                        | Populate only fields the printers read for the acceptance-test commands; grow test-by-test                                                                              |
 
 ## Relationship to the "migrate directly to client-go" vision
@@ -227,7 +227,7 @@ the two CLIs (see Open Question 3).
 
 ## Endpoint-Resolution Contract
 
-`Runtime.WithHyperFleet()` must resolve the regional Platform API endpoint and
+`Runtime.WithSeaplane()` must resolve the regional Platform API endpoint and
 AWS signing region deterministically before constructing the v2 SDK client.
 The contract below defines the precedence, region derivation, error behavior,
 and mismatch validation that Story 3 implementations and tests must follow.
@@ -236,7 +236,7 @@ and mismatch validation that Story 3 implementations and tests must follow.
 
 | Priority | Source                        | What it sets                                                                                                                                  |
 | -------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1        | `--hyperfleet-url <url>` flag | Explicit endpoint URL; skips all other endpoint resolution                                                                                    |
+| 1        | `--seaplane-url <url>` flag | Explicit endpoint URL; skips all other endpoint resolution                                                                                    |
 | 2        | Built-in region→endpoint map  | Endpoint looked up by resolved region (see below)                                                                                             |
 | 3        | Discovery (future)            | Reserved for a future service-discovery mechanism; not implemented in the initial version — if precedence 1 and 2 both miss, resolution fails |
 
@@ -248,34 +248,34 @@ and mismatch validation that Story 3 implementations and tests must follow.
 | 2        | `AWS_DEFAULT_REGION` environment variable                              |
 | 3        | AWS SDK default credential chain region (e.g. `~/.aws/config` profile) |
 
-If none of these sources yield a region, `WithHyperFleet()` must return a
-clear error: `"region is required for --hyperfleet mode: set --region, AWS_DEFAULT_REGION, or configure a region in your AWS profile"`.
+If none of these sources yield a region, `WithSeaplane()` must return a
+clear error: `"region is required for --seaplane mode: set --region, AWS_DEFAULT_REGION, or configure a region in your AWS profile"`.
 
 ### Error behavior
 
 | Condition                                                                                          | Behavior                                                                                                      |
 | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | No region resolvable                                                                               | Fatal error before SDK client construction (see message above)                                                |
-| Region resolved but not present in the built-in region→endpoint map and `--hyperfleet-url` not set | Fatal error: `"no Platform API endpoint known for region %s; use --hyperfleet-url to specify one explicitly"` |
-| `--hyperfleet-url` set but no region resolvable                                                    | Fatal error: region is still required for SigV4 signing even when the endpoint is explicit                    |
+| Region resolved but not present in the built-in region→endpoint map and `--seaplane-url` not set | Fatal error: `"no Platform API endpoint known for region %s; use --seaplane-url to specify one explicitly"` |
+| `--seaplane-url` set but no region resolvable                                                    | Fatal error: region is still required for SigV4 signing even when the endpoint is explicit                    |
 
 ### Region/endpoint mismatch validation
 
-When `--hyperfleet-url` is provided **and** a region is resolved, `WithHyperFleet()`
+When `--seaplane-url` is provided **and** a region is resolved, `WithSeaplane()`
 must extract the region segment from the endpoint URL (e.g. `us-east-1` from
-`https://hyperfleet.us-east-1.api.example.com`) and compare it to the resolved
-region. On mismatch, emit a warning: `"warning: resolved region %s does not match region in --hyperfleet-url %s; SigV4 will sign with %s"`. The full URL is safe to log — Platform API endpoints are public. This is a
+`https://seaplane.us-east-1.api.example.com`) and compare it to the resolved
+region. On mismatch, emit a warning: `"warning: resolved region %s does not match region in --seaplane-url %s; SigV4 will sign with %s"`. The full URL is safe to log — Platform API endpoints are public. This is a
 warning, not a fatal error, because custom endpoints (dev, staging) may
 intentionally differ.
 
 ### Contract summary for tests
 
-Acceptance tests for `WithHyperFleet()` must cover:
+Acceptance tests for `WithSeaplane()` must cover:
 
-1. `--hyperfleet-url` takes precedence over the region→endpoint map
+1. `--seaplane-url` takes precedence over the region→endpoint map
 2. Region derived from `--region` takes precedence over `AWS_DEFAULT_REGION`, which takes precedence over the AWS profile
 3. Missing region produces the expected fatal error
-4. Region present but unmapped (no `--hyperfleet-url`) produces the expected fatal error
+4. Region present but unmapped (no `--seaplane-url`) produces the expected fatal error
 5. Explicit endpoint with no resolvable region produces the expected fatal error
 6. Region/endpoint mismatch emits a warning but proceeds
 7. The resolved region is used as the SigV4 signing region and the resolved endpoint is used as the SDK base URL
@@ -294,12 +294,12 @@ Acceptance tests for `WithHyperFleet()` must cover:
 
 ## Suggested First Steps
 
-1. Add the persistent `--hyperfleet` flag and `Runtime.WithHyperFleet()`
+1. Add the persistent `--seaplane` flag and `Runtime.WithSeaplane()`
    (AWS creds + endpoint config + v2 SDK client). No command wired yet.
-2. Wire `rosa create cluster --hosted-cp --hyperfleet`: minimal flag allowlist
+2. Wire `rosa create cluster --hosted-cp --seaplane`: minimal flag allowlist
    → `v1alpha1.Cluster` literal → `Clusters().Create()`. Print via a first-cut
    display mapper.
 3. Wire `describe` / `delete` cluster, then the machinepool verbs.
 4. Run `hcp_cluster_test.go` / `hcp_machine_pool_test.go` against
-   `--hyperfleet`; expand the flag allowlist and display mapper until they
+   `--seaplane`; expand the flag allowlist and display mapper until they
    pass.

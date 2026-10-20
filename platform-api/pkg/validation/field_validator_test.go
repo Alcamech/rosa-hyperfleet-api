@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	rest "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	"github.com/openshift-online/rosa-hyperfleet-api/hack/api-codegen/pkg/registry"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/internal/codegen/featuregate"
+	rest "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/registry"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/internal/codegen/featuregate"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -204,7 +204,7 @@ func TestValidateCreate_FeatureGateIgnoresEmptyValue(t *testing.T) {
 		"spec.autoscaling": {
 			FieldPath:   "spec.autoscaling",
 			WriteMode:   registry.Mutable,
-			FeatureGate: "HyperFleetAutoScaling",
+			FeatureGate: "SeaplaneAutoScaling",
 		},
 	})
 
@@ -221,7 +221,7 @@ func TestValidateCreate_FeatureGateRejectsConfiguredValue(t *testing.T) {
 		"spec.autoscaling": {
 			FieldPath:   "spec.autoscaling",
 			WriteMode:   registry.Mutable,
-			FeatureGate: "HyperFleetAutoScaling",
+			FeatureGate: "SeaplaneAutoScaling",
 		},
 	})
 
@@ -244,7 +244,7 @@ func TestValidateCreate_FeatureGateRejectsScalarZeroValues(t *testing.T) {
 				"spec.setting": {
 					FieldPath:   "spec.setting",
 					WriteMode:   registry.Mutable,
-					FeatureGate: "HyperFleetKubeletAdvanced",
+					FeatureGate: "SeaplaneKubeletAdvanced",
 				},
 			})
 
@@ -261,7 +261,7 @@ func TestValidateCreate_FeatureGateRejectsObjectContainingZeroValue(t *testing.T
 		"spec.kubelet": {
 			FieldPath:   "spec.kubelet",
 			WriteMode:   registry.Mutable,
-			FeatureGate: "HyperFleetKubeletAdvanced",
+			FeatureGate: "SeaplaneKubeletAdvanced",
 		},
 	})
 
@@ -306,6 +306,53 @@ func TestValidateUpdate_RejectsImmutableFieldChange(t *testing.T) {
 	}
 }
 
+func TestClusterCapabilities_AreCreateOnly(t *testing.T) {
+	v := NewFieldValidator("Cluster")
+
+	initial := map[string]any{
+		"hostedCluster": map[string]any{
+			"capabilities": map[string]any{"enabled": []string{"Console"}},
+		},
+	}
+	if errs := v.ValidateCreate(initial, featuregate.Default); errs != nil {
+		t.Fatalf("expected capabilities to be allowed on create, got %v", errs)
+	}
+
+	updated := map[string]any{
+		"hostedCluster": map[string]any{
+			"capabilities": map[string]any{"enabled": []string{"Console", "Ingress"}},
+		},
+	}
+	errs := v.ValidateUpdate(updated, initial, featuregate.Default)
+	if len(errs) != 1 || errs[0].Field != "spec.hostedCluster.capabilities.enabled" {
+		t.Fatalf("expected capability change to be rejected, got %v", errs)
+	}
+
+	updatedDisabled := map[string]any{
+		"hostedCluster": map[string]any{
+			"capabilities": map[string]any{
+				"enabled":  []string{"Console"},
+				"disabled": []string{"baremetal"},
+			},
+		},
+	}
+	errs = v.ValidateUpdate(updatedDisabled, initial, featuregate.Default)
+	if len(errs) != 1 || errs[0].Field != "spec.hostedCluster.capabilities.disabled" {
+		t.Fatalf("expected newly-set disabled capability to be rejected, got %v", errs)
+	}
+
+	// Resubmitting the identical value (e.g. Terraform sending the full object)
+	// must not be treated as a change.
+	same := map[string]any{
+		"hostedCluster": map[string]any{
+			"capabilities": map[string]any{"enabled": []string{"Console"}},
+		},
+	}
+	if errs := v.ValidateUpdate(same, initial, featuregate.Default); len(errs) != 0 {
+		t.Fatalf("expected identical capabilities to be accepted on update, got %v", errs)
+	}
+}
+
 func TestValidateUpdate_AllowsImmutableFieldSameValue(t *testing.T) {
 	v := newTestValidator(map[string]registry.FieldMeta{
 		"spec.fips": {FieldPath: "spec.fips", WriteMode: registry.Immutable},
@@ -317,6 +364,117 @@ func TestValidateUpdate_AllowsImmutableFieldSameValue(t *testing.T) {
 	errs := v.ValidateUpdate(updated, existing, featuregate.Default)
 	if errs != nil {
 		t.Errorf("expected no errors when immutable field unchanged, got %v", errs)
+	}
+}
+
+func TestValidateUpdateWithRawSpec_UsesExplicitImmutableFieldValues(t *testing.T) {
+	v := newTestValidator(map[string]registry.FieldMeta{
+		"spec.value": {FieldPath: "spec.value", WriteMode: registry.Immutable},
+	})
+	type testSpec struct {
+		Value string `json:"value,omitempty"`
+	}
+
+	tests := []struct {
+		name       string
+		newValue   string
+		rawValue   any
+		sendValue  bool
+		wantErrors int
+	}{
+		{name: "omitted", wantErrors: 0},
+		{name: "unchanged", newValue: "configured", rawValue: "configured", sendValue: true, wantErrors: 0},
+		{name: "changed", newValue: "other", rawValue: "other", sendValue: true, wantErrors: 1},
+		{name: "cleared with empty string", rawValue: "", sendValue: true, wantErrors: 1},
+		{name: "cleared with null", rawValue: nil, sendValue: true, wantErrors: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rawSpec := map[string]any{"unrelated": true}
+			if tt.sendValue {
+				rawSpec["value"] = tt.rawValue
+			}
+
+			errs := v.ValidateUpdateWithRawSpec(testSpec{Value: tt.newValue}, rawSpec, testSpec{Value: "configured"}, featuregate.Default)
+			if len(errs) != tt.wantErrors {
+				t.Fatalf("ValidateUpdateWithRawSpec() returned %v, want %d error(s)", errs, tt.wantErrors)
+			}
+			if tt.wantErrors > 0 && errs[0].Field != "spec.value" {
+				t.Errorf("error field = %q, want spec.value", errs[0].Field)
+			}
+		})
+	}
+}
+
+func TestValidateUpdateWithRawSpec_RequiresRawSpec(t *testing.T) {
+	v := newTestValidator(map[string]registry.FieldMeta{})
+	type testSpec struct {
+		Value string `json:"value,omitempty"`
+	}
+
+	tests := []struct {
+		name    string
+		rawSpec map[string]any
+	}{
+		{name: "nil raw spec"},
+		{name: "empty raw spec", rawSpec: map[string]any{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := v.ValidateUpdateWithRawSpec(testSpec{}, tt.rawSpec, testSpec{}, featuregate.Default)
+			if len(errs) != 1 || errs[0].Field != "spec" {
+				t.Fatalf("ValidateUpdateWithRawSpec() returned %v, want one raw-spec error", errs)
+			}
+		})
+	}
+}
+
+func TestValidateUpdateWithRawSpec_RejectsNullParentOfImmutableField(t *testing.T) {
+	v := newTestValidator(map[string]registry.FieldMeta{
+		"spec.parent.child": {FieldPath: "spec.parent.child", WriteMode: registry.Immutable},
+	})
+	type testSpec struct {
+		Parent *struct {
+			Child string `json:"child,omitempty"`
+		} `json:"parent,omitempty"`
+	}
+
+	tests := []struct {
+		name       string
+		oldValue   any
+		wantErrors int
+	}{
+		{name: "non-empty immutable descendant", oldValue: "configured", wantErrors: 1},
+		{name: "zero-valued immutable descendant", oldValue: "", wantErrors: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			existing := map[string]any{
+				"parent": map[string]any{"child": tt.oldValue},
+			}
+			errs := v.ValidateUpdateWithRawSpec(testSpec{}, map[string]any{"parent": nil}, existing, featuregate.Default)
+			if len(errs) != tt.wantErrors {
+				t.Fatalf("ValidateUpdateWithRawSpec() returned %v, want %d error(s)", errs, tt.wantErrors)
+			}
+			if tt.wantErrors > 0 && errs[0].Field != "spec.parent.child" {
+				t.Errorf("error field = %q, want spec.parent.child", errs[0].Field)
+			}
+		})
+	}
+}
+
+func TestValidateUpdate_RawMapRejectsNullParentOfImmutableField(t *testing.T) {
+	v := newTestValidator(map[string]registry.FieldMeta{
+		"spec.parent.child": {FieldPath: "spec.parent.child", WriteMode: registry.Immutable},
+	})
+	existing := map[string]any{
+		"parent": map[string]any{"child": "configured"},
+	}
+
+	errs := v.ValidateUpdate(map[string]any{"parent": nil}, existing, featuregate.Default)
+	if len(errs) != 1 || errs[0].Field != "spec.parent.child" {
+		t.Fatalf("ValidateUpdate() returned %v, want one error on spec.parent.child", errs)
 	}
 }
 
@@ -342,7 +500,7 @@ func TestValidateUpdate_RejectsImmutableFieldChangeFromOmittedZeroValue(t *testi
 
 func TestValidateCreate_RejectsFeatureGatedField(t *testing.T) {
 	v := newTestValidator(map[string]registry.FieldMeta{
-		"spec.tags": {FieldPath: "spec.tags", WriteMode: registry.Mutable, FeatureGate: "HyperFleetAutoScaling"},
+		"spec.tags": {FieldPath: "spec.tags", WriteMode: registry.Mutable, FeatureGate: "SeaplaneAutoScaling"},
 	})
 
 	spec := map[string]any{
@@ -361,7 +519,7 @@ func TestValidateCreate_RejectsFeatureGatedField(t *testing.T) {
 
 func TestValidateCreate_AllowsFeatureGatedFieldWhenEnabled(t *testing.T) {
 	v := newTestValidator(map[string]registry.FieldMeta{
-		"spec.tags": {FieldPath: "spec.tags", WriteMode: registry.Mutable, FeatureGate: "HyperFleetAutoScaling"},
+		"spec.tags": {FieldPath: "spec.tags", WriteMode: registry.Mutable, FeatureGate: "SeaplaneAutoScaling"},
 	})
 
 	spec := map[string]any{
@@ -607,7 +765,7 @@ func TestValidateCreate_FeatureGateAwareWriteMode(t *testing.T) {
 			FieldPath: "spec.maxPods",
 			WriteMode: registry.ServiceSet,
 			FeatureGateAwareWriteModes: []registry.FeatureGateWriteMode{
-				{FeatureGate: "HyperFleetKubeletAdvanced", WriteMode: registry.Mutable},
+				{FeatureGate: "SeaplaneKubeletAdvanced", WriteMode: registry.Mutable},
 				{FeatureGate: "", WriteMode: registry.ServiceSet},
 			},
 		},

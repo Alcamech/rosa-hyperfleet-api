@@ -17,10 +17,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/clients/seaplanedb"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/middleware"
 )
 
 func TestValidateNodePoolReplicas(t *testing.T) {
@@ -70,16 +70,47 @@ func TestNodePoolHandlerCreateRejectsNegativeReplicas(t *testing.T) {
 	}
 }
 
+func TestNodePoolHandlerCreateRejectsInvalidEC2InstanceMetadataHttpTokens(t *testing.T) {
+	const accountID = "123456789012"
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "unsupported enum", value: `"disabled"`},
+		{name: "explicit empty", value: `""`},
+		{name: "explicit null", value: "null"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := newNodePoolValidationTestHandler(t)
+			body := `{"metadata":{"name":"my-cluster.pool-a","namespace":"account-` + accountID + `"},"spec":{"ec2InstanceMetadataHttpTokens":` + tt.value + `}}`
+			request := httptest.NewRequest(http.MethodPost, "/api/v0/nodepools", strings.NewReader(body))
+			request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
+			response := httptest.NewRecorder()
+
+			handler.Create(response, request)
+
+			if response.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("Create() status = %d, want %d; body=%s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
+			}
+			if !strings.Contains(response.Body.String(), "spec.ec2InstanceMetadataHttpTokens") {
+				t.Fatalf("Create() response does not identify ec2InstanceMetadataHttpTokens: %s", response.Body.String())
+			}
+		})
+	}
+}
+
 func TestNodePoolHandlerUpdateRejectsNegativeReplicas(t *testing.T) {
 	const (
 		accountID = "123456789012"
 		poolName  = "pool-a"
 	)
-	object := &hyperfleetv1alpha1.NodePool{
+	object := &seaplanev1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      poolName,
 			Namespace: "account-" + accountID,
-			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+			Labels:    map[string]string{"seaplane.io/account-id": accountID},
 		},
 	}
 	handler := newNodePoolValidationTestHandler(t, object)
@@ -102,19 +133,107 @@ func TestNodePoolHandlerUpdateRejectsNegativeReplicas(t *testing.T) {
 	}
 }
 
+func TestNodePoolHandlerUpdateRejectsEC2InstanceMetadataHttpTokensChanges(t *testing.T) {
+	const (
+		accountID = "123456789012"
+		poolName  = "pool-a"
+	)
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "change enum value", value: `"optional"`},
+		{name: "clear with empty string", value: `""`},
+		{name: "clear with null", value: "null"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			object := &seaplanev1alpha1.NodePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      poolName,
+					Namespace: "account-" + accountID,
+					Labels:    map[string]string{"seaplane.io/account-id": accountID},
+				},
+				Spec: seaplanev1alpha1.NodePoolSpec{
+					EC2InstanceMetadataHttpTokens: seaplanev1alpha1.EC2InstanceMetadataHttpTokensRequired,
+				},
+			}
+			handler := newNodePoolValidationTestHandler(t, object)
+			body := `{"metadata":{"namespace":"account-` + accountID + `"},"spec":{"ec2InstanceMetadataHttpTokens":` + tt.value + `}}`
+			request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName, strings.NewReader(body))
+			request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
+			request = mux.SetURLVars(request, map[string]string{"id": poolName})
+			response := httptest.NewRecorder()
+
+			handler.Update(response, request)
+
+			if response.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("Update() status = %d, want %d; body=%s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
+			}
+			if !strings.Contains(response.Body.String(), "spec.ec2InstanceMetadataHttpTokens") {
+				t.Errorf("Update() response does not identify ec2InstanceMetadataHttpTokens: %s", response.Body.String())
+			}
+			if !strings.Contains(response.Body.String(), "immutable") {
+				t.Errorf("Update() response does not identify the field as immutable: %s", response.Body.String())
+			}
+		})
+	}
+}
+
+func TestNodePoolHandlerUpdateAllowsUnchangedEC2InstanceMetadataHttpTokens(t *testing.T) {
+	const (
+		accountID = "123456789012"
+		poolName  = "pool-a"
+	)
+	object := &seaplanev1alpha1.NodePool{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       poolName,
+			Namespace:  "account-" + accountID,
+			Labels:     map[string]string{"seaplane.io/account-id": accountID},
+			Generation: 3,
+		},
+		Spec: seaplanev1alpha1.NodePoolSpec{
+			EC2InstanceMetadataHttpTokens: seaplanev1alpha1.EC2InstanceMetadataHttpTokensRequired,
+		},
+	}
+	handler := newNodePoolValidationTestHandler(t, object)
+	body := `{"metadata":{"namespace":"account-` + accountID + `"},"spec":{"ec2InstanceMetadataHttpTokens":"required"}}`
+	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName, strings.NewReader(body))
+	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
+	request = mux.SetURLVars(request, map[string]string{"id": poolName})
+	response := httptest.NewRecorder()
+
+	handler.Update(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("Update() status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+	}
+	stored, err := handler.db.GetNodePool(context.Background(), accountID, poolName)
+	if err != nil {
+		t.Fatalf("GetNodePool: %v", err)
+	}
+	if stored.Spec.EC2InstanceMetadataHttpTokens != seaplanev1alpha1.EC2InstanceMetadataHttpTokensRequired {
+		t.Errorf("stored ec2InstanceMetadataHttpTokens = %q, want %q", stored.Spec.EC2InstanceMetadataHttpTokens, seaplanev1alpha1.EC2InstanceMetadataHttpTokensRequired)
+	}
+	if stored.Generation != 3 {
+		t.Errorf("generation = %d, want 3 for an unchanged spec", stored.Generation)
+	}
+}
+
 func TestNodePoolHandlerUpdateReturnsMultipleValidationErrors(t *testing.T) {
 	const (
 		accountID = "123456789012"
 		poolName  = "pool-a"
 	)
-	object := &hyperfleetv1alpha1.NodePool{
+	object := &seaplanev1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      poolName,
 			Namespace: "account-" + accountID,
-			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+			Labels:    map[string]string{"seaplane.io/account-id": accountID},
 		},
-		Spec: hyperfleetv1alpha1.NodePoolSpec{
-			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
+		Spec: seaplanev1alpha1.NodePoolSpec{
+			NodePool: seaplanev1alpha1.NodePoolSpecPassthrough{
 				Platform: hypershiftv1beta1.NodePoolPlatform{Type: hypershiftv1beta1.AWSPlatform},
 			},
 		},
@@ -212,11 +331,11 @@ func TestNodePoolHandlerCreateAllowsRootVolumeSizeOnly(t *testing.T) {
 		accountID   = "123456789012"
 		clusterName = "my-cluster"
 	)
-	cluster := &hyperfleetv1alpha1.Cluster{
+	cluster := &seaplanev1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      clusterName,
 			Namespace: "account-" + accountID,
-			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+			Labels:    map[string]string{"seaplane.io/account-id": accountID},
 		},
 	}
 	handler := newNodePoolValidationTestHandler(t, cluster)
@@ -232,43 +351,56 @@ func TestNodePoolHandlerCreateAllowsRootVolumeSizeOnly(t *testing.T) {
 	}
 }
 
-// TestNodePoolHandlerUpdateRejectsRootVolumeSizeChange verifies an update changing an already-set
-// rootVolume.size is rejected — size is settable on create only, matching v1.
-func TestNodePoolHandlerUpdateRejectsRootVolumeSizeChange(t *testing.T) {
-	const (
-		accountID = "123456789012"
-		poolName  = "pool-a"
-	)
-	object := &hyperfleetv1alpha1.NodePool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      poolName,
-			Namespace: "account-" + accountID,
-			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
-		},
-		Spec: hyperfleetv1alpha1.NodePoolSpec{
-			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
-				Platform: hypershiftv1beta1.NodePoolPlatform{
-					AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
-						RootVolume: &hypershiftv1beta1.Volume{Size: 500},
+// TestNodePoolHandlerUpdateRejectsRootVolumeSizeChangesAndClears verifies that
+// an update cannot change or clear the immutable rootVolume.size field.
+func TestNodePoolHandlerUpdateRejectsRootVolumeSizeChangesAndClears(t *testing.T) {
+	tests := []struct {
+		name string
+		size string
+	}{
+		{name: "change", size: "800"},
+		{name: "clear with zero", size: "0"},
+		{name: "clear with null", size: "null"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			const (
+				accountID = "123456789012"
+				poolName  = "pool-a"
+			)
+			object := &seaplanev1alpha1.NodePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      poolName,
+					Namespace: "account-" + accountID,
+					Labels:    map[string]string{"seaplane.io/account-id": accountID},
+				},
+				Spec: seaplanev1alpha1.NodePoolSpec{
+					NodePool: seaplanev1alpha1.NodePoolSpecPassthrough{
+						Platform: hypershiftv1beta1.NodePoolPlatform{
+							AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
+								RootVolume: &hypershiftv1beta1.Volume{Size: 500},
+							},
+						},
 					},
 				},
-			},
-		},
-	}
-	handler := newNodePoolValidationTestHandler(t, object)
-	body := `{"spec":{"nodePool":{"platform":{"aws":{"rootVolume":{"size":800}}}}}}`
-	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName, strings.NewReader(body))
-	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
-	request = mux.SetURLVars(request, map[string]string{"id": poolName})
-	response := httptest.NewRecorder()
+			}
+			handler := newNodePoolValidationTestHandler(t, object)
+			body := `{"spec":{"nodePool":{"platform":{"aws":{"rootVolume":{"size":` + tt.size + `}}}}}}`
+			request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName, strings.NewReader(body))
+			request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
+			request = mux.SetURLVars(request, map[string]string{"id": poolName})
+			response := httptest.NewRecorder()
 
-	handler.Update(response, request)
+			handler.Update(response, request)
 
-	if response.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("Update() status = %d, want %d; body=%s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
-	}
-	if !strings.Contains(response.Body.String(), "spec.nodePool.platform.aws.rootVolume.size") {
-		t.Fatalf("Update() response does not identify rootVolume.size: %s", response.Body.String())
+			if response.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("Update() status = %d, want %d; body=%s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
+			}
+			if !strings.Contains(response.Body.String(), "spec.nodePool.platform.aws.rootVolume.size") {
+				t.Fatalf("Update() response does not identify rootVolume.size: %s", response.Body.String())
+			}
+		})
 	}
 }
 
@@ -279,14 +411,14 @@ func TestNodePoolHandlerUpdateRejectsExplicitNullRootVolume(t *testing.T) {
 		accountID = "123456789012"
 		poolName  = "pool-a"
 	)
-	object := &hyperfleetv1alpha1.NodePool{
+	object := &seaplanev1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      poolName,
 			Namespace: "account-" + accountID,
-			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+			Labels:    map[string]string{"seaplane.io/account-id": accountID},
 		},
-		Spec: hyperfleetv1alpha1.NodePoolSpec{
-			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
+		Spec: seaplanev1alpha1.NodePoolSpec{
+			NodePool: seaplanev1alpha1.NodePoolSpecPassthrough{
 				Platform: hypershiftv1beta1.NodePoolPlatform{
 					AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
 						RootVolume: &hypershiftv1beta1.Volume{Size: 500},
@@ -331,14 +463,14 @@ func TestNodePoolHandlerUpdateAllowsOmittedRootVolume(t *testing.T) {
 		accountID = "123456789012"
 		poolName  = "pool-a"
 	)
-	object := &hyperfleetv1alpha1.NodePool{
+	object := &seaplanev1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      poolName,
 			Namespace: "account-" + accountID,
-			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+			Labels:    map[string]string{"seaplane.io/account-id": accountID},
 		},
-		Spec: hyperfleetv1alpha1.NodePoolSpec{
-			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
+		Spec: seaplanev1alpha1.NodePoolSpec{
+			NodePool: seaplanev1alpha1.NodePoolSpecPassthrough{
 				Platform: hypershiftv1beta1.NodePoolPlatform{
 					AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
 						RootVolume: &hypershiftv1beta1.Volume{Size: 500},
@@ -391,14 +523,14 @@ func TestNodePoolHandlerUpdateRejectsExplicitNullAtParentLevels(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			poolName := "pool-" + strings.ReplaceAll(tt.name, " ", "-")
-			object := &hyperfleetv1alpha1.NodePool{
+			object := &seaplanev1alpha1.NodePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      poolName,
 					Namespace: "account-" + accountID,
-					Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+					Labels:    map[string]string{"seaplane.io/account-id": accountID},
 				},
-				Spec: hyperfleetv1alpha1.NodePoolSpec{
-					NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
+				Spec: seaplanev1alpha1.NodePoolSpec{
+					NodePool: seaplanev1alpha1.NodePoolSpecPassthrough{
 						Platform: hypershiftv1beta1.NodePoolPlatform{
 							AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
 								RootVolume: &hypershiftv1beta1.Volume{Size: 500},
@@ -439,61 +571,72 @@ func TestNodePoolHandlerUpdateRejectsExplicitNullAtParentLevels(t *testing.T) {
 func newNodePoolValidationTestHandler(t *testing.T, objects ...client.Object) *NodePoolHandler {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	if err := hyperfleetv1alpha1.AddToScheme(scheme); err != nil {
+	if err := seaplanev1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("register NodePool API types: %v", err)
 	}
 	dbClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewNodePoolHandler(hyperfleetdb.NewClientFrom(dbClient, logger), logger)
+	return NewNodePoolHandler(seaplanedb.NewClientFrom(dbClient, logger), logger)
 }
 
-// TestNodePoolHandlerUpdateRejectsBlankedImageType verifies that an update
-// blanking imageType is rejected. imageType is omitempty, so an explicit ""
-// never reaches the FieldValidator's immutable check, yet the spec merge would
-// silently convert a Windows (License Included) pool back to the Linux default.
-func TestNodePoolHandlerUpdateRejectsBlankedImageType(t *testing.T) {
-	const (
-		accountID = "123456789012"
-		poolName  = "pool-a"
-	)
-	object := &hyperfleetv1alpha1.NodePool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      poolName,
-			Namespace: "account-" + accountID,
-			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
-		},
-		Spec: hyperfleetv1alpha1.NodePoolSpec{
-			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
-				Platform: hypershiftv1beta1.NodePoolPlatform{
-					AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
-						ImageType: hypershiftv1beta1.ImageTypeWindows,
+// TestNodePoolHandlerUpdateRejectsClearedImageType verifies that raw-aware
+// immutable validation rejects explicit empty and null imageType values, which
+// would otherwise convert a Windows pool back to the Linux default on merge.
+func TestNodePoolHandlerUpdateRejectsClearedImageType(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "empty string", value: `""`},
+		{name: "null", value: "null"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			const (
+				accountID = "123456789012"
+				poolName  = "pool-a"
+			)
+			object := &seaplanev1alpha1.NodePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      poolName,
+					Namespace: "account-" + accountID,
+					Labels:    map[string]string{"seaplane.io/account-id": accountID},
+				},
+				Spec: seaplanev1alpha1.NodePoolSpec{
+					NodePool: seaplanev1alpha1.NodePoolSpecPassthrough{
+						Platform: hypershiftv1beta1.NodePoolPlatform{
+							AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
+								ImageType: hypershiftv1beta1.ImageTypeWindows,
+							},
+						},
 					},
 				},
-			},
-		},
-	}
-	handler := newNodePoolValidationTestHandler(t, object)
-	body := `{"spec":{"nodePool":{"platform":{"aws":{"imageType":""}}}}}`
-	request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName, strings.NewReader(body))
-	request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
-	request = mux.SetURLVars(request, map[string]string{"id": poolName})
-	response := httptest.NewRecorder()
+			}
+			handler := newNodePoolValidationTestHandler(t, object)
+			body := `{"spec":{"nodePool":{"platform":{"aws":{"imageType":` + tt.value + `}}}}}`
+			request := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+poolName, strings.NewReader(body))
+			request = request.WithContext(context.WithValue(request.Context(), middleware.ContextKeyAccountID, accountID))
+			request = mux.SetURLVars(request, map[string]string{"id": poolName})
+			response := httptest.NewRecorder()
 
-	handler.Update(response, request)
+			handler.Update(response, request)
 
-	if response.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("Update() status = %d, want %d; body=%s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
-	}
-	if !strings.Contains(response.Body.String(), "spec.nodePool.platform.aws.imageType") {
-		t.Fatalf("Update() response does not identify imageType: %s", response.Body.String())
-	}
+			if response.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("Update() status = %d, want %d; body=%s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
+			}
+			if !strings.Contains(response.Body.String(), "spec.nodePool.platform.aws.imageType") {
+				t.Fatalf("Update() response does not identify imageType: %s", response.Body.String())
+			}
 
-	stored, err := handler.db.GetNodePool(context.Background(), accountID, poolName)
-	if err != nil {
-		t.Fatalf("GetNodePool: %v", err)
-	}
-	if stored.Spec.NodePool.Platform.AWS.ImageType != hypershiftv1beta1.ImageTypeWindows {
-		t.Errorf("ImageType = %q, want %q (unchanged)", stored.Spec.NodePool.Platform.AWS.ImageType, hypershiftv1beta1.ImageTypeWindows)
+			stored, err := handler.db.GetNodePool(context.Background(), accountID, poolName)
+			if err != nil {
+				t.Fatalf("GetNodePool: %v", err)
+			}
+			if stored.Spec.NodePool.Platform.AWS.ImageType != hypershiftv1beta1.ImageTypeWindows {
+				t.Errorf("ImageType = %q, want %q (unchanged)", stored.Spec.NodePool.Platform.AWS.ImageType, hypershiftv1beta1.ImageTypeWindows)
+			}
+		})
 	}
 }
 
@@ -505,14 +648,14 @@ func TestNodePoolHandlerUpdateAllowsOmittedImageType(t *testing.T) {
 		accountID = "123456789012"
 		poolName  = "pool-a"
 	)
-	object := &hyperfleetv1alpha1.NodePool{
+	object := &seaplanev1alpha1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      poolName,
 			Namespace: "account-" + accountID,
-			Labels:    map[string]string{"hyperfleet.io/account-id": accountID},
+			Labels:    map[string]string{"seaplane.io/account-id": accountID},
 		},
-		Spec: hyperfleetv1alpha1.NodePoolSpec{
-			NodePool: hyperfleetv1alpha1.NodePoolSpecPassthrough{
+		Spec: seaplanev1alpha1.NodePoolSpec{
+			NodePool: seaplanev1alpha1.NodePoolSpecPassthrough{
 				Platform: hypershiftv1beta1.NodePoolPlatform{
 					AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
 						ImageType: hypershiftv1beta1.ImageTypeWindows,

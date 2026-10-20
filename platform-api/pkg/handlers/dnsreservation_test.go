@@ -17,28 +17,28 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	public "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1/public"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/clients/hyperfleetdb"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/middleware"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/clients/seaplanedb"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/middleware"
 )
 
 const dnsReservationTestAccountID = "123456789012"
-const dnsReservationTestAccountLabel = "hyperfleet.io/account-id"
+const dnsReservationTestAccountLabel = "seaplane.io/account-id"
 
-func newDNSReservationTestHandler(t *testing.T, objects ...*hyperfleetv1alpha1.DNSReservation) (*DNSReservationHandler, *hyperfleetdb.Client) {
+func newDNSReservationTestHandler(t *testing.T, objects ...*seaplanev1alpha1.DNSReservation) (*DNSReservationHandler, *seaplanedb.Client) {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	if err := hyperfleetv1alpha1.AddToScheme(scheme); err != nil {
-		t.Fatalf("add HyperFleet scheme: %v", err)
+	if err := seaplanev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add Seaplane scheme: %v", err)
 	}
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(toRuntimeObjects(objects)...).Build()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	db := hyperfleetdb.NewClientFrom(fc, logger)
+	db := seaplanedb.NewClientFrom(fc, logger)
 	return NewDNSReservationHandler(db, logger), db
 }
 
-func toRuntimeObjects(objects []*hyperfleetv1alpha1.DNSReservation) []client.Object {
+func toRuntimeObjects(objects []*seaplanev1alpha1.DNSReservation) []client.Object {
 	result := make([]client.Object, len(objects))
 	for i := range objects {
 		result[i] = objects[i]
@@ -84,13 +84,13 @@ func TestDNSReservationHandlerCreateNameOnly(t *testing.T) {
 }
 
 func TestDNSReservationHandlerGetAndListAreAccountScoped(t *testing.T) {
-	reservation := &hyperfleetv1alpha1.DNSReservation{ObjectMeta: metav1.ObjectMeta{
+	reservation := &seaplanev1alpha1.DNSReservation{ObjectMeta: metav1.ObjectMeta{
 		Name:      "zone-a",
 		Namespace: "account-" + dnsReservationTestAccountID,
 		UID:       types.UID("dns-uid-a"),
 		Labels:    map[string]string{dnsReservationTestAccountLabel: dnsReservationTestAccountID},
-	}, Status: hyperfleetv1alpha1.DNSReservationStatus{
-		Phase:      hyperfleetv1alpha1.DNSReservationPhaseReady,
+	}, Status: seaplanev1alpha1.DNSReservationStatus{
+		Phase:      seaplanev1alpha1.DNSReservationPhaseReady,
 		BaseDomain: "a1b2.0.example.com",
 	}}
 	other := reservation.DeepCopy()
@@ -134,7 +134,7 @@ func TestDNSReservationHandlerGetAndListAreAccountScoped(t *testing.T) {
 }
 
 func TestDNSReservationHandlerDeleteClaimedConflictAndUnclaimedSuccess(t *testing.T) {
-	claimed := &hyperfleetv1alpha1.DNSReservation{ObjectMeta: metav1.ObjectMeta{
+	claimed := &seaplanev1alpha1.DNSReservation{ObjectMeta: metav1.ObjectMeta{
 		Name:      "claimed-zone",
 		Namespace: "account-" + dnsReservationTestAccountID,
 		UID:       types.UID("dns-uid-claimed"),
@@ -143,7 +143,7 @@ func TestDNSReservationHandlerDeleteClaimedConflictAndUnclaimedSuccess(t *testin
 			claimedByClusterUIDLabel:       "cluster-uid-a",
 		},
 	}}
-	unclaimed := &hyperfleetv1alpha1.DNSReservation{ObjectMeta: metav1.ObjectMeta{
+	unclaimed := &seaplanev1alpha1.DNSReservation{ObjectMeta: metav1.ObjectMeta{
 		Name:      "free-zone",
 		Namespace: "account-" + dnsReservationTestAccountID,
 		UID:       types.UID("dns-uid-free"),
@@ -168,7 +168,7 @@ func TestDNSReservationHandlerDeleteClaimedConflictAndUnclaimedSuccess(t *testin
 	if freeResponse.Code != http.StatusAccepted {
 		t.Fatalf("expected unclaimed delete 202, got %d: %s", freeResponse.Code, freeResponse.Body.String())
 	}
-	if _, err := db.GetDNSReservation(context.Background(), dnsReservationTestAccountID, unclaimed.Name); !hyperfleetdb.IsNotFound(err) {
+	if _, err := db.GetDNSReservation(context.Background(), dnsReservationTestAccountID, unclaimed.Name); !seaplanedb.IsNotFound(err) {
 		t.Errorf("unclaimed reservation should be deleted, got err=%v", err)
 	}
 }

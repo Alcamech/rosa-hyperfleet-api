@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	crd "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
+	crd "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

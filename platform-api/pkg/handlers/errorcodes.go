@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	hyperfleetv1alpha1 "github.com/openshift-online/rosa-hyperfleet-api/api/v1alpha1"
-	"github.com/openshift-online/rosa-hyperfleet-api/platform-api/pkg/api"
+	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	"github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/api"
 )
 
 // APIError is an alias for api.APIError so handler code uses the short form.
@@ -264,7 +264,7 @@ func init() {
 	ErrClusterCreateNameCheck = APIError{Code: "CLUSTERS-MGMT-CREATE-004", HTTPStatus: http.StatusInternalServerError, Message: "Failed to validate cluster name"}
 	ErrClusterCreateOidcConfigLookupFailed = APIError{Code: "CLUSTERS-MGMT-CREATE-013", HTTPStatus: http.StatusInternalServerError, Message: "Failed to look up referenced OIDC config"}
 	ErrClusterCreateNameConflict = APIError{Code: "CLUSTERS-MGMT-CREATE-005", HTTPStatus: http.StatusConflict, Message: "Cluster name already exists in this account", Reason: "a cluster named %q already exists in this account"}
-	ErrClusterCreateInvalidName = APIError{Code: "CLUSTERS-MGMT-CREATE-006", HTTPStatus: http.StatusBadRequest, Message: fmt.Sprintf("Cluster metadata.name must be a valid DNS label and, without dnsReservationId, fit the HostedCluster management namespace (maximum %d characters)", hyperfleetv1alpha1.MaxClusterNameLengthWithoutDNSReservation())}
+	ErrClusterCreateInvalidName = APIError{Code: "CLUSTERS-MGMT-CREATE-006", HTTPStatus: http.StatusBadRequest, Message: fmt.Sprintf("Cluster metadata.name must be a valid DNS label and, without dnsReservationId, fit the HostedCluster management namespace (maximum %d characters)", seaplanev1alpha1.MaxClusterNameLengthWithoutDNSReservation())}
 	ErrClusterCreateNamespaceMismatch = APIError{Code: "CLUSTERS-MGMT-CREATE-007", HTTPStatus: http.StatusBadRequest, Message: "metadata.namespace must match the authenticated account namespace"}
 	ErrClusterCreateInvalidSpec = APIError{Code: "CLUSTERS-MGMT-CREATE-008", HTTPStatus: http.StatusBadRequest, Message: "Invalid cluster spec"}
 	ErrClusterCreateDNSReservationRequired = APIError{Code: "CLUSTERS-MGMT-CREATE-014", HTTPStatus: http.StatusBadRequest, Message: "spec.dnsReservationId is required"}
