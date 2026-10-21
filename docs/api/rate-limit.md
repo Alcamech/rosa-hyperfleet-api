@@ -78,7 +78,7 @@ When `RATE_LIMIT_CONFIG_FILE` is set, the YAML file is loaded and `RATE_LIMIT_DE
 Run rate limiting locally without Redis/Valkey:
 
 ```bash
-cd platform-api
+cd seaplane-api
 RATE_LIMIT_TEST_MODE=true go run ./cmd/... serve
 ```
 
@@ -144,7 +144,7 @@ Every denied request logs at WARN level:
 ## Architecture
 
 ```
-platform-api/pkg/ratelimit/
+seaplane-api/pkg/ratelimit/
   config.go                 # Config struct, YAML loader, defaults
   middleware.go             # HTTP middleware, metrics, response writer
   local.go                  # RateLimiter interface, Redis adapter, in-memory GCRA
@@ -159,7 +159,7 @@ The `RateLimiter` interface abstracts the backend:
 ## Running Tests
 
 ```bash
-cd platform-api
+cd seaplane-api
 go test -race -count=1 ./pkg/ratelimit/...
 ```
 

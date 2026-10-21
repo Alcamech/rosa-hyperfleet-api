@@ -409,7 +409,7 @@ dynamic client.)
 
 ## Open Questions
 
-1. ~~**Module location**~~: Resolved — the SDK lives in this monorepo as `clientset/` with its own `go.mod`, following the same pattern as `platform-api/`, `seaplane-operator/`, and `seaplane-db/`.
+1. ~~**Module location**~~: Resolved — the SDK lives in this monorepo as `clientset/` with its own `go.mod`, following the same pattern as `seaplane-api/`, `seaplane-operator/`, and `seaplane-db/`.
 2. **CAPA timing**: Should CAPA integration be part of this initiative or deferred?
 3. **Type compatibility**: How much do the Seaplane CRD types (Cluster, NodePool) diverge from the OCM API model types? The migration effort for consumers depends on this.
 4. **Service logs**: Logs appear to be per-cluster in Seaplane. How will the SDK expose them — as a sub-resource of Cluster, or as a separate top-level surface?

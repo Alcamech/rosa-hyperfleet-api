@@ -20,7 +20,7 @@ Each Quay repository is named after its Konflux **component** (`rosa-seaplane-ap
 | `rosa-seaplane-operator-on-push`         | Push to `main` only when `seaplane-operator/`, `seaplane-db/`, or related Tekton/Containerfile paths change |
 | `rosa-seaplane-operator-on-pull-request` | Same path filter on pull requests                                                                               |
 
-A commit SHA tag for `rosa-seaplane-operator` exists on Quay **only if** that commit triggered the operator on-push (or on-pull-request) pipeline. A `platform-api`-only merge still produces a new `rosa-seaplane-api:<sha>` image on every push to `main`, but does not necessarily rebuild the operator image at that SHA.
+A commit SHA tag for `rosa-seaplane-operator` exists on Quay **only if** that commit triggered the operator on-push (or on-pull-request) pipeline. A `seaplane-api`-only merge still produces a new `rosa-seaplane-api:<sha>` image on every push to `main`, but does not necessarily rebuild the operator image at that SHA.
 
 ## Tag naming
 
@@ -34,7 +34,7 @@ A commit SHA tag for `rosa-seaplane-operator` exists on Quay **only if** that co
 
 - **Primary tag:** `<full-git-commit-sha>` — the **deployable container image** (manifest list / image index)
 - **Expiration:** none (tags are retained)
-- **Revision:** the push pipeline sets `output-image` to `…/platform-api:{{revision}}` (or `seaplane-operator:{{revision}}`), where `revision` is the commit on `main`
+- **Revision:** the push pipeline sets `output-image` to `…/seaplane-api:{{revision}}` (or `seaplane-operator:{{revision}}`), where `revision` is the commit on `main`
 
 Do **not** use Quay `:latest` as the source of truth. Konflux push pipelines tag by git SHA; `latest` in the UI is not a reliable pointer to “what main built last.”
 
@@ -54,12 +54,12 @@ PR builds use the same suffix pattern under `on-pr-<sha>` (for example `on-pr-<s
 
 ## Choosing an image to pin
 
-Use this when updating deployment repos (for example `argocd/config/regional-cluster/platform-api/values.yaml` in `rosa-seaplane`) or when debugging e2e that depend on a specific binary.
+Use this when updating deployment repos (for example `argocd/config/regional-cluster/seaplane-api/values.yaml` in `rosa-seaplane`) or when debugging e2e that depend on a specific binary.
 
 1. Pick the **git commit on `main`** that contains the change you need.
 2. Confirm the matching Konflux build succeeded for that component:
    - **Pull requests:** GitHub check `Konflux kflux-prd-rh02 / rosa-seaplane-api-on-pull-request` or `…/rosa-seaplane-operator-on-pull-request` (when the path filter applies).
-   - **After merge:** `Konflux kflux-prd-rh02 / rosa-seaplane-api-on-push` or `…/rosa-seaplane-operator-on-push`. If the check is missing, that pipeline did not run for that commit (for example, operator on-push on a commit that only changed `platform-api/`).
+   - **After merge:** `Konflux kflux-prd-rh02 / rosa-seaplane-api-on-push` or `…/rosa-seaplane-operator-on-push`. If the check is missing, that pipeline did not run for that commit (for example, operator on-push on a commit that only changed `seaplane-api/`).
 3. Set the image tag to the **full commit SHA** (no `on-pr-` prefix, no `.git` / `.prefetch` suffix):
 
    ```yaml
@@ -70,7 +70,7 @@ Use this when updating deployment repos (for example `argocd/config/regional-clu
 
 4. For operator images, use the `rosa-seaplane-operator` repository and the same SHA rules, but only at commits where the operator pipeline actually ran (see **When pipelines run** above).
 
-If e2e or regional tests fail after a change merges to `platform-api` on `main` but pins in `rosa-seaplane` still point at an older SHA, update the pin — pre-merge CI may have used a freshly built image while deployment values still point to an older image.
+If e2e or regional tests fail after a change merges to `seaplane-api` on `main` but pins in `rosa-seaplane` still point at an older SHA, update the pin — pre-merge CI may have used a freshly built image while deployment values still point to an older image.
 
 ## Quick reference in Quay
 
@@ -84,6 +84,6 @@ If e2e or regional tests fail after a change merges to `platform-api` on `main` 
 
 - Pipeline definitions: [`.tekton/rosa-seaplane-api-pull-request.yaml`](../../.tekton/rosa-seaplane-api-pull-request.yaml), [`.tekton/rosa-seaplane-api-push.yaml`](../../.tekton/rosa-seaplane-api-push.yaml), and the matching `rosa-seaplane-operator-*` files
 - Tenant ImageRepository registration: [`konflux-release-data`](https://gitlab.cee.redhat.com/releng/konflux-release-data) overlays under `tenants-config/.../rosa-tenant/`
-- Deployment pins today: `openshift-online/rosa-seaplane` (`argocd/config/regional-cluster/platform-api/values.yaml`, `…/seaplane/values.yaml`)
+- Deployment pins today: `openshift-online/rosa-seaplane` (`argocd/config/regional-cluster/seaplane-api/values.yaml`, `…/seaplane/values.yaml`)
 
 Automated bump PRs (for example after each merge to `main`) should update pins to the plain `<sha>` tag only.

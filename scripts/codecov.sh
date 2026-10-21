@@ -40,7 +40,7 @@ if [[ -n "${PULL_NUMBER:-}" ]]; then
 fi
 
 for coverage in \
-    "platform-api:coverage-platform-api.out" \
+    "seaplane-api:coverage-seaplane-api.out" \
     "seaplane-operator:coverage-seaplane-operator.out" \
     "api-codegen:coverage-api-codegen.out" \
     "clientset:coverage-clientset.out"; do

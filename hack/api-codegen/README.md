@@ -64,7 +64,7 @@ The top-level Makefile exposes the following targets for running the codegen pip
 | `codegen-passthrough` | Generate passthrough types from HyperShift into `api/v1alpha1/` |
 | `codegen-registry`    | Generate field metadata registry from `+seaplane:` markers    |
 | `codegen-conversion`  | Generate REST types and Project/Unproject conversion functions  |
-| `codegen-verify`      | Verify codegen outputs compile (`api` + `platform-api`)         |
+| `codegen-verify`      | Verify codegen outputs compile (`api` + `seaplane-api`)         |
 | `codegen`             | Run full pipeline: passthrough + registry + verify              |
 | `verify-codegen`      | Fail if codegen outputs are out of date (git diff check)        |
 | `verify-conversion`   | Fail if conversion outputs are out of date                      |
@@ -84,7 +84,7 @@ codegen-conversion
   └─ build-api-codegen (builds conversion-gen)
        └─ conversion-gen outputs:
             api/v1alpha1/public/         (REST types, visible fields only, package "public")
-            platform-api/pkg/conversion/
+            seaplane-api/pkg/conversion/
             ├─ types.go                  (ServiceSetFields)
             └─ v1alpha1/
                 ├─ cluster.go            (ProjectCluster, UnprojectCluster)

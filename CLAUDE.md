@@ -6,7 +6,7 @@ ROSA Seaplane API — ROSA HCP regional cluster management.
 
 Three components:
 
-- **platform-api/** — Stateless REST gateway (SigV4 auth, Cedar/AVP authz)
+- **seaplane-api/** — Stateless REST gateway (SigV4 auth, Cedar/AVP authz)
 - **seaplane-operator/** — Kubernetes operator (Cluster, ClusterNetworking, DNSReservation, Index, ManagementCluster, Manifest, NodePool, OIDCConfig, Placement, UpgradePolicies CRDs)
 - **seaplane-db/** — PostgreSQL-backed controller-runtime library
 
@@ -55,7 +55,7 @@ seaplane-db/go.mod                    ← standalone
 api/go.mod                              ← standalone (CRD types, v1alpha1)
 clientset/go.mod                        ← generated typed K8s client for Seaplane CRDs
 seaplane-operator/go.mod              ← requires: fleetdb, api
-platform-api/go.mod                     ← requires: fleetdb, api
+seaplane-api/go.mod                     ← requires: fleetdb, api
 hack/api-codegen/go.mod                 ← codegen tools (openapi-gen, crd-variants, conversion-gen)
 hack/clientset/cmd/bridge-gen/go.mod      ← bridge and platform generation for clientset
 hack/tools/go.mod                       ← dev tooling dependencies
@@ -68,5 +68,5 @@ Cross-module refs use permanent `replace` directives to sibling dirs.
 - Multi-module monorepo: separate go.mod per component
 - Ginkgo/Gomega for testing
 - OpenAPI-first API design
-- CRD types in standalone `api/` module, imported by seaplane-operator and platform-api
+- CRD types in standalone `api/` module, imported by seaplane-operator and seaplane-api
 - golangci-lint v2 with custom logcheck plugin
