@@ -22,11 +22,11 @@ import (
 
 // See wk_dev/oidc-e2e-testing-plan.md for the scope decisions behind these tests: none of them wait
 // for a real HostedCluster to reach Ready (that's e2e-sdk/e2e-cli's job); they only exercise the
-// synchronous OidcConfig<->Cluster binding in platform-api and the operator's real reconciliation
+// synchronous OidcConfig<->Cluster binding in seaplane-api and the operator's real reconciliation
 // against real AWS (CloudFront TLS reachability, and for unmanaged, real Secrets Manager).
 
-// minClusterSpec is the same minimal, VPC-free HostedCluster spec platform-api's own unit tests use
-// (see platform-api/pkg/handlers/cluster_test.go's minSpec) — enough to pass Create validation
+// minClusterSpec is the same minimal, VPC-free HostedCluster spec seaplane-api's own unit tests use
+// (see seaplane-api/pkg/handlers/cluster_test.go's minSpec) — enough to pass Create validation
 // without needing real VPC/IAM infra we don't need for OidcConfig-binding coverage.
 func minClusterSpec(oidcConfigID string) map[string]any {
 	return map[string]any{
@@ -299,7 +299,7 @@ func stsAccountID(profile string) string {
 }
 
 // Cross-account isolation is enforced by API Gateway deriving X-Amz-Account-Id from the caller's
-// real SigV4 identity (see platform-api/pkg/middleware/identity.go), not from a client-supplied
+// real SigV4 identity (see seaplane-api/pkg/middleware/identity.go), not from a client-supplied
 // header. So exercising it for real requires two genuinely distinct AWS identities, matching
 // e2e-cli/e2e-sdk's CUSTOMER_AWS_PROFILE convention; this Skips when that isn't configured.
 var _ = Describe("OIDC Config Lifecycle: Cross-Account Isolation", Label("oidcconfig", "oidc-lifecycle"), func() {

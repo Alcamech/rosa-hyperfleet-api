@@ -4,8 +4,8 @@
 
 | Layer                     | Backend                   | Files                                           | Validates                                                  |
 | ------------------------- | ------------------------- | ----------------------------------------------- | ---------------------------------------------------------- |
-| **Unit — middleware**     | miniredis                 | `platform-api/pkg/ratelimit/middleware_test.go` | HTTP middleware behavior with Redis adapter                |
-| **Unit — GCRA algorithm** | in-memory GCRA            | `platform-api/pkg/ratelimit/local_test.go`      | GCRA math used by CLI test mode                            |
+| **Unit — middleware**     | miniredis                 | `seaplane-api/pkg/ratelimit/middleware_test.go` | HTTP middleware behavior with Redis adapter                |
+| **Unit — GCRA algorithm** | in-memory GCRA            | `seaplane-api/pkg/ratelimit/local_test.go`      | GCRA math used by CLI test mode                            |
 | **E2E**                   | real Valkey (ElastiCache) | `test/e2e-api/ratelimit_e2e_test.go`            | Full path: API Gateway -> middleware -> Valkey -> response |
 
 ## Unit Tests — Middleware (`middleware_test.go`)
@@ -35,7 +35,7 @@ Uses [miniredis](https://github.com/alicebob/miniredis) as an in-process Redis m
 ### Running
 
 ```bash
-cd platform-api
+cd seaplane-api
 go test -race -count=1 -v ./pkg/ratelimit/...
 ```
 
@@ -59,7 +59,7 @@ Tests the in-memory GCRA implementation directly via the `RateLimiter.Allow()` i
 ### Running
 
 ```bash
-cd platform-api
+cd seaplane-api
 go test -race -count=1 -v -run TestLocalLimiter ./pkg/ratelimit/...
 ```
 
@@ -68,7 +68,7 @@ go test -race -count=1 -v -run TestLocalLimiter ./pkg/ratelimit/...
 Start the API locally with rate limiting in test mode — no Redis or Valkey required:
 
 ```bash
-cd platform-api
+cd seaplane-api
 RATE_LIMIT_TEST_MODE=true go run ./cmd/... serve
 ```
 

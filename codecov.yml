@@ -28,7 +28,7 @@ ignore:
   - "test/**"
 
 flags:
-  platform-api:
+  seaplane-api:
     carryforward: true
   seaplane-operator:
     carryforward: true

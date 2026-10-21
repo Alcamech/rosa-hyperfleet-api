@@ -19,7 +19,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "Building service..."
-(cd platform-api && go build -o "../$BINARY" ./cmd)
+(cd seaplane-api && go build -o "../$BINARY" ./cmd)
 
 echo "Starting service..."
 DYNAMODB_ENDPOINT=http://localhost:8180 \

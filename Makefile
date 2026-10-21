@@ -161,7 +161,7 @@ build-operator:
 	cd seaplane-operator && go build -o ../bin/compactor ./cmd/compactor
 
 build-api:
-	cd platform-api && go build -o ../bin/rosa-seaplane-api ./cmd
+	cd seaplane-api && go build -o ../bin/rosa-seaplane-api ./cmd
 
 build-api-codegen:
 	cd hack/api-codegen && go build -o ../../bin/passthrough-gen ./cmd/passthrough-gen
@@ -182,8 +182,8 @@ test-unit: test-api test-operator test-api-codegen test-clientset
 test-integration: test-seaplane-db test-operator-int
 
 test-api:
-	cd platform-api && go test -v -race -count=1 $(if $(COVERAGE),-covermode=atomic -coverprofile=../coverage-platform-api.out,) $$(go list ./... | grep -v '/test/e2e')
-	$(if $(filter html,$(COVERAGE)),cd platform-api && go tool cover -html=../coverage-platform-api.out -o ../coverage-platform-api.html,)
+	cd seaplane-api && go test -v -race -count=1 $(if $(COVERAGE),-covermode=atomic -coverprofile=../coverage-seaplane-api.out,) $$(go list ./... | grep -v '/test/e2e')
+	$(if $(filter html,$(COVERAGE)),cd seaplane-api && go tool cover -html=../coverage-seaplane-api.out -o ../coverage-seaplane-api.html,)
 
 test-api-codegen:
 	cd hack/api-codegen && go test -v -race -count=1 $(if $(COVERAGE),-covermode=atomic -coverprofile=../../coverage-api-codegen.out,) ./...
@@ -301,7 +301,7 @@ test-e2e-authz: e2e-authz-infra-up
 fmt:
 	cd seaplane-db && go fmt ./...
 	cd seaplane-operator && go fmt ./...
-	cd platform-api && go fmt ./...
+	cd seaplane-api && go fmt ./...
 	cd hack/api-codegen && go fmt ./...
 	cd clientset && go fmt ./...
 	cd hack/clientset/cmd/bridge-gen && go fmt ./...
@@ -309,7 +309,7 @@ fmt:
 vet:
 	cd seaplane-db && go vet ./...
 	cd seaplane-operator && go vet ./...
-	cd platform-api && go vet ./...
+	cd seaplane-api && go vet ./...
 	cd hack/api-codegen && go vet ./...
 	cd clientset && go vet ./...
 	cd hack/clientset/cmd/bridge-gen && go vet ./...
@@ -317,13 +317,13 @@ vet:
 lint: $(GOLANGCI_LINT)
 	cd seaplane-db && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
 	cd seaplane-operator && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
-	cd platform-api && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
+	cd seaplane-api && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
 	cd hack/api-codegen && $(GOLANGCI_LINT) run --config ../../.golangci.yml --timeout 5m ./...
 	cd clientset && $(GOLANGCI_LINT) run --config ../.golangci.yml --timeout 5m ./...
 	cd hack/clientset/cmd/bridge-gen && $(GOLANGCI_LINT) run --config $(abspath .golangci.yml) --timeout 5m ./...
 
 # All Go modules in the repo (used by verify and MintMaker/Renovate post-upgrade).
-override MOD_TIDY_DIRS := seaplane-db api seaplane-operator platform-api test clientset hack/tools hack/api-codegen
+override MOD_TIDY_DIRS := seaplane-db api seaplane-operator seaplane-api test clientset hack/tools hack/api-codegen
 MOD_TIDY_FILES := $(foreach d,$(MOD_TIDY_DIRS),$(d)/go.mod $(d)/go.sum)
 
 mod-tidy:
@@ -400,7 +400,7 @@ codegen-registry: build-api-codegen
 
 codegen-verify: codegen-registry
 	cd api && go build ./...
-	cd platform-api && go build ./...
+	cd seaplane-api && go build ./...
 
 codegen: codegen-verify
 
@@ -427,8 +427,8 @@ verify-pathbind-draft: generate-pathbind-draft
 
 verify: verify-codegen verify-conversion verify-clientset verify-openapi verify-pathbind-draft verify-mod
 
-CONVERSION_OUTPUT_DIR   ?= platform-api/pkg/conversion/v1alpha1
-CONVERSION_OUTPUT_PKG   ?= github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/conversion
+CONVERSION_OUTPUT_DIR   ?= seaplane-api/pkg/conversion/v1alpha1
+CONVERSION_OUTPUT_PKG   ?= github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/conversion
 CONVERSION_CRD_PKG      ?= github.com/openshift-online/rosa-seaplane-api/api/v1alpha1
 CONVERSION_REST_DIR     ?= api/v1alpha1/public
 CONVERSION_REST_PKG     ?= github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public
@@ -445,8 +445,8 @@ codegen-conversion: codegen-passthrough codegen-registry build-api-codegen
 
 verify-conversion: codegen-conversion
 	cd api && go build ./...
-	cd platform-api && go build ./...
-	git diff --exit-code $(CONVERSION_REST_DIR)/ $(CONVERSION_OUTPUT_DIR)/ platform-api/pkg/conversion/types.go
+	cd seaplane-api && go build ./...
+	git diff --exit-code $(CONVERSION_REST_DIR)/ $(CONVERSION_OUTPUT_DIR)/ seaplane-api/pkg/conversion/types.go
 
 generate-openapi: codegen-conversion
 	cd hack/api-codegen && go build -o ../../bin/openapi-gen ./cmd/openapi-gen
@@ -479,7 +479,7 @@ setup-envtest: $(SETUP_ENVTEST)
 # ── Images ───────────────────────────────────────────────────────────────
 
 image-api:
-	$(CONTAINER_ENGINE) build -f platform-api/Containerfile \
+	$(CONTAINER_ENGINE) build -f seaplane-api/Containerfile \
 		--platform $(GOOS)/$(GOARCH) \
 		-t $(IMAGE_REPO_API):$(IMAGE_TAG) .
 	$(CONTAINER_ENGINE) tag $(IMAGE_REPO_API):$(IMAGE_TAG) $(IMAGE_REPO_API):$(GIT_SHA)

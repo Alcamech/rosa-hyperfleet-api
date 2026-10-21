@@ -107,7 +107,7 @@ The platform API differs from a standard Kubernetes API in three ways that requi
 | Difference                                               | Solution                                                                                                                                  |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Requests are signed with AWS SigV4                       | `transport/sigv4.go` — custom RoundTripper                                                                                                |
-| Account identity and storage namespace are separate       | `AccountID` in SDK config supplies the signed `X-Amz-Account-Id`; platform-api derives `account-<accountID>` and sets the stored namespace, while an optional request namespace is validated |
+| Account identity and storage namespace are separate       | `AccountID` in SDK config supplies the signed `X-Amz-Account-Id`; seaplane-api derives `account-<accountID>` and sets the stored namespace, while an optional request namespace is validated |
 | Pagination uses `offset` rather than Kubernetes `continue` | `transport/bridge.go` — query adapter                                                                                                      |
 | NodePool parent and account scope differ                  | `NodePools()` hides account namespace plumbing; the `<cluster>.<child>` prefix resolves the parent, while its UID is stored in the server-set ownerReference and label |
 
@@ -143,8 +143,8 @@ response projection, or custom error-envelope translation in the SDK.
 
 The public typed NodePool client is non-namespaced: callers use `NodePools()` and do
 not provide an account namespace. SigV4 supplies the configured account identity;
-platform-api stores the object in that account namespace. The `<cluster>.<child>`
-name prefix identifies the parent name; platform-api resolves it within the account
+seaplane-api stores the object in that account namespace. The `<cluster>.<child>`
+name prefix identifies the parent name; seaplane-api resolves it within the account
 namespace, then sets the owner UID on the ownerReference and
 `seaplane.io/cluster-uid` label.
 

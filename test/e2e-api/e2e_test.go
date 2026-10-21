@@ -150,7 +150,7 @@ var _ = Describe("Platform API", Ordered, func() {
 	})
 
 	// it should be able to GET /clusters endpoint and return an array
-	// Uses Eventually because in CI the platform-api depends on seaplane-operator,
+	// Uses Eventually because in CI the seaplane-api depends on seaplane-operator,
 	// which may not be fully routable until ArgoCD finishes all sync cycles.
 	It("should have the clusters endpoint defined", func() {
 		Eventually(func() bool {
