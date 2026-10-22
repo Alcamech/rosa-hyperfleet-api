@@ -16,4 +16,4 @@ limitations under the License.
 
 package seaplane
 
-const Version = "0.1.21"
+const Version = "0.1.22"
