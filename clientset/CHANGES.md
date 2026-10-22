@@ -1,5 +1,11 @@
 # Changes
 
+## 0.1.21 Oct 21 2026
+
+- Rename platform-api to seaplane-api
+- Rename ROSA HyperFleet to ROSA Seaplane
+
+
 ## 0.1.20 Oct 16 2026
 
 - feat: add resettable pathbind updates

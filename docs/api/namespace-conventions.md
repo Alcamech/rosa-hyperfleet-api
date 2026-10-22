@@ -12,7 +12,7 @@ UID-derived namespace; that namespace does not determine FleetDB ownership.
 
 **Pattern**: `account-<accountID>`
 
-The account ID comes from the authenticated caller. Platform-api rejects a supplied
+The account ID comes from the authenticated caller. seaplane-api rejects a supplied
 namespace that does not match the caller's canonical account namespace and sets the
 namespace itself when the request omits it.
 

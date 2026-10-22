@@ -39,8 +39,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "    --api-version=v1alpha1 \\\n")
 		fmt.Fprintf(os.Stderr, "    --crd-package=github.com/openshift-online/rosa-seaplane-api/api/v1alpha1 \\\n")
 		fmt.Fprintf(os.Stderr, "    --input-dirs=./api/v1alpha1 \\\n")
-		fmt.Fprintf(os.Stderr, "    --output-dir=./platform-api/pkg/conversion/v1alpha1 \\\n")
-		fmt.Fprintf(os.Stderr, "    --output-package=github.com/openshift-online/rosa-seaplane-api/platform-api/pkg/conversion\n")
+		fmt.Fprintf(os.Stderr, "    --output-dir=./seaplane-api/pkg/conversion/v1alpha1 \\\n")
+		fmt.Fprintf(os.Stderr, "    --output-package=github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/conversion\n")
 		os.Exit(1)
 	}
 

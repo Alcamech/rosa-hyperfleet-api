@@ -7,4 +7,4 @@ Documentation for Konflux CI/CD on this repository.
 
 **Konflux UI:** [`rosa-seaplane` application](https://konflux-ui.apps.kflux-prd-rh02.0fk9.p1.openshiftapps.com/ns/rosa-tenant/applications/rosa-seaplane/activity) · namespace `rosa-tenant` on `kflux-prd-rh02`
 
-This repo is the **reference implementation** for `.tekton/` pipelines (`platform-api`, `seaplane-operator`).
+This repo is the **reference implementation** for `.tekton/` pipelines (`seaplane-api`, `seaplane-operator`).

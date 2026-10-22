@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi9/go-toolset:9.8-1792010711 AS builder
+FROM registry.access.redhat.com/ubi9/go-toolset:9.8-1792592174 AS builder
 USER root
 
 ARG TARGETOS=linux
@@ -9,15 +9,15 @@ WORKDIR /app
 COPY seaplane-db/go.mod seaplane-db/go.sum ./seaplane-db/
 COPY api/go.mod api/go.sum ./api/
 COPY hack/api-codegen/go.mod hack/api-codegen/go.sum ./hack/api-codegen/
-COPY platform-api/go.mod platform-api/go.sum ./platform-api/
-RUN cd platform-api && go mod download
+COPY seaplane-api/go.mod seaplane-api/go.sum ./seaplane-api/
+RUN cd seaplane-api && go mod download
 
 COPY seaplane-db/ ./seaplane-db/
 COPY api/ ./api/
 COPY hack/api-codegen/ ./hack/api-codegen/
-COPY platform-api/ ./platform-api/
+COPY seaplane-api/ ./seaplane-api/
 
-RUN cd platform-api && \
+RUN cd seaplane-api && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -buildvcs=false \
     -ldflags="-w -s" \

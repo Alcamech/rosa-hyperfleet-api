@@ -7,14 +7,14 @@
 
 ## Overview
 
-This document describes the completed migration of platform-api from custom REST
+This document describes the completed migration of seaplane-api from custom REST
 types to generated K8s-native types (`api/v1alpha1/public/`).
 
 **Ticket:** ROSAENG-64871
 
 ## Problem Statement
 
-Platform-api currently maintains two separate type hierarchies:
+seaplane-api currently maintains two separate type hierarchies:
 
 1. **Storage & Internal**: v1alpha1.Cluster, v1alpha1.NodePool (K8s-style CRD types)
 2. **API Response**: types.Cluster, types.NodePool (custom REST types)
@@ -54,7 +54,7 @@ HTTP Response
 FleetDB (`seaplane-db/`) already uses K8s-native types:
 
 ```go
-// From platform-api/pkg/clients/seaplanedb/client.go
+// From seaplane-api/pkg/clients/seaplanedb/client.go
 scheme := runtime.NewScheme()
 seaplanev1alpha1.AddToScheme(scheme)
 c, cleanup, err := seaplanedb.NewClient(seaplanedb.Options{
@@ -186,7 +186,7 @@ No conversion to custom types:
 
 Create wrapper functions that reuse existing Project/Unproject from conversion/v1alpha1:
 
-**New file**: `platform-api/pkg/clients/seaplanedb/convert.go`
+**New file**: `seaplane-api/pkg/clients/seaplanedb/convert.go`
 
 Functions:
 
@@ -212,8 +212,8 @@ Update handlers to accept/return public types:
 
 **Modified files:**
 
-- `platform-api/pkg/handlers/cluster.go`
-- `platform-api/pkg/handlers/nodepool.go`
+- `seaplane-api/pkg/handlers/cluster.go`
+- `seaplane-api/pkg/handlers/nodepool.go`
 
 Changes:
 
@@ -229,8 +229,8 @@ Remove custom types that are now replaced:
 
 **Deleted files:**
 
-- `platform-api/pkg/types/cluster.go`
-- `platform-api/pkg/types/nodepool.go`
+- `seaplane-api/pkg/types/cluster.go`
+- `seaplane-api/pkg/types/nodepool.go`
 
 ### Phase 4: Testing
 
@@ -238,12 +238,12 @@ Update handler tests and add conversion tests:
 
 **Modified files:**
 
-- `platform-api/pkg/handlers/cluster_test.go`
-- `platform-api/pkg/handlers/nodepool_test.go`
+- `seaplane-api/pkg/handlers/cluster_test.go`
+- `seaplane-api/pkg/handlers/nodepool_test.go`
 
 **New file:**
 
-- `platform-api/pkg/clients/seaplanedb/convert_test.go`
+- `seaplane-api/pkg/clients/seaplanedb/convert_test.go`
 
 Test coverage:
 
@@ -376,12 +376,12 @@ PATCH /api/v0/clusters/{id}
 
 - **CRD Types**: `api/v1alpha1/cluster_types.go`, `nodepool_types.go`
 - **Public Types**: `api/v1alpha1/public/cluster_types.go`, `nodepool_types.go`
-- **Conversion**: `platform-api/pkg/conversion/v1alpha1/`
-- **Existing Handlers**: `platform-api/pkg/handlers/`
-- **Validation**: `platform-api/pkg/validation/field_validator.go`
+- **Conversion**: `seaplane-api/pkg/conversion/v1alpha1/`
+- **Existing Handlers**: `seaplane-api/pkg/handlers/`
+- **Validation**: `seaplane-api/pkg/validation/field_validator.go`
 - **FleetDB**: `seaplane-db/` (storage layer, uses v1alpha1.AddToScheme)
-- **Current Client**: `platform-api/pkg/clients/seaplanedb/client.go` (line 31: `seaplanev1alpha1.AddToScheme`)
+- **Current Client**: `seaplane-api/pkg/clients/seaplanedb/client.go` (line 31: `seaplanev1alpha1.AddToScheme`)
 
 ## Related Issues
 
-- ROSAENG-64871: Migrate platform-api to use v1alpha1/public types
+- ROSAENG-64871: Migrate seaplane-api to use v1alpha1/public types

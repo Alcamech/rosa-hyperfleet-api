@@ -1,7 +1,7 @@
 # Seaplane Resource Identity and Lifecycle Plan
 
 **Status:** Active target and implementation roadmap
-**Scope:** `seaplane-db`, `platform-api`, `seaplane-operator`, `api`, and `clientset`
+**Scope:** `seaplane-db`, `seaplane-api`, `seaplane-operator`, `api`, and `clientset`
 
 This plan brings every component that writes or reconciles Seaplane resources into
 one identity and ownership model. It records the target contract, the current
@@ -211,7 +211,7 @@ Tests:
 
 ### Phase 2 — Identity and customer DNS reservation switch (PR 2)
 
-This phase is coordinated across `api`, `platform-api`, `seaplane-operator`, and
+This phase is coordinated across `api`, `seaplane-api`, `seaplane-operator`, and
 `clientset`; do not deploy only part of it.
 
 **API types and OpenAPI**
@@ -220,7 +220,7 @@ This phase is coordinated across `api`, `platform-api`, `seaplane-operator`, and
   names, child-name parts, and the public DNSReservation API. Regenerate public types
   and OpenAPI and verify generated output.
 - Keep FleetDB's lack of schema/admission validation explicit: enforce request rules
-  in platform-api.
+  in seaplane-api.
 
 **Platform API and FleetDB wrapper**
 
@@ -344,7 +344,7 @@ Cluster/NodePool finalizers, manager registration, tests, and RBAC.
 - Keep NodePool teardown in the NodePool finalizer. Make the missing-owner behavior
   finite and explicit; retain enough management-cluster information to clean up
   external desires where possible.
-- Verify the create/delete race: platform-api rejects a parent already deleting;
+- Verify the create/delete race: seaplane-api rejects a parent already deleting;
   a child inserted after the owner finishes is still collected as an orphan.
 
 Tests:

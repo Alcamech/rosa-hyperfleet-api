@@ -361,8 +361,8 @@ Platform API flags are isolated from OCM v1 flags via two helpers in `pkg/seapla
 1. Snapshots all pre-existing flag names on `cmd`
 2. Calls `register()` (which invokes `Register*Flags`)
 3. For each name in `platformAPIFlags`:
-   - **New flag** → tagged `platform-api-group` (Platform API only)
-   - **Pre-existing flag** → tagged `platform-api-shared` (used by both OCM v1 and HF)
+   - **New flag** → tagged `seaplane-api-group` (Platform API only)
+   - **Pre-existing flag** → tagged `seaplane-api-shared` (used by both OCM v1 and HF)
 
 ```go
 seaplane.RegisterAndMarkPlatformAPIFlags(cmd,
