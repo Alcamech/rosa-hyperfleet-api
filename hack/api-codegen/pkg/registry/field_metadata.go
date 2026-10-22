@@ -1538,8 +1538,7 @@ var FieldRegistry = TypedFieldRegistry{
 		},
 		"spec.nodePool.nodeVolumeDetachTimeout": {
 			FieldPath: "spec.nodePool.nodeVolumeDetachTimeout",
-			WriteMode: ServiceSet,
-			Hidden:    true,
+			WriteMode: Mutable,
 			OwnerType: "NodePool",
 			OwnerGVK:  "seaplane.io/v1alpha1.NodePool",
 		},
