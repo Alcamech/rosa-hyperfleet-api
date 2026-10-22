@@ -1,5 +1,10 @@
 # Changes
 
+## 0.1.24 Oct 22 2026
+
+- ROSAENG-65107 | chore: Enable node drain grace period for v2
+
+
 ## 0.1.23 Oct 21 2026
 
 - Rename platform-api to seaplane-api
