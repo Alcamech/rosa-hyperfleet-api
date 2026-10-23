@@ -67,6 +67,11 @@ func validateNodePoolEC2InstanceMetadataHttpTokens(value public.EC2InstanceMetad
 	}
 }
 
+func nodePoolTagsSupplied(rawSpec map[string]any) bool {
+	_, exists := rawSpec["tags"]
+	return exists
+}
+
 func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
@@ -208,6 +213,7 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	errs := append(h.validator.ValidateCreate(&req.Spec, featuregate.Default), validateNodePoolReplicas(&req.Spec)...)
+	errs = append(errs, validation.ValidateCustomerAWSTags(req.Spec.Tags, "spec.tags")...)
 	errs = append(errs, validateNodePoolEC2InstanceMetadataHttpTokens(req.Spec.EC2InstanceMetadataHttpTokens)...)
 	if len(errs) > 0 {
 		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
@@ -226,6 +232,10 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if !cluster.DeletionTimestamp.IsZero() {
 		writeAPIError(w, ErrNodePoolCreateClusterDeleting, h.logger)
+		return
+	}
+	if errs := validation.ValidateNodePoolAWSTagBudget(cluster.Spec.Tags, req.Spec.Tags, "spec.tags"); len(errs) > 0 {
+		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
 		return
 	}
 	h.logger.Info("creating nodepool", "account_id", accountID, "cluster_uid", cluster.UID, "nodepool_name", req.Name)
@@ -339,6 +349,39 @@ func (h *NodePoolHandler) Update(w http.ResponseWriter, r *http.Request) {
 		if err := seaplanedb.MergeSpecJSON(&current.Spec, envelope.Spec); err != nil {
 			mergeErr = err
 			return fmt.Errorf("merge nodepool spec: %w", err)
+		}
+		if nodePoolTagsSupplied(rawSpec) {
+			tagErrs := validation.ValidateCustomerAWSTags(current.Spec.Tags, "spec.tags")
+			if len(tagErrs) > 0 {
+				validationErr = tagErrs
+				return fmt.Errorf("invalid nodepool AWS tags")
+			}
+			clusterName := current.Spec.NodePool.ClusterName
+			if clusterName == "" {
+				clusterName, _, err = validation.ParseNodePoolName(current.Name)
+				if err != nil {
+					validationErr = validation.ValidationErrors{&validation.ValidationError{
+						Field:  "spec.tags",
+						Reason: "unable to resolve the parent Cluster for tag budget validation",
+					}}
+					return fmt.Errorf("invalid nodepool AWS tags")
+				}
+			}
+			cluster, err := h.db.GetCluster(ctx, accountID, clusterName)
+			if err != nil {
+				if seaplanedb.IsNotFound(err) {
+					validationErr = validation.ValidationErrors{&validation.ValidationError{
+						Field:  "spec.tags",
+						Reason: "parent Cluster must be available for tag budget validation",
+					}}
+					return fmt.Errorf("invalid nodepool AWS tags")
+				}
+				return fmt.Errorf("get parent Cluster for tag budget validation: %w", err)
+			}
+			if errs := validation.ValidateNodePoolAWSTagBudget(cluster.Spec.Tags, current.Spec.Tags, "spec.tags"); len(errs) > 0 {
+				validationErr = errs
+				return fmt.Errorf("invalid nodepool AWS tags")
+			}
 		}
 		if err := h.db.UpdateNodePool(ctx, current); err != nil {
 			return err
