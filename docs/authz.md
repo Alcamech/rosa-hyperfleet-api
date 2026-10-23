@@ -6,7 +6,8 @@ explicit grant. Bundle enrollment and gateway authentication grant nothing; the 
 account allowlist grants its accounts full access to their own resources.
 
 Not implemented: policy/attachment management, account linking,
-AccessEntry, `/authz/check`. Chart delivery and provisioning grants:
+AccessEntry, `/authz/check`; see the [target design](authz-design.md). Chart
+delivery and the account allowlist SOP:
 `rosa-seaplane/docs/platform-api-authorization.md`.
 
 ## Startup
