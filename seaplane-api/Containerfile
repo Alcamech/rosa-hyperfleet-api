@@ -17,6 +17,9 @@ COPY api/ ./api/
 COPY hack/api-codegen/ ./hack/api-codegen/
 COPY seaplane-api/ ./seaplane-api/
 
+ENV GOMEMLIMIT=3500MiB
+ENV GOMAXPROCS=4
+
 RUN cd seaplane-api && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -buildvcs=false \
