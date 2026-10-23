@@ -28,15 +28,14 @@ type ClusterClaimableResource interface {
 }
 
 type dnsReservationClaimableResource struct {
-	db        *seaplanedb.Client
-	accountID string
-	uid       string
-	resource  *seaplanev1alpha1.DNSReservation
+	db       *seaplanedb.Client
+	uid      string
+	resource *seaplanev1alpha1.DNSReservation
 }
 
 func (r *dnsReservationClaimableResource) LoadByUID(ctx context.Context) error {
 	r.resource = nil
-	reservation, err := r.db.GetDNSReservationByUID(ctx, r.accountID, r.uid)
+	reservation, err := r.db.GetDNSReservationByUID(ctx, r.uid)
 	if err != nil {
 		return err
 	}
@@ -122,7 +121,7 @@ func (h *ClusterHandler) resolveDNSReservation(ctx context.Context, accountID, r
 	if reservationUID == "" {
 		return nil, &ErrClusterCreateDNSReservationRequired
 	}
-	reservation, err := h.db.GetDNSReservationByUID(ctx, accountID, reservationUID)
+	reservation, err := h.db.GetDNSReservationByUID(ctx, reservationUID)
 	if err != nil {
 		if seaplanedb.IsNotFound(err) {
 			return nil, &ErrClusterCreateDNSReservationNotFound
@@ -171,9 +170,8 @@ func (h *ClusterHandler) resolveOidcConfig(ctx context.Context, accountID, oidcC
 
 func (h *ClusterHandler) claimDNSReservation(ctx context.Context, accountID, reservationUID, clusterUID string) *APIError {
 	claimAPIError, err := claimResource(ctx, clusterUID, &dnsReservationClaimableResource{
-		db:        h.db,
-		accountID: accountID,
-		uid:       reservationUID,
+		db:  h.db,
+		uid: reservationUID,
 	})
 	if claimAPIError != nil {
 		return claimAPIError

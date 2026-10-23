@@ -928,7 +928,7 @@ func TestOidcConfigHandler_Delete_AfterClusterDeletedSucceeds(t *testing.T) {
 		t.Fatalf("failed to fetch oidc config: %v", err)
 	}
 	delete(latest.Labels, claimedByClusterUIDLabel)
-	if err := handler.db.UpdateOidcConfigObject(context.Background(), latest); err != nil {
+	if err := handler.db.UpdateOidcConfigObject(testContext(testAccountID), latest); err != nil {
 		t.Fatalf("failed to release claim label: %v", err)
 	}
 

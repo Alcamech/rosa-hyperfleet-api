@@ -28,6 +28,9 @@ type DNSReservationHandler struct {
 }
 
 func NewDNSReservationHandler(db *seaplanedb.Client, authorizer *authz.Authorizer, logger *slog.Logger) *DNSReservationHandler {
+	if authorizer == nil {
+		panic("DNS reservation authorizer is required")
+	}
 	return &DNSReservationHandler{db: db, authorizer: authorizer, logger: logger}
 }
 
@@ -41,7 +44,7 @@ func (h *DNSReservationHandler) List(w http.ResponseWriter, r *http.Request) {
 	limit := parsePositiveInt(r.URL.Query().Get("limit"), 50, 100)
 	offset := parseNonNegativeInt(r.URL.Query().Get("offset"))
 
-	list, err := h.db.ListDNSReservations(ctx, accountID)
+	list, err := h.db.ListDNSReservations(ctx)
 	if err != nil {
 		h.logger.Error("failed to list DNS reservations", "error", err, "account_id", accountID)
 		attempt.Finish(authz.OutcomeError, authz.StageResourceLoading)
@@ -102,7 +105,7 @@ func (h *DNSReservationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reservation.Status.Phase = "Pending"
-	if err := h.db.CreateDNSReservation(ctx, accountID, reservation); err != nil {
+	if err := h.db.CreateDNSReservation(ctx, reservation); err != nil {
 		if seaplanedb.IsAlreadyExists(err) {
 			writeAPIError(w, ErrDNSReservationCreateNameConflict, h.logger)
 			return
@@ -120,7 +123,7 @@ func (h *DNSReservationHandler) Get(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
 	name := mux.Vars(r)["id"]
-	reservation, err := h.db.GetDNSReservation(ctx, accountID, name)
+	reservation, err := h.db.GetDNSReservation(ctx, name)
 	if err != nil {
 		if seaplanedb.IsNotFound(err) {
 			writeAPIError(w, ErrDNSReservationGetNotFound, h.logger)
@@ -146,7 +149,7 @@ func (h *DNSReservationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	name := mux.Vars(r)["id"]
 	var notFound bool
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		reservation, err := h.db.GetDNSReservation(ctx, accountID, name)
+		reservation, err := h.db.GetDNSReservation(ctx, name)
 		if err != nil {
 			if seaplanedb.IsNotFound(err) {
 				notFound = true

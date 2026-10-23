@@ -14,7 +14,6 @@ import (
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/api"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/authz"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/clients/seaplanedb"
-	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/middleware"
 	"k8s.io/apimachinery/pkg/types"
 	labelvalidation "k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/util/retry"
@@ -182,7 +181,7 @@ func (h *OidcConfigHandler) Labels(w http.ResponseWriter, r *http.Request) {
 }
 func (h *DNSReservationHandler) Labels(w http.ResponseWriter, r *http.Request) {
 	resourceLabels(w, r, h.authorizer, h.logger, func(ctx context.Context, name string) (*seaplanev1alpha1.DNSReservation, error) {
-		return h.db.GetDNSReservation(ctx, middleware.GetAccountID(ctx), name)
+		return h.db.GetDNSReservation(ctx, name)
 	}, h.db.UpdateDNSReservation, func(_ context.Context, obj *seaplanev1alpha1.DNSReservation) (authz.Resource, error) {
 		return h.dnsReservationResource(obj), nil
 	})

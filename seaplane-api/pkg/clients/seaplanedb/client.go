@@ -69,9 +69,10 @@ func (c *Client) Close() {
 
 // CreateCluster creates a Cluster in the account namespace from ctx.
 func (c *Client) CreateCluster(ctx context.Context, cluster *seaplanev1alpha1.Cluster) error {
-	accountID := middleware.GetAccountID(ctx)
-	cluster.Namespace = accountNamespace(accountID)
-	setAccountLabel(cluster, accountID)
+	accountID, err := validateOwnedCandidate(ctx, cluster, cluster.Spec.AccountID)
+	if err != nil {
+		return err
+	}
 	cluster.Spec.AccountID = accountID
 	return c.client.Create(ctx, cluster)
 }
@@ -129,7 +130,8 @@ func (c *Client) DeleteClusterObject(ctx context.Context, cluster *seaplanev1alp
 // ClaimSpotTerminationQueue atomically reserves a customer SQS queue URL for a
 // Cluster. The bool reports whether this call created the reservation. An
 // existing reservation owned by the same Cluster is treated as success.
-func (c *Client) ClaimSpotTerminationQueue(ctx context.Context, accountID, queueURL, clusterName string) (bool, error) {
+func (c *Client) ClaimSpotTerminationQueue(ctx context.Context, queueURL, clusterName string) (bool, error) {
+	accountID := middleware.GetAccountID(ctx)
 	indexName := seaplanev1alpha1.SpotTerminationQueueIndexName(accountID, queueURL)
 	ownerKey := spotQueueOwnerKey(clusterName)
 	var lastConflict error
@@ -226,7 +228,8 @@ func clusterUsesSpotTerminationQueue(cluster *seaplanev1alpha1.Cluster, queueURL
 
 // ReleaseSpotTerminationQueue releases a reservation only when it is still
 // owned by the given Cluster. A missing reservation is already released.
-func (c *Client) ReleaseSpotTerminationQueue(ctx context.Context, accountID, queueURL, clusterName string) error {
+func (c *Client) ReleaseSpotTerminationQueue(ctx context.Context, queueURL, clusterName string) error {
+	accountID := middleware.GetAccountID(ctx)
 	var reservation seaplanev1alpha1.Index
 	err := c.client.Get(ctx, k8stypes.NamespacedName{
 		Namespace: seaplanev1alpha1.SpotTerminationQueueReservationsNamespace,
@@ -257,12 +260,13 @@ func (c *Client) ReleaseSpotTerminationQueue(ctx context.Context, accountID, que
 
 // CreateNodePool creates a NodePool under a parent owned by the account in ctx.
 func (c *Client) CreateNodePool(ctx context.Context, np *seaplanev1alpha1.NodePool) error {
-	accountID := middleware.GetAccountID(ctx)
-	np.Namespace = accountNamespace(accountID)
+	accountID, err := validateOwnedCandidate(ctx, np, np.Spec.AccountID)
+	if err != nil {
+		return err
+	}
 	if err := c.requireOwnedCluster(ctx, np); err != nil {
 		return err
 	}
-	setAccountLabel(np, accountID)
 	np.Spec.AccountID = accountID
 	return c.client.Create(ctx, np)
 }
@@ -370,13 +374,15 @@ func (c *Client) DeleteNodePoolObject(ctx context.Context, np *seaplanev1alpha1.
 
 // --- DNSReservation operations ---
 
-func (c *Client) CreateDNSReservation(ctx context.Context, accountID string, reservation *seaplanev1alpha1.DNSReservation) error {
-	reservation.Namespace = accountNamespace(accountID)
-	setAccountLabel(reservation, accountID)
+func (c *Client) CreateDNSReservation(ctx context.Context, reservation *seaplanev1alpha1.DNSReservation) error {
+	if _, err := validateOwnedCandidate(ctx, reservation, ""); err != nil {
+		return err
+	}
 	return c.client.Create(ctx, reservation)
 }
 
-func (c *Client) GetDNSReservation(ctx context.Context, accountID, name string) (*seaplanev1alpha1.DNSReservation, error) {
+func (c *Client) GetDNSReservation(ctx context.Context, name string) (*seaplanev1alpha1.DNSReservation, error) {
+	accountID := middleware.GetAccountID(ctx)
 	var reservation seaplanev1alpha1.DNSReservation
 	err := c.client.Get(ctx, k8stypes.NamespacedName{
 		Namespace: accountNamespace(accountID),
@@ -389,7 +395,8 @@ func (c *Client) GetDNSReservation(ctx context.Context, accountID, name string) 
 }
 
 // GetDNSReservationByUID resolves a reservation UID within an account namespace.
-func (c *Client) GetDNSReservationByUID(ctx context.Context, accountID, uid string) (*seaplanev1alpha1.DNSReservation, error) {
+func (c *Client) GetDNSReservationByUID(ctx context.Context, uid string) (*seaplanev1alpha1.DNSReservation, error) {
+	accountID := middleware.GetAccountID(ctx)
 	var list seaplanev1alpha1.DNSReservationList
 	if err := c.client.List(ctx, &list,
 		client.InNamespace(accountNamespace(accountID)),
@@ -403,7 +410,8 @@ func (c *Client) GetDNSReservationByUID(ctx context.Context, accountID, uid stri
 	return &list.Items[0], nil
 }
 
-func (c *Client) ListDNSReservations(ctx context.Context, accountID string) (*seaplanev1alpha1.DNSReservationList, error) {
+func (c *Client) ListDNSReservations(ctx context.Context) (*seaplanev1alpha1.DNSReservationList, error) {
+	accountID := middleware.GetAccountID(ctx)
 	var list seaplanev1alpha1.DNSReservationList
 	if err := c.client.List(ctx, &list, client.InNamespace(accountNamespace(accountID))); err != nil {
 		return nil, err
@@ -412,6 +420,9 @@ func (c *Client) ListDNSReservations(ctx context.Context, accountID string) (*se
 }
 
 func (c *Client) UpdateDNSReservation(ctx context.Context, reservation *seaplanev1alpha1.DNSReservation) error {
+	if err := validateOwnedSnapshot(ctx, reservation); err != nil {
+		return err
+	}
 	return c.client.Update(ctx, reservation)
 }
 
@@ -419,8 +430,8 @@ func (c *Client) UpdateDNSReservationStatus(ctx context.Context, reservation *se
 	return c.client.Status().Update(ctx, reservation)
 }
 
-func (c *Client) DeleteDNSReservation(ctx context.Context, accountID, name string) error {
-	reservation, err := c.GetDNSReservation(ctx, accountID, name)
+func (c *Client) DeleteDNSReservation(ctx context.Context, name string) error {
+	reservation, err := c.GetDNSReservation(ctx, name)
 	if err != nil {
 		return err
 	}
@@ -506,9 +517,10 @@ func (c *Client) IsAccountEnrolled(ctx context.Context, accountID string) (bool,
 // --- OidcConfig operations ---
 
 // CreateOidcConfig creates an OidcConfig in the caller's account namespace.
-func (c *Client) CreateOidcConfig(ctx context.Context, accountID string, oc *seaplanev1alpha1.OidcConfig) error {
-	oc.Namespace = accountNamespace(accountID)
-	setAccountLabel(oc, accountID)
+func (c *Client) CreateOidcConfig(ctx context.Context, oc *seaplanev1alpha1.OidcConfig) error {
+	if _, err := validateOwnedCandidate(ctx, oc, ""); err != nil {
+		return err
+	}
 	return c.client.Create(ctx, oc)
 }
 
@@ -575,7 +587,7 @@ func (c *Client) UpdateOidcConfigLastUsedTimestamp(ctx context.Context, oidcConf
 
 // UpdateOidcConfigObject updates oc (e.g. its labels) via CAS on its current ResourceVersion; oc must be freshly fetched (e.g. via GetOidcConfig) so a concurrent change surfaces as a conflict (IsConflict) instead of overwriting it.
 func (c *Client) UpdateOidcConfigObject(ctx context.Context, oc *seaplanev1alpha1.OidcConfig) error {
-	if err := seaplanedb.ValidateObjectResourceVersion(oc); err != nil {
+	if err := validateOwnedSnapshot(ctx, oc); err != nil {
 		return err
 	}
 	return c.client.Update(ctx, oc)
@@ -587,6 +599,17 @@ func (c *Client) DeleteOidcConfigObject(ctx context.Context, oc *seaplanev1alpha
 		return err
 	}
 	return c.client.Delete(ctx, oc)
+}
+
+// validateOwnedCandidate rejects a create whose namespace, account label, or spec
+// account differs from the caller's, so what is written matches what was authorized.
+// An empty spec account is allowed; the caller then sets it.
+func validateOwnedCandidate(ctx context.Context, obj client.Object, specAccountID string) (string, error) {
+	account := middleware.GetAccountID(ctx)
+	if account == "" || obj.GetNamespace() != accountNamespace(account) || obj.GetLabels()[accountIDLabel] != account || (specAccountID != "" && specAccountID != account) {
+		return "", fmt.Errorf("create candidate identity does not match caller")
+	}
+	return account, nil
 }
 
 func validateOwnedSnapshot(ctx context.Context, obj client.Object) error {
@@ -634,15 +657,6 @@ func IsConflict(err error) bool {
 }
 
 // --- internal helpers ---
-
-func setAccountLabel(obj client.Object, accountID string) {
-	labels := obj.GetLabels()
-	if labels == nil {
-		labels = make(map[string]string)
-	}
-	labels[accountIDLabel] = accountID
-	obj.SetLabels(labels)
-}
 
 var (
 	nodePoolGR       = seaplanev1alpha1.GroupVersion.WithResource("nodepools").GroupResource()

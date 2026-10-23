@@ -258,7 +258,7 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if !authorizeResource(w, r, h.authorizer, h.logger, authz.CreateOIDCConfig, candidateResource(h.oidcConfigResource(cr), cr.Name)) {
 		return
 	}
-	if err := h.db.CreateOidcConfig(ctx, accountID, cr); err != nil {
+	if err := h.db.CreateOidcConfig(ctx, cr); err != nil {
 		if seaplanedb.IsAlreadyExists(err) {
 			writeAPIError(w, ErrOidcConfigCreateNameConflict, h.logger)
 			return

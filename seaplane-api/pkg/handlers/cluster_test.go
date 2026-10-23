@@ -920,7 +920,7 @@ func TestClusterHandler_Create_OidcClaimFailureDeletesForOperatorCleanup(t *test
 	if err := handler.db.CreateCluster(testContext(testAccountID), cluster); err != nil {
 		t.Fatalf("create Cluster: %v", err)
 	}
-	reservation, err := handler.db.GetDNSReservationByUID(context.Background(), testAccountID, testDNSReservationUID)
+	reservation, err := handler.db.GetDNSReservationByUID(testContext(testAccountID), testDNSReservationUID)
 	if err != nil {
 		t.Fatalf("get DNS reservation: %v", err)
 	}
@@ -940,7 +940,7 @@ func TestClusterHandler_Create_OidcClaimFailureDeletesForOperatorCleanup(t *test
 		t.Fatalf("cleanup finalizer = %v, want %s", deletingCluster.Finalizers, clusterCleanupFinalizer)
 	}
 
-	reservation, err = handler.db.GetDNSReservationByUID(context.Background(), testAccountID, testDNSReservationUID)
+	reservation, err = handler.db.GetDNSReservationByUID(testContext(testAccountID), testDNSReservationUID)
 	if err != nil {
 		t.Fatalf("get DNS reservation after rollback: %v", err)
 	}
@@ -977,14 +977,14 @@ func TestClusterHandler_ClaimDNSReservationRetriesUpdateConflict(t *testing.T) {
 	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 	clusterUID := "new-cluster-uid"
 
-	if apiErr := handler.claimDNSReservation(context.Background(), testAccountID, testDNSReservationUID, clusterUID); apiErr != nil {
+	if apiErr := handler.claimDNSReservation(testContext(testAccountID), testAccountID, testDNSReservationUID, clusterUID); apiErr != nil {
 		t.Fatalf("claimDNSReservation returned error: %v", apiErr)
 	}
 	if updateCalls != 2 {
 		t.Fatalf("reservation update calls = %d, want 2 after retry", updateCalls)
 	}
 
-	reservation, err := handler.db.GetDNSReservation(context.Background(), testAccountID, "test-reservation")
+	reservation, err := handler.db.GetDNSReservation(testContext(testAccountID), "test-reservation")
 	if err != nil {
 		t.Fatalf("get claimed reservation: %v", err)
 	}
@@ -1023,7 +1023,7 @@ func TestClusterHandler_ClaimDNSReservationReturnsInUseAfterConflictRecheck(t *t
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
 
-	apiErr := handler.claimDNSReservation(context.Background(), testAccountID, testDNSReservationUID, "new-cluster-uid")
+	apiErr := handler.claimDNSReservation(testContext(testAccountID), testAccountID, testDNSReservationUID, "new-cluster-uid")
 	if apiErr == nil || apiErr.Code != ErrClusterCreateDNSReservationInUse.Code {
 		t.Fatalf("claimDNSReservation error = %v, want %s", apiErr, ErrClusterCreateDNSReservationInUse.Code)
 	}

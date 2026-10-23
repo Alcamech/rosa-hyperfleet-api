@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -68,15 +69,17 @@ func testNodePoolFor(parent *seaplanev1alpha1.Cluster) *seaplanev1alpha1.NodePoo
 	}
 }
 
-func TestClient_CreateCluster_SetsAccountLabel(t *testing.T) {
+func TestClient_CreateCluster_KeepsScopedIdentity(t *testing.T) {
 	fc := fake.NewClientBuilder().WithScheme(testScheme()).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	c := NewClientFrom(fc, logger)
 
+	// The conversion scopes the candidate; create keeps it and fills in spec.accountId.
 	cluster := &seaplanev1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-cluster",
-			Namespace: "account-wrong-account",
+			Namespace: accountNamespace("acct-123"),
+			Labels:    map[string]string{accountIDLabel: "acct-123"},
 		},
 	}
 
@@ -84,15 +87,12 @@ func TestClient_CreateCluster_SetsAccountLabel(t *testing.T) {
 		t.Fatalf("CreateCluster: %v", err)
 	}
 
-	if got := cluster.Labels[accountIDLabel]; got != "acct-123" {
-		t.Errorf("account-id label = %q, want %q", got, "acct-123")
-	}
-	if cluster.Namespace != accountNamespace("acct-123") {
-		t.Errorf("namespace = %q, want %q", cluster.Namespace, accountNamespace("acct-123"))
+	if cluster.Labels[accountIDLabel] != "acct-123" || cluster.Namespace != accountNamespace("acct-123") || cluster.Spec.AccountID != "acct-123" {
+		t.Errorf("created identity = %q/%q/%q, want acct-123", cluster.Namespace, cluster.Labels[accountIDLabel], cluster.Spec.AccountID)
 	}
 }
 
-func TestClient_CreateNodePool_SetsNamespaceAndLabel(t *testing.T) {
+func TestClient_CreateNodePool_KeepsScopedIdentity(t *testing.T) {
 	parent := &seaplanev1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{
 		Name: "parent", Namespace: "account-acct-123", UID: types.UID("parent-uid"),
 		Labels: map[string]string{accountIDLabel: "acct-123"},
@@ -102,9 +102,9 @@ func TestClient_CreateNodePool_SetsNamespaceAndLabel(t *testing.T) {
 	c := NewClientFrom(fc, logger)
 
 	np := testNodePoolFor(parent)
-	np.Namespace = "account-wrong-account"
-	np.Labels[accountIDLabel] = "forged"
-	np.Spec.AccountID = "forged"
+	np.Namespace = accountNamespace("acct-123")
+	np.Labels[accountIDLabel] = "acct-123"
+	np.Spec.AccountID = ""
 	if err := c.CreateNodePool(ctxAccount("acct-123"), np); err != nil {
 		t.Fatalf("CreateNodePool: %v", err)
 	}
@@ -129,6 +129,9 @@ func TestClient_CreateNodePool_RequiresOwnedParent(t *testing.T) {
 	c := NewClientFrom(fc, slog.New(slog.NewTextHandler(os.Stdout, nil)))
 
 	np := testNodePoolFor(foreign)
+	np.Namespace = accountNamespace("acct-1")
+	np.Labels[accountIDLabel] = "acct-1"
+	np.Spec.AccountID = ""
 	if err := c.CreateNodePool(ctxAccount("acct-1"), np); !IsNotFound(err) {
 		t.Fatalf("CreateNodePool into foreign parent: want NotFound, got %v", err)
 	}
@@ -440,28 +443,28 @@ func TestClient_NodePoolListUpdateAndDelete(t *testing.T) {
 }
 
 func TestClient_DNSReservationOperations(t *testing.T) {
-	ctx := context.Background()
+	ctx := ctxAccount("acct-1")
 	fc := newUIDIndexedClient(t)
 	c := NewClientFrom(fc, slog.New(slog.NewTextHandler(os.Stdout, nil)))
 	reservation := &seaplanev1alpha1.DNSReservation{
-		ObjectMeta: metav1.ObjectMeta{Name: "dns-one", UID: types.UID("dns-uid-1"), Namespace: "wrong-namespace"},
+		ObjectMeta: metav1.ObjectMeta{Name: "dns-one", UID: types.UID("dns-uid-1"), Namespace: accountNamespace("acct-1"), Labels: map[string]string{accountIDLabel: "acct-1"}},
 	}
 
-	if err := c.CreateDNSReservation(ctx, "acct-1", reservation); err != nil {
+	if err := c.CreateDNSReservation(ctx, reservation); err != nil {
 		t.Fatalf("CreateDNSReservation: %v", err)
 	}
 	if reservation.Namespace != accountNamespace("acct-1") || reservation.Labels[accountIDLabel] != "acct-1" {
 		t.Fatalf("created reservation namespace/labels = %q/%v", reservation.Namespace, reservation.Labels)
 	}
-	byName, err := c.GetDNSReservation(ctx, "acct-1", "dns-one")
+	byName, err := c.GetDNSReservation(ctx, "dns-one")
 	if err != nil {
 		t.Fatalf("GetDNSReservation: %v", err)
 	}
-	byUID, err := c.GetDNSReservationByUID(ctx, "acct-1", "dns-uid-1")
+	byUID, err := c.GetDNSReservationByUID(ctx, "dns-uid-1")
 	if err != nil || byUID.Name != byName.Name {
 		t.Fatalf("GetDNSReservationByUID = %+v, err = %v", byUID, err)
 	}
-	list, err := c.ListDNSReservations(ctx, "acct-1")
+	list, err := c.ListDNSReservations(ctx)
 	if err != nil || len(list.Items) != 1 {
 		t.Fatalf("ListDNSReservations returned %d items, err = %v", len(list.Items), err)
 	}
@@ -475,23 +478,23 @@ func TestClient_DNSReservationOperations(t *testing.T) {
 	if err := c.UpdateDNSReservationStatus(ctx, byName); err != nil {
 		t.Fatalf("UpdateDNSReservationStatus: %v", err)
 	}
-	updated, err := c.GetDNSReservation(ctx, "acct-1", "dns-one")
+	updated, err := c.GetDNSReservation(ctx, "dns-one")
 	if err != nil || updated.Status.BaseDomain != "dns.example.com" || updated.Labels["example.com/updated"] != "true" {
 		t.Fatalf("updated DNSReservation = %+v, err = %v", updated, err)
 	}
 
-	if _, err := c.GetDNSReservationByUID(ctx, "acct-1", "missing-uid"); !IsNotFound(err) {
+	if _, err := c.GetDNSReservationByUID(ctx, "missing-uid"); !IsNotFound(err) {
 		t.Fatalf("GetDNSReservationByUID missing UID error = %v, want NotFound", err)
 	}
-	if err := c.DeleteDNSReservation(ctx, "acct-1", "dns-one"); err != nil {
+	if err := c.DeleteDNSReservation(ctx, "dns-one"); err != nil {
 		t.Fatalf("DeleteDNSReservation: %v", err)
 	}
-	if _, err := c.GetDNSReservation(ctx, "acct-1", "dns-one"); !IsNotFound(err) {
+	if _, err := c.GetDNSReservation(ctx, "dns-one"); !IsNotFound(err) {
 		t.Fatalf("GetDNSReservation after delete error = %v, want NotFound", err)
 	}
 
-	second := &seaplanev1alpha1.DNSReservation{ObjectMeta: metav1.ObjectMeta{Name: "dns-two", UID: types.UID("dns-uid-2")}}
-	if err := c.CreateDNSReservation(ctx, "acct-1", second); err != nil {
+	second := &seaplanev1alpha1.DNSReservation{ObjectMeta: metav1.ObjectMeta{Name: "dns-two", UID: types.UID("dns-uid-2"), Namespace: accountNamespace("acct-1"), Labels: map[string]string{accountIDLabel: "acct-1"}}}
+	if err := c.CreateDNSReservation(ctx, second); err != nil {
 		t.Fatalf("CreateDNSReservation second: %v", err)
 	}
 	if err := c.DeleteDNSReservationObject(ctx, second); err != nil {
@@ -539,13 +542,13 @@ func TestClient_OidcConfigAndIssuerIndexOperations(t *testing.T) {
 	fc := newUIDIndexedClient(t)
 	c := NewClientFrom(fc, slog.New(slog.NewTextHandler(os.Stdout, nil)))
 	config := &seaplanev1alpha1.OidcConfig{
-		ObjectMeta: metav1.ObjectMeta{Name: "oidc-one", UID: types.UID("oidc-uid-1"), Namespace: "wrong-namespace"},
+		ObjectMeta: metav1.ObjectMeta{Name: "oidc-one", UID: types.UID("oidc-uid-1"), Namespace: accountNamespace("acct-1"), Labels: map[string]string{accountIDLabel: "acct-1"}},
 		Spec: seaplanev1alpha1.OidcConfigSpec{
 			Type:      seaplanev1alpha1.OidcConfigTypeManaged,
 			AccountID: "acct-1",
 		},
 	}
-	if err := c.CreateOidcConfig(ctx, "acct-1", config); err != nil {
+	if err := c.CreateOidcConfig(ctx, config); err != nil {
 		t.Fatalf("CreateOidcConfig: %v", err)
 	}
 	if config.Namespace != accountNamespace("acct-1") || config.Labels[accountIDLabel] != "acct-1" {
@@ -587,10 +590,10 @@ func TestClient_OidcConfigAndIssuerIndexOperations(t *testing.T) {
 	}
 
 	second := &seaplanev1alpha1.OidcConfig{
-		ObjectMeta: metav1.ObjectMeta{Name: "oidc-two", UID: types.UID("oidc-uid-2")},
+		ObjectMeta: metav1.ObjectMeta{Name: "oidc-two", UID: types.UID("oidc-uid-2"), Namespace: accountNamespace("acct-1"), Labels: map[string]string{accountIDLabel: "acct-1"}},
 		Spec:       seaplanev1alpha1.OidcConfigSpec{Type: seaplanev1alpha1.OidcConfigTypeManaged},
 	}
-	if err := c.CreateOidcConfig(ctx, "acct-1", second); err != nil {
+	if err := c.CreateOidcConfig(ctx, second); err != nil {
 		t.Fatalf("CreateOidcConfig second: %v", err)
 	}
 	if err := c.DeleteOidcConfigObject(ctx, second); err != nil {
@@ -666,7 +669,7 @@ func newSpotQueueTestClient(objects ...client.Object) (*Client, client.Client) {
 
 func TestClient_ClaimSpotTerminationQueueCreatesReservation(t *testing.T) {
 	c, fc := newSpotQueueTestClient()
-	created, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1")
+	created, err := c.ClaimSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestURL, "cluster-1")
 	if err != nil || !created {
 		t.Fatalf("ClaimSpotTerminationQueue() = (%t, %v), want (true, nil)", created, err)
 	}
@@ -691,7 +694,7 @@ func TestClient_ClaimSpotTerminationQueueRefreshesSameOwner(t *testing.T) {
 	reservation := spotQueueTestReservation(spotQueueOwnerKey("cluster-1"), time.Now().Add(-time.Hour))
 	reservation.Annotations = nil
 	c, fc := newSpotQueueTestClient(reservation)
-	created, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1")
+	created, err := c.ClaimSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestURL, "cluster-1")
 	if err != nil || created {
 		t.Fatalf("ClaimSpotTerminationQueue() = (%t, %v), want (false, nil)", created, err)
 	}
@@ -710,7 +713,7 @@ func TestClient_ClaimSpotTerminationQueueRejectsActiveOwner(t *testing.T) {
 	reservation := spotQueueTestReservation(spotQueueOwnerKey("owner"), time.Now())
 	owner := spotQueueTestCluster("owner", spotQueueTestURL)
 	c, _ := newSpotQueueTestClient(reservation, owner)
-	created, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "other")
+	created, err := c.ClaimSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestURL, "other")
 	if created || !IsAlreadyExists(err) {
 		t.Fatalf("ClaimSpotTerminationQueue() = (%t, %v), want an already-exists error", created, err)
 	}
@@ -719,7 +722,7 @@ func TestClient_ClaimSpotTerminationQueueRejectsActiveOwner(t *testing.T) {
 func TestClient_ClaimSpotTerminationQueueReclaimsExpiredReservation(t *testing.T) {
 	reservation := spotQueueTestReservation(spotQueueOwnerKey("deleted-cluster"), time.Now().Add(-2*spotQueueClaimTimeout))
 	c, fc := newSpotQueueTestClient(reservation)
-	created, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-new")
+	created, err := c.ClaimSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestURL, "cluster-new")
 	if err != nil || !created {
 		t.Fatalf("ClaimSpotTerminationQueue() = (%t, %v), want (true, nil)", created, err)
 	}
@@ -737,7 +740,7 @@ func TestClient_ClaimSpotTerminationQueueReclaimsExpiredReservation(t *testing.T
 func TestClient_ClaimSpotTerminationQueueKeepsRecentReservation(t *testing.T) {
 	reservation := spotQueueTestReservation(spotQueueOwnerKey("deleted-cluster"), time.Now())
 	c, _ := newSpotQueueTestClient(reservation)
-	created, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-new")
+	created, err := c.ClaimSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestURL, "cluster-new")
 	if created || !IsAlreadyExists(err) {
 		t.Fatalf("ClaimSpotTerminationQueue() = (%t, %v), want a recent-reservation conflict", created, err)
 	}
@@ -749,7 +752,7 @@ func TestClient_ClaimSpotTerminationQueueReturnsClientErrors(t *testing.T) {
 		c := NewClientFrom(fake.NewClientBuilder().WithScheme(testScheme()).WithInterceptorFuncs(interceptor.Funcs{
 			Create: func(context.Context, client.WithWatch, client.Object, ...client.CreateOption) error { return wantErr },
 		}).Build(), slog.New(slog.NewTextHandler(os.Stdout, nil)))
-		if _, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); !errors.Is(err, wantErr) {
+		if _, err := c.ClaimSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestURL, "cluster-1"); !errors.Is(err, wantErr) {
 			t.Fatalf("ClaimSpotTerminationQueue() error = %v, want %v", err, wantErr)
 		}
 	})
@@ -760,7 +763,7 @@ func TestClient_ClaimSpotTerminationQueueReturnsClientErrors(t *testing.T) {
 				return wantErr
 			},
 		}).Build(), slog.New(slog.NewTextHandler(os.Stdout, nil)))
-		if _, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); !errors.Is(err, wantErr) {
+		if _, err := c.ClaimSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestURL, "cluster-1"); !errors.Is(err, wantErr) {
 			t.Fatalf("ClaimSpotTerminationQueue() error = %v, want %v", err, wantErr)
 		}
 	})
@@ -769,7 +772,7 @@ func TestClient_ClaimSpotTerminationQueueReturnsClientErrors(t *testing.T) {
 		c := NewClientFrom(fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(reservation).WithInterceptorFuncs(interceptor.Funcs{
 			Update: func(context.Context, client.WithWatch, client.Object, ...client.UpdateOption) error { return wantErr },
 		}).Build(), slog.New(slog.NewTextHandler(os.Stdout, nil)))
-		if _, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); !errors.Is(err, wantErr) {
+		if _, err := c.ClaimSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestURL, "cluster-1"); !errors.Is(err, wantErr) {
 			t.Fatalf("ClaimSpotTerminationQueue() error = %v, want %v", err, wantErr)
 		}
 	})
@@ -778,7 +781,7 @@ func TestClient_ClaimSpotTerminationQueueReturnsClientErrors(t *testing.T) {
 		c := NewClientFrom(fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(reservation).WithInterceptorFuncs(interceptor.Funcs{
 			Delete: func(context.Context, client.WithWatch, client.Object, ...client.DeleteOption) error { return wantErr },
 		}).Build(), slog.New(slog.NewTextHandler(os.Stdout, nil)))
-		if _, err := c.ClaimSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); !errors.Is(err, wantErr) {
+		if _, err := c.ClaimSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestURL, "cluster-1"); !errors.Is(err, wantErr) {
 			t.Fatalf("ClaimSpotTerminationQueue() error = %v, want %v", err, wantErr)
 		}
 	})
@@ -810,14 +813,14 @@ func TestSpotQueueHelpers(t *testing.T) {
 func TestClient_ReleaseSpotTerminationQueue(t *testing.T) {
 	t.Run("missing reservation", func(t *testing.T) {
 		c, _ := newSpotQueueTestClient()
-		if err := c.ReleaseSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); err != nil {
+		if err := c.ReleaseSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestURL, "cluster-1"); err != nil {
 			t.Fatalf("ReleaseSpotTerminationQueue() error = %v, want nil", err)
 		}
 	})
 	t.Run("wrong owner", func(t *testing.T) {
 		reservation := spotQueueTestReservation(spotQueueOwnerKey("cluster-other"), time.Now())
 		c, _ := newSpotQueueTestClient(reservation)
-		if err := c.ReleaseSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); err == nil {
+		if err := c.ReleaseSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestURL, "cluster-1"); err == nil {
 			t.Fatal("ReleaseSpotTerminationQueue() error = nil, want ownership error")
 		}
 	})
@@ -825,7 +828,7 @@ func TestClient_ReleaseSpotTerminationQueue(t *testing.T) {
 		reservation := spotQueueTestReservation(spotQueueOwnerKey("cluster-1"), time.Now())
 		cluster := spotQueueTestCluster("cluster-1", spotQueueTestURL)
 		c, fc := newSpotQueueTestClient(reservation, cluster)
-		if err := c.ReleaseSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); err != nil {
+		if err := c.ReleaseSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestURL, "cluster-1"); err != nil {
 			t.Fatalf("ReleaseSpotTerminationQueue() error = %v, want nil", err)
 		}
 		var found seaplanev1alpha1.Index
@@ -837,7 +840,7 @@ func TestClient_ReleaseSpotTerminationQueue(t *testing.T) {
 		reservation := spotQueueTestReservation(spotQueueOwnerKey("cluster-1"), time.Now())
 		cluster := spotQueueTestCluster("cluster-1", "")
 		c, fc := newSpotQueueTestClient(reservation, cluster)
-		if err := c.ReleaseSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); err != nil {
+		if err := c.ReleaseSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestURL, "cluster-1"); err != nil {
 			t.Fatalf("ReleaseSpotTerminationQueue() error = %v, want nil", err)
 		}
 		var found seaplanev1alpha1.Index
@@ -852,7 +855,7 @@ func TestClient_ReleaseSpotTerminationQueue(t *testing.T) {
 		c := NewClientFrom(fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(reservation, cluster).WithInterceptorFuncs(interceptor.Funcs{
 			Delete: func(context.Context, client.WithWatch, client.Object, ...client.DeleteOption) error { return wantErr },
 		}).Build(), slog.New(slog.NewTextHandler(os.Stdout, nil)))
-		if err := c.ReleaseSpotTerminationQueue(context.Background(), spotQueueTestAccountID, spotQueueTestURL, "cluster-1"); !errors.Is(err, wantErr) {
+		if err := c.ReleaseSpotTerminationQueue(ctxAccount(spotQueueTestAccountID), spotQueueTestURL, "cluster-1"); !errors.Is(err, wantErr) {
 			t.Fatalf("ReleaseSpotTerminationQueue() error = %v, want %v", err, wantErr)
 		}
 	})
@@ -874,5 +877,53 @@ func spotQueueTestCluster(clusterName, queueURL string) *seaplanev1alpha1.Cluste
 func hypershiftPlatformWithQueue(queueURL string) hypershiftv1beta1.PlatformSpec {
 	return hypershiftv1beta1.PlatformSpec{
 		AWS: &hypershiftv1beta1.AWSPlatformSpec{TerminationHandlerQueueURL: queueURL},
+	}
+}
+
+// Creates reject a candidate whose identity differs from the caller, instead of rewriting it.
+func TestClient_CreateRejectsForeignCandidate(t *testing.T) {
+	ctx := ctxAccount("acct-1")
+	foreign := func() metav1.ObjectMeta {
+		return metav1.ObjectMeta{Name: "x", Namespace: accountNamespace("acct-2"), Labels: map[string]string{accountIDLabel: "acct-2"}}
+	}
+	relabeled := metav1.ObjectMeta{Name: "x", Namespace: accountNamespace("acct-1"), Labels: map[string]string{accountIDLabel: "acct-2"}}
+	fc := newUIDIndexedClient(t)
+	c := NewClientFrom(fc, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	for name, create := range map[string]func() error{
+		"cluster":       func() error { return c.CreateCluster(ctx, &seaplanev1alpha1.Cluster{ObjectMeta: foreign()}) },
+		"cluster label": func() error { return c.CreateCluster(ctx, &seaplanev1alpha1.Cluster{ObjectMeta: relabeled}) },
+		"cluster spec": func() error {
+			cr := &seaplanev1alpha1.Cluster{ObjectMeta: *relabeled.DeepCopy()}
+			cr.Labels[accountIDLabel] = "acct-1"
+			cr.Spec.AccountID = "acct-2"
+			return c.CreateCluster(ctx, cr)
+		},
+		"nodepool":    func() error { return c.CreateNodePool(ctx, &seaplanev1alpha1.NodePool{ObjectMeta: foreign()}) },
+		"oidc config": func() error { return c.CreateOidcConfig(ctx, &seaplanev1alpha1.OidcConfig{ObjectMeta: foreign()}) },
+		"dns reservation": func() error {
+			return c.CreateDNSReservation(ctx, &seaplanev1alpha1.DNSReservation{ObjectMeta: foreign()})
+		},
+	} {
+		if err := create(); err == nil {
+			t.Errorf("%s: foreign candidate was written", name)
+		}
+	}
+}
+
+// Every update validates the caller owns the snapshot, as Cluster and NodePool updates do.
+func TestClient_UpdatesValidateOwnedSnapshot(t *testing.T) {
+	ctx := ctxAccount("acct-1")
+	fc := newUIDIndexedClient(t)
+	c := NewClientFrom(fc, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	meta := metav1.ObjectMeta{Name: "x", Namespace: accountNamespace("acct-2"), ResourceVersion: "1"}
+	if err := c.UpdateDNSReservation(ctx, &seaplanev1alpha1.DNSReservation{ObjectMeta: meta}); err == nil {
+		t.Error("DNS reservation update accepted a foreign snapshot")
+	}
+	if err := c.UpdateOidcConfigObject(ctx, &seaplanev1alpha1.OidcConfig{ObjectMeta: meta}); err == nil {
+		t.Error("OIDC config update accepted a foreign snapshot")
+	}
+	owned := metav1.ObjectMeta{Name: "x", Namespace: accountNamespace("acct-1")}
+	if err := c.UpdateDNSReservation(ctx, &seaplanev1alpha1.DNSReservation{ObjectMeta: owned}); err == nil {
+		t.Error("DNS reservation update accepted a snapshot without resource version")
 	}
 }

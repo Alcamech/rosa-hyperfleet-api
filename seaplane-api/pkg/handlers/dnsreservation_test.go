@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -69,7 +68,7 @@ func TestDNSReservationHandlerCreateNameOnly(t *testing.T) {
 	if response.Status.Phase != public.DNSReservationPhasePending {
 		t.Errorf("status.phase = %q, want Pending", response.Status.Phase)
 	}
-	stored, err := db.GetDNSReservation(req.Context(), dnsReservationTestAccountID, "zone-a")
+	stored, err := db.GetDNSReservation(req.Context(), "zone-a")
 	if err != nil {
 		t.Fatalf("get stored reservation: %v", err)
 	}
@@ -163,7 +162,7 @@ func TestDNSReservationHandlerDeleteClaimedConflictAndUnclaimedSuccess(t *testin
 	if freeResponse.Code != http.StatusAccepted {
 		t.Fatalf("expected unclaimed delete 202, got %d: %s", freeResponse.Code, freeResponse.Body.String())
 	}
-	if _, err := db.GetDNSReservation(context.Background(), dnsReservationTestAccountID, unclaimed.Name); !seaplanedb.IsNotFound(err) {
+	if _, err := db.GetDNSReservation(testContext(testAccountID), unclaimed.Name); !seaplanedb.IsNotFound(err) {
 		t.Errorf("unclaimed reservation should be deleted, got err=%v", err)
 	}
 }

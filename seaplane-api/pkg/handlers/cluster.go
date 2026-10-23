@@ -219,7 +219,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// Reserve the queue only after validation and Cedar authorization succeed.
 	queueClaimCreated := false
 	if queueURL != "" {
-		queueClaimCreated, err = h.db.ClaimSpotTerminationQueue(ctx, accountID, queueURL, req.Name)
+		queueClaimCreated, err = h.db.ClaimSpotTerminationQueue(ctx, queueURL, req.Name)
 		if err != nil {
 			if seaplanedb.IsAlreadyExists(err) {
 				writeAPIError(w, ErrClusterValidation.WithErrors(validation.SpotTerminationHandlerQueueAlreadyInUse()), h.logger)
@@ -233,7 +233,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.db.CreateCluster(ctx, cr); err != nil {
 		if queueClaimCreated {
-			if releaseErr := h.db.ReleaseSpotTerminationQueue(context.WithoutCancel(ctx), accountID, queueURL, req.Name); releaseErr != nil {
+			if releaseErr := h.db.ReleaseSpotTerminationQueue(context.WithoutCancel(ctx), queueURL, req.Name); releaseErr != nil {
 				h.logger.Warn("failed to release Spot termination handler queue claim after cluster create failure", "error", releaseErr, "account_id", accountID)
 			}
 		}
@@ -248,7 +248,7 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	cr, apiErr = h.completeClusterCreate(ctx, accountID, req.Name, cr, dnsReservation, oidcConfig)
 	if apiErr != nil {
 		if queueClaimCreated {
-			if releaseErr := h.db.ReleaseSpotTerminationQueue(context.WithoutCancel(ctx), accountID, queueURL, req.Name); releaseErr != nil {
+			if releaseErr := h.db.ReleaseSpotTerminationQueue(context.WithoutCancel(ctx), queueURL, req.Name); releaseErr != nil {
 				h.logger.Warn("failed to release Spot termination handler queue claim after cluster create completion failure", "error", releaseErr, "account_id", accountID)
 			}
 		}
@@ -544,7 +544,7 @@ func (h *ClusterHandler) updateOnce(w http.ResponseWriter, r *http.Request, clus
 			writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
 			return nil, errResponded
 		}
-		if _, err := h.db.ClaimSpotTerminationQueue(ctx, accountID, queueURL, clusterName); err != nil {
+		if _, err := h.db.ClaimSpotTerminationQueue(ctx, queueURL, clusterName); err != nil {
 			if seaplanedb.IsAlreadyExists(err) {
 				writeAPIError(w, ErrClusterValidation.WithErrors(validation.SpotTerminationHandlerQueueAlreadyInUse()), h.logger)
 				return nil, errResponded
