@@ -15,46 +15,41 @@ type Identity struct {
 type Action string
 
 const (
-	ListLabelsForResource     Action = "ListLabelsForResource"
-	LabelResource             Action = "LabelResource"
-	UnlabelResource           Action = "UnlabelResource"
-	ListClusters              Action = "ListClusters"
-	DescribeCluster           Action = "DescribeCluster"
-	CreateCluster             Action = "CreateCluster"
-	UpdateCluster             Action = "UpdateCluster"
-	UpdateClusterConfig       Action = "UpdateClusterConfig"
-	UpdateClusterVersion      Action = "UpdateClusterVersion"
-	DeleteCluster             Action = "DeleteCluster"
-	ListNodePools             Action = "ListNodePools"
-	DescribeNodePool          Action = "DescribeNodePool"
-	CreateNodePool            Action = "CreateNodePool"
-	UpdateNodePool            Action = "UpdateNodePool"
-	ScaleNodePool             Action = "ScaleNodePool"
-	UpdateNodePoolVersion     Action = "UpdateNodePoolVersion"
-	DeleteNodePool            Action = "DeleteNodePool"
-	ListOIDCConfigs           Action = "ListOIDCConfigs"
-	DescribeOIDCConfig        Action = "DescribeOIDCConfig"
-	CreateOIDCConfig          Action = "CreateOIDCConfig"
-	DeleteOIDCConfig          Action = "DeleteOIDCConfig"
-	ListDNSReservations       Action = "ListDNSReservations"
-	DescribeDNSReservation    Action = "DescribeDNSReservation"
-	CreateDNSReservation      Action = "CreateDNSReservation"
-	DeleteDNSReservation      Action = "DeleteDNSReservation"
-	ListManagementClusters    Action = "ListManagementClusters"
-	DescribeManagementCluster Action = "DescribeManagementCluster"
-	CreateManagementCluster   Action = "CreateManagementCluster"
+	ListLabelsForResource  Action = "ListLabelsForResource"
+	LabelResource          Action = "LabelResource"
+	UnlabelResource        Action = "UnlabelResource"
+	ListClusters           Action = "ListClusters"
+	DescribeCluster        Action = "DescribeCluster"
+	CreateCluster          Action = "CreateCluster"
+	UpdateCluster          Action = "UpdateCluster"
+	UpdateClusterConfig    Action = "UpdateClusterConfig"
+	UpdateClusterVersion   Action = "UpdateClusterVersion"
+	DeleteCluster          Action = "DeleteCluster"
+	ListNodePools          Action = "ListNodePools"
+	DescribeNodePool       Action = "DescribeNodePool"
+	CreateNodePool         Action = "CreateNodePool"
+	UpdateNodePool         Action = "UpdateNodePool"
+	ScaleNodePool          Action = "ScaleNodePool"
+	UpdateNodePoolVersion  Action = "UpdateNodePoolVersion"
+	DeleteNodePool         Action = "DeleteNodePool"
+	ListOIDCConfigs        Action = "ListOIDCConfigs"
+	DescribeOIDCConfig     Action = "DescribeOIDCConfig"
+	CreateOIDCConfig       Action = "CreateOIDCConfig"
+	DeleteOIDCConfig       Action = "DeleteOIDCConfig"
+	ListDNSReservations    Action = "ListDNSReservations"
+	DescribeDNSReservation Action = "DescribeDNSReservation"
+	CreateDNSReservation   Action = "CreateDNSReservation"
+	DeleteDNSReservation   Action = "DeleteDNSReservation"
 )
 
 type ResourceKind string
 
 const (
-	Collection        ResourceKind = "Collection"
-	Cluster           ResourceKind = "Cluster"
-	NodePool          ResourceKind = "NodePool"
-	OIDCConfig        ResourceKind = "OIDCConfig"
-	DNSReservation    ResourceKind = "DNSReservation"
-	ManagementCluster ResourceKind = "ManagementCluster"
-	ServiceCollection ResourceKind = "ServiceCollection"
+	Collection     ResourceKind = "Collection"
+	Cluster        ResourceKind = "Cluster"
+	NodePool       ResourceKind = "NodePool"
+	OIDCConfig     ResourceKind = "OIDCConfig"
+	DNSReservation ResourceKind = "DNSReservation"
 )
 
 type RequestContext struct {
@@ -70,12 +65,11 @@ type ParentCluster struct {
 
 // Resource contains trusted stored identity/labels, or a validated create candidate.
 type Resource struct {
-	Kind               ResourceKind
-	ID, AccountID      string
-	Labels             map[string]string
-	CollectionKind     ResourceKind
-	ParentCluster      *ParentCluster
-	RegistrationRegion string
+	Kind           ResourceKind
+	ID, AccountID  string
+	Labels         map[string]string
+	CollectionKind ResourceKind
+	ParentCluster  *ParentCluster
 }
 
 // Provenance identifies the policy, attachment, and startup bundle hash behind a decision.

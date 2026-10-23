@@ -74,20 +74,5 @@
     {"id":"resource-error-forbid", "policyID":"resource-error", "principalARN":"arn:aws:iam::111111111111:user/resource-error", "scope":"global"},
     {"id":"parent-scoped", "policyID":"parent-scoped", "principalARN":"arn:aws:iam::111111111111:user/parent-scoped", "scope":"global"},
     {"id":"context", "policyID":"context", "principalARN":"arn:aws:iam::111111111111:user/context", "scope":"global"}
-  ],
-  "serviceOperatorPolicies": [
-    {"id":"operator", "ownerAccountID":"111111111111", "content":"permit(principal, action in Seaplane::Action::\"ServiceOperator\", resource);"},
-    {"id":"operator-list", "ownerAccountID":"111111111111", "content":"permit(principal, action == Seaplane::Action::\"ListManagementClusters\", resource);"},
-    {"id":"operator-blue", "ownerAccountID":"111111111111", "content":"permit(principal, action == Seaplane::Action::\"DescribeManagementCluster\", resource) when { resource.hasTag(\"example.com/team\") && resource.getTag(\"example.com/team\") == \"blue\" };"},
-    {"id":"operator-error", "ownerAccountID":"111111111111", "content":"forbid(principal, action == Seaplane::Action::\"DescribeManagementCluster\", resource) when { resource.hasTag(\"example.com/fault\") && 9223372036854775807 + 1 == 0 };"}
-  ],
-  "serviceOperatorAttachments": [
-    {"id":"operator", "policyID":"operator", "principalARN":"arn:aws:iam::111111111111:role/platform/service-operator", "scope":"regional", "region":"us-east-1"},
-    {"id":"operator-list-only", "policyID":"operator-list", "principalARN":"arn:aws:iam::111111111111:user/operator-list-only", "scope":"global"},
-    {"id":"operator-describe-only", "policyID":"operator-blue", "principalARN":"arn:aws:iam::111111111111:user/operator-describe-only", "scope":"global"},
-    {"id":"operator-scoped-list", "policyID":"operator-list", "principalARN":"arn:aws:iam::111111111111:user/operator-scoped", "scope":"global"},
-    {"id":"operator-scoped-blue", "policyID":"operator-blue", "principalARN":"arn:aws:iam::111111111111:user/operator-scoped", "scope":"global"},
-    {"id":"operator-error-read", "policyID":"operator", "principalARN":"arn:aws:iam::111111111111:user/operator-error", "scope":"global"},
-    {"id":"operator-error-forbid", "policyID":"operator-error", "principalARN":"arn:aws:iam::111111111111:user/operator-error", "scope":"global"}
   ]
 }

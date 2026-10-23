@@ -52,7 +52,7 @@ func TestSchemaValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(model.Entities) != 9 || len(model.Actions) != 36 {
+	if len(model.Entities) != 7 || len(model.Actions) != 32 {
 		t.Fatalf("resolved declarations: %d entities, %d actions", len(model.Entities), len(model.Actions))
 	}
 	cluster := model.Entities["Seaplane::Cluster"]
@@ -61,7 +61,7 @@ func TestSchemaValidation(t *testing.T) {
 	}
 
 	t.Run("implemented actions and groups", func(t *testing.T) {
-		for _, action := range []string{"ListLabelsForResource", "LabelResource", "UnlabelResource", "LabelAdmin", "ListClusters", "DescribeCluster", "CreateCluster", "UpdateCluster", "UpdateClusterConfig", "UpdateClusterVersion", "DeleteCluster", "ListNodePools", "DescribeNodePool", "CreateNodePool", "UpdateNodePool", "ScaleNodePool", "UpdateNodePoolVersion", "DeleteNodePool", "ListOIDCConfigs", "DescribeOIDCConfig", "CreateOIDCConfig", "DeleteOIDCConfig", "ListDNSReservations", "DescribeDNSReservation", "CreateDNSReservation", "DeleteDNSReservation", "ListManagementClusters", "DescribeManagementCluster", "CreateManagementCluster", "AllActions", "ReadOnly", "ClusterAdmin", "NodePoolAdmin", "OIDCConfigAdmin", "DNSReservationAdmin", "ServiceOperator"} {
+		for _, action := range []string{"ListLabelsForResource", "LabelResource", "UnlabelResource", "LabelAdmin", "ListClusters", "DescribeCluster", "CreateCluster", "UpdateCluster", "UpdateClusterConfig", "UpdateClusterVersion", "DeleteCluster", "ListNodePools", "DescribeNodePool", "CreateNodePool", "UpdateNodePool", "ScaleNodePool", "UpdateNodePoolVersion", "DeleteNodePool", "ListOIDCConfigs", "DescribeOIDCConfig", "CreateOIDCConfig", "DeleteOIDCConfig", "ListDNSReservations", "DescribeDNSReservation", "CreateDNSReservation", "DeleteDNSReservation", "AllActions", "ReadOnly", "ClusterAdmin", "NodePoolAdmin", "OIDCConfigAdmin", "DNSReservationAdmin"} {
 			if _, err := checkedPolicy(`permit(principal, action in Seaplane::Action::"`+action+`", resource);`, action, v); err != nil {
 				t.Errorf("%s: %v", action, err)
 			}

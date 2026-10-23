@@ -16,11 +16,9 @@ func TestLabelSnapshotIdentity(t *testing.T) {
 			t.Run(route+method, func(t *testing.T) {
 				objects := resourceFixtures()
 				for _, obj := range objects {
-					if _, ok := obj.(*v1.ManagementCluster); !ok {
-						obj.SetNamespace("account-222222222222")
-					}
+					obj.SetNamespace("account-222222222222")
 				}
-				srv, _ := resourceServer(t, []string{`permit(principal,action,resource);`}, nil, interceptor.Funcs{}, objects...)
+				srv, _ := resourceServer(t, []string{`permit(principal,action,resource);`}, interceptor.Funcs{}, objects...)
 				if w := resourceRequest(srv, method, route+"/labels", `{"team":"red"}`); w.Code != 404 {
 					t.Fatalf("foreign resource: %d %s", w.Code, w.Body.String())
 				}
@@ -73,7 +71,7 @@ func TestLabelSnapshotIdentity(t *testing.T) {
 					return apierrors.NewConflict(v1.GroupVersion.WithResource("nodepools").GroupResource(), obj.GetName(), nil)
 				}
 			}
-			srv, store := resourceServer(t, []string{policy}, nil, hooks, objects...)
+			srv, store := resourceServer(t, []string{policy}, hooks, objects...)
 			w := resourceRequest(srv, "PATCH", path, body)
 			if w.Code != want {
 				t.Fatalf("status=%d want %d body=%s", w.Code, want, w.Body.String())
@@ -92,9 +90,5 @@ func TestLabelSnapshotIdentity(t *testing.T) {
 				}
 			}
 		})
-	}
-	srv, _ := resourceServer(t, []string{`permit(principal,action,resource);`}, []string{`permit(principal,action,resource);`}, interceptor.Funcs{}, resourceFixtures()...)
-	if w := resourceRequest(srv, "PATCH", "management_clusters/mc/labels", `{"team":"red"}`); w.Code != 404 {
-		t.Fatalf("ManagementCluster labels exposed: %d", w.Code)
 	}
 }

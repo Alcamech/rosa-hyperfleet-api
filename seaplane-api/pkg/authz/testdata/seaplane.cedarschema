@@ -14,10 +14,6 @@ namespace Seaplane {
     entity NodePool in [Cluster, Collection] { account: AccountID, region: Region } tags String;
     entity OIDCConfig in [Collection] { account: AccountID, region: Region } tags String;
     entity DNSReservation in [Collection] { account: AccountID, region: Region } tags String;
-    entity ServiceCollection { region: Region };
-    entity ManagementCluster in [ServiceCollection] {
-        account: AccountID, region: Region, registrationRegion: String
-    } tags String;
 
     action AllActions;
     action ReadOnly in [AllActions];
@@ -25,7 +21,6 @@ namespace Seaplane {
     action NodePoolAdmin in [AllActions];
     action OIDCConfigAdmin in [AllActions];
     action DNSReservationAdmin in [AllActions];
-    action ServiceOperator;
     action LabelAdmin in [AllActions];
 
     action ListLabelsForResource in [ReadOnly, AllActions] appliesTo { principal: [Principal, Role], resource: [Cluster, NodePool, OIDCConfig, DNSReservation], context: RequestContext };
@@ -58,8 +53,4 @@ namespace Seaplane {
     action DescribeDNSReservation in [ReadOnly, AllActions] appliesTo { principal: [Principal, Role], resource: DNSReservation, context: RequestContext };
     action CreateDNSReservation in [DNSReservationAdmin, AllActions] appliesTo { principal: [Principal, Role], resource: DNSReservation, context: RequestContext };
     action DeleteDNSReservation in [DNSReservationAdmin, AllActions] appliesTo { principal: [Principal, Role], resource: DNSReservation, context: RequestContext };
-
-    action ListManagementClusters in [ServiceOperator] appliesTo { principal: [Principal, Role], resource: ServiceCollection, context: RequestContext };
-    action DescribeManagementCluster in [ServiceOperator] appliesTo { principal: [Principal, Role], resource: ManagementCluster, context: RequestContext };
-    action CreateManagementCluster in [ServiceOperator] appliesTo { principal: [Principal, Role], resource: ManagementCluster, context: RequestContext };
 }

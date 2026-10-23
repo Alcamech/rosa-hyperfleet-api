@@ -37,7 +37,7 @@ func TestRetryAuthzFailure(t *testing.T) {
 					return apierrors.NewConflict(v1.GroupVersion.WithResource("nodepools").GroupResource(), obj.GetName(), nil)
 				},
 			}
-			srv, _ := resourceServer(t, []string{`permit(principal,action,resource);`}, nil, hooks, objects...)
+			srv, _ := resourceServer(t, []string{`permit(principal,action,resource);`}, hooks, objects...)
 			before := authzMetricSamples(t)
 			method := "PUT"
 			if strings.HasSuffix(tc.path, "/labels") {
@@ -85,10 +85,10 @@ func TestAuthorizedSnapshotConflict(t *testing.T) {
 		{"PATCH", "clusters/parent/labels", `{"change":"requested","absent":null}`, 0, "blue", 1, 204, 2},
 		{"PATCH", "nodepools/parent.workers/labels", `{"change":"requested"}`, 1, "blue", 1, 204, 2},
 		{"PATCH", "oidc_configs/config/labels", `{"change":"requested"}`, 2, "blue", 1, 204, 2},
-		{"PATCH", "dns_reservations/zone/labels", `{"change":"requested"}`, 4, "blue", 1, 204, 2},
+		{"PATCH", "dns_reservations/zone/labels", `{"change":"requested"}`, 3, "blue", 1, 204, 2},
 		{"PATCH", "clusters/parent/labels", `{"change":"requested"}`, 0, "red", 1, 403, 1},
 		{"PATCH", "clusters/parent/labels", `{"change":"requested"}`, 0, "blue", 99, 409, retry.DefaultRetry.Steps},
-		{"DELETE", "dns_reservations/zone", "", 4, "red", 1, 403, 1},
+		{"DELETE", "dns_reservations/zone", "", 3, "red", 1, 403, 1},
 		{"DELETE", "clusters/parent", "", 0, "blue", 1, 409, 1},
 		{"DELETE", "clusters/parent", "", 0, "red", 1, 409, 1},
 		{"DELETE", "nodepools/parent.workers", "", 1, "red", 1, 409, 1},
@@ -130,7 +130,7 @@ func TestAuthorizedSnapshotConflict(t *testing.T) {
 			}}
 			// Only a blue snapshot is allowed, so a red competitor makes the fresh snapshot deny.
 			policy := `permit(principal,action in [Seaplane::Action::"UpdateCluster",Seaplane::Action::"DeleteCluster",Seaplane::Action::"UpdateNodePool",Seaplane::Action::"DeleteNodePool",Seaplane::Action::"DeleteOIDCConfig",Seaplane::Action::"LabelResource",Seaplane::Action::"UnlabelResource",Seaplane::Action::"DeleteDNSReservation"],resource) when { resource.hasTag("team") && resource.getTag("team") == "blue" };`
-			srv, store := resourceServer(t, []string{policy}, nil, hooks, objects...)
+			srv, store := resourceServer(t, []string{policy}, hooks, objects...)
 			before := authzMetricSamples(t)
 			w := resourceRequest(srv, tc.method, tc.path, tc.body)
 			after := authzMetricSamples(t)

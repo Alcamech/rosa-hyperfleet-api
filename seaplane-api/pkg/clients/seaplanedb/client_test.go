@@ -528,12 +528,9 @@ func TestClient_ManifestAndManagementClusterOperations(t *testing.T) {
 	if managementCluster.Namespace != "" {
 		t.Fatalf("ManagementCluster namespace = %q, want cluster-scoped empty namespace", managementCluster.Namespace)
 	}
-	if _, err := c.GetManagementCluster(ctx, "mc-one"); err != nil {
-		t.Fatalf("GetManagementCluster: %v", err)
-	}
-	list, err := c.ListManagementClusters(ctx)
-	if err != nil || len(list.Items) != 1 || list.Items[0].Name != "mc-one" {
-		t.Fatalf("ListManagementClusters = %+v, err = %v", list, err)
+	var stored seaplanev1alpha1.ManagementCluster
+	if err := fc.Get(ctx, client.ObjectKey{Name: "mc-one"}, &stored); err != nil {
+		t.Fatalf("stored ManagementCluster: %v", err)
 	}
 }
 

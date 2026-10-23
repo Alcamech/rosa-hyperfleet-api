@@ -64,13 +64,6 @@ func (h *OidcConfigHandler) oidcConfigResource(oc *v1.OidcConfig) authz.Resource
 func (h *DNSReservationHandler) dnsReservationResource(res *v1.DNSReservation) authz.Resource {
 	return authz.Resource{Kind: authz.DNSReservation, ID: string(res.UID), AccountID: namespaceAccount(res.Namespace), Labels: maps.Clone(res.Labels)}
 }
-func (h *ManagementClusterHandler) managementClusterResource(mc *v1.ManagementCluster) authz.Resource {
-	id := mc.Name
-	if mc.Namespace != "" {
-		id = ""
-	}
-	return authz.Resource{Kind: authz.ManagementCluster, ID: id, AccountID: mc.Spec.AccountID, RegistrationRegion: mc.Spec.Region, Labels: maps.Clone(mc.Labels)}
-}
 
 // clusterUpdateActions returns the specialized actions an update needs beyond
 // UpdateCluster. It compares the stored spec with the exact candidate to be written.

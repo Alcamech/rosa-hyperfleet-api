@@ -190,7 +190,7 @@ func TestServer_RequiresIdentity(t *testing.T) {
 	}
 
 	for _, path := range []string{
-		"/api/v0/clusters", "/api/v0/nodepools", "/api/v0/oidc_configs", "/api/v0/management_clusters",
+		"/api/v0/clusters", "/api/v0/nodepools", "/api/v0/oidc_configs",
 	} {
 		for _, tc := range []struct {
 			name, accountID, callerARN string

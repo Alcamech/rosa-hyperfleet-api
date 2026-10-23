@@ -40,19 +40,15 @@ func grants(list ...grant) ([]map[string]any, []map[string]any) {
 	return policies, attachments
 }
 
-func grantBundle(customer, service []grant) map[string]any {
+func grantBundle(customer []grant) map[string]any {
 	b := map[string]any{"formatVersion": 1, "registeredAccounts": []string{accountID}}
 	b["policies"], b["attachments"] = grants(customer...)
-	if service != nil {
-		b["serviceOperatorPolicies"], b["serviceOperatorAttachments"] = grants(service...)
-	}
 	return b
 }
 
 func TestDecisions(t *testing.T) {
 	const (
 		forbidRead    = `forbid(principal, action in Seaplane::Action::"ReadOnly", resource);`
-		serviceGroup  = `permit(principal, action in Seaplane::Action::"ServiceOperator", resource);`
 		everything    = `permit(principal, action, resource);`
 		westOnly      = `permit(principal, action, resource) when { context.region == "us-west-2" && resource.region == "us-west-2" };`
 		otherAccount  = "arn:aws:sts::210987654321:assumed-role/readers/s"
@@ -62,8 +58,6 @@ when { resource.hasTag("example.com/team") && resource.getTag("example.com/team"
 unless { resource.hasTag("example.com/blocked") };`
 	)
 	read := grant{id: "role-read", policy: "read", content: readPermit, principal: roleARN}
-	mc := Resource{Kind: ManagementCluster, ID: "mc", AccountID: "210987654321", RegistrationRegion: "us-west-2"}
-	services := Resource{Kind: ServiceCollection}
 	pool := func(parent string) Resource {
 		return Resource{Kind: NodePool, ID: "workers", AccountID: accountID, ParentCluster: &ParentCluster{ID: parent, AccountID: accountID, Labels: map[string]string{"team": "blue"}}}
 	}
@@ -72,7 +66,6 @@ unless { resource.hasTag("example.com/blocked") };`
 	for _, tc := range []struct {
 		name            string
 		customer        []grant
-		service         []grant
 		serviceRegion   string
 		caller, account string
 		action          Action
@@ -110,14 +103,6 @@ unless { resource.hasTag("example.com/blocked") };`
 		{name: "authored session matches", customer: []grant{{id: "g", content: authoredLimit, principal: roleARN}}, allowed: true},
 		{name: "authored session excludes sibling", customer: []grant{{id: "g", content: authoredLimit, principal: roleARN}}, caller: otherSessionARN},
 
-		// Customer and service authority are disjoint.
-		{name: "customer wildcard cannot create MC", customer: []grant{{id: "g", content: everything, principal: roleARN}}, action: CreateManagementCluster, resource: mc},
-		{name: "customer service group cannot create MC", customer: []grant{{id: "g", content: serviceGroup, principal: roleARN}}, action: CreateManagementCluster, resource: mc},
-		{name: "service wildcard cannot read clusters", service: []grant{{id: "svc", content: everything, principal: roleARN}}},
-		{name: "service wildcard creates MC", service: []grant{{id: "svc", content: everything, principal: roleARN}}, action: CreateManagementCluster, resource: mc, allowed: true, determining: []string{"svc"}},
-		{name: "service wildcard lists MCs", service: []grant{{id: "svc", content: everything, principal: roleARN}}, action: ListManagementClusters, resource: services, allowed: true},
-		{name: "customer forbid cannot cancel service permit", customer: []grant{{id: "g", content: `forbid(principal, action, resource);`, principal: roleARN}}, service: []grant{{id: "svc", content: serviceGroup, principal: roleARN}}, action: CreateManagementCluster, resource: mc, allowed: true},
-
 		// Node pools use their stored parent.
 		{name: "node pool under permitted parent", customer: []grant{{id: "g", content: `permit(principal, action == Seaplane::Action::"DescribeNodePool", resource in Seaplane::Cluster::"123456789012/us-east-1/parent-a");`, principal: roleARN}}, action: DescribeNodePool, resource: pool("parent-a"), allowed: true},
 		{name: "same-name node pool under other parent", customer: []grant{{id: "g", content: `permit(principal, action == Seaplane::Action::"DescribeNodePool", resource in Seaplane::Cluster::"123456789012/us-east-1/parent-a");`, principal: roleARN}}, action: DescribeNodePool, resource: pool("parent-b")},
@@ -138,7 +123,7 @@ unless { resource.hasTag("example.com/blocked") };`
 			if tc.resource.Kind == "" {
 				tc.resource = testCluster()
 			}
-			a, err := LoadConfig(configFile(t, encodeBundle(t, grantBundle(tc.customer, tc.service))), tc.serviceRegion)
+			a, err := LoadConfig(configFile(t, encodeBundle(t, grantBundle(tc.customer))), tc.serviceRegion)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -234,7 +219,7 @@ func TestEvaluationFailures(t *testing.T) {
 		{id: "role-read", policy: "read", content: readPermit, principal: roleARN},
 		{id: "forbid-a", policy: "forbid", content: `forbid(principal, action == Seaplane::Action::"DescribeCluster", resource) when { resource.account == "blocked" };`, principal: sessionARN},
 		{id: "forbid-b", policy: "forbid", principal: roleARN},
-	}, nil)
+	})
 	for _, name := range []string{"evaluator error", "allow plus failing forbid", "unknown reason", "unknown and known diagnostics"} {
 		t.Run(name, func(t *testing.T) {
 			a := fixtureAuthorizer(t, bundle)
@@ -294,7 +279,7 @@ func evaluationScenario(t *testing.T, name string, native *cedar.Diagnostic) eva
 }
 
 func TestPreparedRequest(t *testing.T) {
-	a := fixtureAuthorizer(t, serviceBundle())
+	a := fixtureAuthorizer(t, bundleFixture())
 
 	t.Run("context is frozen in UTC", func(t *testing.T) {
 		frozen := fixtureAuthorizer(t, bundleFixture())
@@ -356,18 +341,11 @@ func TestResourceEntities(t *testing.T) {
 		{DescribeOIDCConfig, Resource{Kind: OIDCConfig, ID: "oidc", AccountID: accountID}, "123456789012/us-west-2/oidc"},
 		{ListDNSReservations, Resource{Kind: Collection, CollectionKind: DNSReservation, AccountID: accountID}, "123456789012/us-west-2/dns_reservations"},
 		{DescribeDNSReservation, Resource{Kind: DNSReservation, ID: "zone", AccountID: accountID}, "123456789012/us-west-2/zone"},
-		{ListManagementClusters, Resource{Kind: ServiceCollection}, "us-west-2/management_clusters"},
-		{DescribeManagementCluster, Resource{Kind: ManagementCluster, ID: "mc", AccountID: "210987654321", RegistrationRegion: "us-east-1"}, "us-west-2/mc"},
 	} {
 		t.Run(string(tc.action), func(t *testing.T) {
 			entities, uid, err := p.resourceEntities(tc.action, tc.resource)
 			if err != nil || string(uid.ID) != tc.uid {
 				t.Fatalf("resource UID = %s, want %s: %v", uid, tc.uid, err)
-			}
-			if tc.resource.Kind == ManagementCluster {
-				if got, _ := entities[uid].Attributes.Get("registrationRegion"); got != cedar.String("us-east-1") {
-					t.Fatalf("registration region changed: %v", got)
-				}
 			}
 			if tc.resource.Kind == NodePool {
 				if _, exists := entities[entityUID("Cluster", "123456789012/us-west-2/parent")]; !exists {

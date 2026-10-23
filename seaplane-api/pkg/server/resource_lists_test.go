@@ -21,7 +21,7 @@ func TestResourceCollectionsListDetails(t *testing.T) {
 		path, list, describe string
 		index                int
 	}{
-		{"clusters", "ListClusters", "DescribeCluster", 0}, {"nodepools", "ListNodePools", "DescribeNodePool", 1}, {"oidc_configs", "ListOIDCConfigs", "DescribeOIDCConfig", 2}, {"management_clusters", "ListManagementClusters", "DescribeManagementCluster", 3}, {"dns_reservations", "ListDNSReservations", "DescribeDNSReservation", 4},
+		{"clusters", "ListClusters", "DescribeCluster", 0}, {"nodepools", "ListNodePools", "DescribeNodePool", 1}, {"oidc_configs", "ListOIDCConfigs", "DescribeOIDCConfig", 2}, {"dns_reservations", "ListDNSReservations", "DescribeDNSReservation", 3},
 	} {
 		for _, mode := range []string{"filtered", "list-only", "describe-only", "late-error"} {
 			t.Run(tc.path+"/"+mode, func(t *testing.T) {
@@ -41,13 +41,7 @@ func TestResourceCollectionsListDetails(t *testing.T) {
 					"describe-only": {describe},
 					"late-error":    {list, describe, `forbid(principal, action == Seaplane::Action::"` + tc.describe + `", resource) when { resource.hasTag("fault") && 9223372036854775807 + 1 == 0 };`},
 				}[mode]
-				var customer, service []string
-				if tc.index == 3 {
-					service = policies
-				} else {
-					customer = policies
-				}
-				srv, _ := resourceServer(t, customer, service, interceptor.Funcs{}, objects...)
+				srv, _ := resourceServer(t, policies, interceptor.Funcs{}, objects...)
 				w := resourceRequest(srv, "GET", tc.path, "")
 				want := map[string]int{"filtered": 200, "list-only": 200, "describe-only": 403, "late-error": 500}[mode]
 				if w.Code != want || (want != 200 && strings.Contains(w.Body.String(), `"items"`)) {
@@ -64,9 +58,6 @@ func TestResourceCollectionsListDetails(t *testing.T) {
 					t.Fatalf("want every item: %s (%v)", w.Body.String(), err)
 				}
 				detail := `"team"`
-				if tc.index == 3 {
-					detail = `"us-west-2"`
-				}
 				for _, item := range body.Items {
 					isFull := strings.Contains(string(item), detail)
 					wantFull := mode == "filtered" && !strings.Contains(string(item), `"second"`)
@@ -100,7 +91,7 @@ func TestNodePoolNamePinsParent(t *testing.T) {
 		return nil
 	}}
 	policy := `permit(principal,action == Seaplane::Action::"DescribeNodePool",resource in Seaplane::Cluster::"123456789012/us-east-1/` + secondID + `");`
-	srv, _ := resourceServer(t, []string{policy}, nil, hooks, objects...)
+	srv, _ := resourceServer(t, []string{policy}, hooks, objects...)
 	for _, tc := range []struct {
 		path string
 		want int
@@ -116,7 +107,7 @@ func TestNodePoolNamePinsParent(t *testing.T) {
 		}
 	}
 	// List has independent collection permission; Describe on the actual parent decides full details.
-	srv, _ = resourceServer(t, []string{actionPermit("ListNodePools"), policy}, nil, hooks, objects...)
+	srv, _ = resourceServer(t, []string{actionPermit("ListNodePools"), policy}, hooks, objects...)
 	w := resourceRequest(srv, "GET", "nodepools", "")
 	var result struct {
 		Items []struct {
@@ -147,7 +138,7 @@ func TestNodePoolParentFailureAbortsList(t *testing.T) {
 		}
 		return c.Get(ctx, key, obj, opts...)
 	}}
-	srv, _ := resourceServer(t, []string{`permit(principal,action in Seaplane::Action::"ReadOnly",resource);`}, nil, hooks, objects...)
+	srv, _ := resourceServer(t, []string{`permit(principal,action in Seaplane::Action::"ReadOnly",resource);`}, hooks, objects...)
 	w := resourceRequest(srv, "GET", "nodepools?limit=1", "")
 	if w.Code != 500 || strings.Contains(w.Body.String(), `"items"`) {
 		t.Fatalf("unchecked parent yielded partial success: %s", w.Body.String())
@@ -174,7 +165,7 @@ func TestCreatesUseValidatedCandidateLabelsAndOwnership(t *testing.T) {
 			t.Run(tc.action+check.labels+check.grant, func(t *testing.T) {
 				writes := 0
 				policy := `permit(principal,action == Seaplane::Action::"` + tc.action + `",resource) when { resource.account == "123456789012" && resource.hasTag("team") && resource.getTag("team") == "` + check.grant + `" };`
-				srv, _ := resourceServer(t, []string{policy}, nil, interceptor.Funcs{Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+				srv, _ := resourceServer(t, []string{policy}, interceptor.Funcs{Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
 					writes++
 					if obj.GetLabels()["team"] != "blue" || obj.GetLabels()["seaplane.io/account-id"] != resourceTestAccount {
 						t.Errorf("lost customer labels or forged ownership: %v", obj.GetLabels())
@@ -207,7 +198,7 @@ func TestDeniedClusterCreateDoesNotClaimOIDC(t *testing.T) {
 		writes++
 		return fmt.Errorf("unexpected create")
 	}}
-	srv, store := resourceServer(t, nil, nil, hooks, objects...)
+	srv, store := resourceServer(t, nil, hooks, objects...)
 	w := resourceRequest(srv, "POST", "clusters", `{"metadata":{"name":"new"},"spec":{"oidcConfigId":"config-uid"}}`)
 	if w.Code != 403 || writes != 0 {
 		t.Fatalf("denied Create claimed OIDC: %d writes=%d %s", w.Code, writes, w.Body.String())

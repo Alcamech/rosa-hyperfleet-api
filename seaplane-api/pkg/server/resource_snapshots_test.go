@@ -30,25 +30,15 @@ import (
 const resourceTestAccount = "123456789012"
 const resourceTestClusterID = "550e8400-e29b-41d4-a716-446655440000"
 
-func resourceServer(t *testing.T, customer, service []string, hooks interceptor.Funcs, objects ...client.Object) (*Server, client.Client) {
+func resourceServer(t *testing.T, customer []string, hooks interceptor.Funcs, objects ...client.Object) (*Server, client.Client) {
 	t.Helper()
-	bundle := map[string]any{"formatVersion": 1, "registeredAccounts": []string{resourceTestAccount}, "policies": []any{}, "attachments": []any{}}
-	for _, domain := range []struct {
-		policies, attachments, prefix string
-		content                       []string
-	}{{"policies", "attachments", "customer", customer}, {"serviceOperatorPolicies", "serviceOperatorAttachments", "service", service}} {
-		if domain.content == nil && domain.prefix == "service" {
-			continue
-		}
-		policies, attachments := []any{}, []any{}
-		for i, content := range domain.content {
-			id := fmt.Sprintf("%s-%d", domain.prefix, i)
-			policies = append(policies, map[string]any{"id": id, "ownerAccountID": resourceTestAccount, "content": content})
-			attachments = append(attachments, map[string]any{"id": id, "policyID": id, "principalARN": "arn:aws:iam::" + resourceTestAccount + ":user/test", "scope": "global"})
-		}
-		bundle[domain.policies] = policies
-		bundle[domain.attachments] = attachments
+	policies, attachments := []any{}, []any{}
+	for i, content := range customer {
+		id := fmt.Sprintf("customer-%d", i)
+		policies = append(policies, map[string]any{"id": id, "ownerAccountID": resourceTestAccount, "content": content})
+		attachments = append(attachments, map[string]any{"id": id, "policyID": id, "principalARN": "arn:aws:iam::" + resourceTestAccount + ":user/test", "scope": "global"})
 	}
+	bundle := map[string]any{"formatVersion": 1, "registeredAccounts": []string{resourceTestAccount}, "policies": policies, "attachments": attachments}
 	content, err := json.Marshal(bundle)
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +118,6 @@ func resourceFixtures() []client.Object {
 		parent,
 		pool,
 		&v1.OidcConfig{ObjectMeta: metav1.ObjectMeta{Name: "config", Namespace: parent.Namespace, UID: "config-uid", Labels: labels}},
-		&v1.ManagementCluster{ObjectMeta: metav1.ObjectMeta{Name: "mc", Labels: map[string]string{"team": "blue"}}, Spec: v1.ManagementClusterSpec{AccountID: "222222222222", Region: "us-west-2"}},
 		&v1.DNSReservation{ObjectMeta: metav1.ObjectMeta{Name: "zone", Namespace: parent.Namespace, UID: "zone-uid", Labels: labels}},
 	}
 }
@@ -157,12 +146,10 @@ func TestImplementedRoutesActionSpecific(t *testing.T) {
 		{"ListLabelsForResource", "ReadOnly", "GET", "dns_reservations/zone/labels", "", 200},
 		{"LabelResource", "LabelAdmin", "PATCH", "dns_reservations/zone/labels", `{"new":"value"}`, 204},
 		{"UnlabelResource", "LabelAdmin", "PATCH", "dns_reservations/zone/labels", `{"team":null}`, 204},
-		{"ListManagementClusters", "ServiceOperator", "GET", "management_clusters", "", 200}, {"DescribeManagementCluster", "ServiceOperator", "GET", "management_clusters/mc", "", 200}, {"CreateManagementCluster", "ServiceOperator", "POST", "management_clusters", `{"id":"new","accountId":"222222222222","region":"us-west-2"}`, 201},
 	} {
 		for _, grant := range []string{"matching", "wrong action", "unbound principal", "runtime error", "group", "AllActions", "permit + forbid"} {
 			t.Run(fmt.Sprintf("%s %s grant=%s", tc.method, tc.path, grant), func(t *testing.T) {
-				isService := strings.Contains(tc.action, "ManagementCluster")
-				canAccess := grant == "matching" || grant == "group" || (grant == "AllActions" && !isService)
+				canAccess := grant == "matching" || grant == "group" || grant == "AllActions"
 				action := tc.action
 				if grant == "wrong action" {
 					action = "CreateCluster"
@@ -184,12 +171,6 @@ func TestImplementedRoutesActionSpecific(t *testing.T) {
 				if grant == "runtime error" {
 					policies = append(policies, `forbid(principal, action == Seaplane::Action::"`+action+`", resource) when { 9223372036854775807 + 1 == 0 };`)
 				}
-				var customer, service []string
-				if isService && grant != "AllActions" {
-					service = policies
-				} else {
-					customer = policies
-				}
 				writes := 0
 				hooks := interceptor.Funcs{
 					Create: func(ctx context.Context, c client.WithWatch, o client.Object, opts ...client.CreateOption) error {
@@ -205,7 +186,7 @@ func TestImplementedRoutesActionSpecific(t *testing.T) {
 						return c.Delete(ctx, o, opts...)
 					},
 				}
-				srv, _ := resourceServer(t, customer, service, hooks, resourceFixtures()...)
+				srv, _ := resourceServer(t, policies, hooks, resourceFixtures()...)
 				r := httptest.NewRequest(tc.method, "/api/v0/"+tc.path, strings.NewReader(tc.body))
 				r.Header.Set(middleware.HeaderAccountID, resourceTestAccount)
 				principal := "test"
@@ -312,7 +293,7 @@ func TestEveryChangedUpdateActionBeforeWrite(t *testing.T) {
 						}
 					}
 					writes := 0
-					srv, store := resourceServer(t, permits, nil, interceptor.Funcs{Update: func(ctx context.Context, c client.WithWatch, o client.Object, opts ...client.UpdateOption) error {
+					srv, store := resourceServer(t, permits, interceptor.Funcs{Update: func(ctx context.Context, c client.WithWatch, o client.Object, opts ...client.UpdateOption) error {
 						writes++
 						return c.Update(ctx, o, opts...)
 					}}, objects...)

@@ -40,16 +40,12 @@ attachments:
     principalARN: arn:aws:iam::123456789012:role/platform/readers
     scope: regional # or global, with no region
     region: us-east-1
-serviceOperatorPolicies: [] # optional; must appear with serviceOperatorAttachments
-serviceOperatorAttachments: []
 ```
 
 - `registeredAccounts`: accounts admitted to the API. Admission only.
 - Each policy holds one Cedar statement, strictly validated against the schema.
 - An attachment's principal account must equal its policy's `ownerAccountID`.
 - `regional` attachments apply only in their region; `global` applies everywhere.
-- Service-operator records authorize ManagementClusters only. Customer and service
-  records are separate domains: IDs, references, and policies never cross.
 - Startup fails on any invalid record, including unattached policies and
   off-region attachments, and on unknown fields, duplicate keys or IDs, YAML
   aliases, dangling references, and ambiguous role aliases.
@@ -71,24 +67,22 @@ fails the request, even when Cedar would allow.
 
 ## Operations
 
-| Resource          | Operation             | Required actions                                                     |
-| ----------------- | --------------------- | -------------------------------------------------------------------- |
-| Cluster           | List                  | ListClusters; DescribeCluster per item for details                   |
-| Cluster           | Get                   | DescribeCluster                                                      |
-| Cluster           | Create                | CreateCluster                                                        |
-| Cluster           | PUT / PATCH           | UpdateCluster + changed-field actions                                |
-| Cluster           | Delete                | DeleteCluster                                                        |
-| NodePool          | List                  | ListNodePools; DescribeNodePool per item for details                 |
-| NodePool          | Get                   | DescribeNodePool                                                     |
-| NodePool          | Create                | CreateNodePool                                                       |
-| NodePool          | PUT / PATCH           | UpdateNodePool + changed-field actions                               |
-| NodePool          | Delete                | DeleteNodePool                                                       |
-| OIDCConfig        | List                  | ListOIDCConfigs; DescribeOIDCConfig per item for details             |
-| OIDCConfig        | Get / Create / Delete | DescribeOIDCConfig / CreateOIDCConfig / DeleteOIDCConfig             |
-| DNSReservation    | List                  | ListDNSReservations; DescribeDNSReservation per item for details     |
-| DNSReservation    | Get / Create / Delete | DescribeDNSReservation / CreateDNSReservation / DeleteDNSReservation |
-| ManagementCluster | List                  | ListManagementClusters; DescribeManagementCluster for details        |
-| ManagementCluster | Get / Create          | DescribeManagementCluster / CreateManagementCluster                  |
+| Resource       | Operation             | Required actions                                                     |
+| -------------- | --------------------- | -------------------------------------------------------------------- |
+| Cluster        | List                  | ListClusters; DescribeCluster per item for details                   |
+| Cluster        | Get                   | DescribeCluster                                                      |
+| Cluster        | Create                | CreateCluster                                                        |
+| Cluster        | PUT / PATCH           | UpdateCluster + changed-field actions                                |
+| Cluster        | Delete                | DeleteCluster                                                        |
+| NodePool       | List                  | ListNodePools; DescribeNodePool per item for details                 |
+| NodePool       | Get                   | DescribeNodePool                                                     |
+| NodePool       | Create                | CreateNodePool                                                       |
+| NodePool       | PUT / PATCH           | UpdateNodePool + changed-field actions                               |
+| NodePool       | Delete                | DeleteNodePool                                                       |
+| OIDCConfig     | List                  | ListOIDCConfigs; DescribeOIDCConfig per item for details             |
+| OIDCConfig     | Get / Create / Delete | DescribeOIDCConfig / CreateOIDCConfig / DeleteOIDCConfig             |
+| DNSReservation | List                  | ListDNSReservations; DescribeDNSReservation per item for details     |
+| DNSReservation | Get / Create / Delete | DescribeDNSReservation / CreateDNSReservation / DeleteDNSReservation |
 
 Changed-field actions, required in addition to the base update:
 
@@ -103,7 +97,7 @@ Rules:
 
 - Lists return every item and count it in `total` (EKS style). Items without
   Describe show only `metadata.name`, `namespace`, `uid`, and `status.phase`
-  (ManagementCluster: `id`); other fields are zero values. Any Describe error
+  other fields are zero values. Any Describe error
   fails the whole list.
 - Updates compare the stored spec with the merged object to be written. All
   required actions must allow before any write.
@@ -122,7 +116,7 @@ Rules:
 
 Only `clusters`, `nodepools`, `oidc_configs`, and `dns_reservations` support
 `/api/v0/{collection}/{id}/labels`. IDs remain account-scoped names, with
-NodePool IDs `<cluster>.<child>`. No ManagementCluster label routes exist.
+NodePool IDs `<cluster>.<child>`.
 
 - GET requires `ListLabelsForResource` and returns 200 with the complete stored
   JSON map, including system labels (`{}` when empty).
@@ -160,19 +154,16 @@ not prevent that transfer.
 Namespace `Seaplane`. The schema is embedded from
 `seaplane-api/pkg/authz/testdata/seaplane.cedarschema`.
 
-| Entity            | UID                                                                     | Parents                        |
-| ----------------- | ----------------------------------------------------------------------- | ------------------------------ |
-| Principal         | caller ARN                                                              | matching Roles                 |
-| Collection        | `<account>/<region>/{clusters,nodepools,oidc_configs,dns_reservations}` | none                           |
-| Cluster           | `<account>/<region>/<cluster-uid>`                                      | Collection                     |
-| NodePool          | `<account>/<region>/<cluster-uid>/<pool-uid>`                           | its stored Cluster, Collection |
-| OIDCConfig        | `<account>/<region>/<config-uid>`                                       | Collection                     |
-| DNSReservation    | `<account>/<region>/<reservation-uid>`                                  | Collection                     |
-| ServiceCollection | `<region>/management_clusters`                                          | none                           |
-| ManagementCluster | `<region>/<mc-id>`                                                      | ServiceCollection              |
+| Entity         | UID                                                                     | Parents                        |
+| -------------- | ----------------------------------------------------------------------- | ------------------------------ |
+| Principal      | caller ARN                                                              | matching Roles                 |
+| Collection     | `<account>/<region>/{clusters,nodepools,oidc_configs,dns_reservations}` | none                           |
+| Cluster        | `<account>/<region>/<cluster-uid>`                                      | Collection                     |
+| NodePool       | `<account>/<region>/<cluster-uid>/<pool-uid>`                           | its stored Cluster, Collection |
+| OIDCConfig     | `<account>/<region>/<config-uid>`                                       | Collection                     |
+| DNSReservation | `<account>/<region>/<reservation-uid>`                                  | Collection                     |
 
-- Resources carry `account` and `region` attributes (ServiceCollection: `region`
-  only; ManagementCluster adds `registrationRegion`). `region` is always the
+- Resources carry `account` and `region` attributes. `region` is always the
   service region.
 - Stored `metadata.labels` are entity tags. Use `hasTag` before `getTag`.
   Collections have no tags.
@@ -199,8 +190,7 @@ Frozen once per request: `region`, `accountId`, `principalArn`, `sourceIp`,
 | OIDCConfigAdmin     | Create, Delete OIDCConfig                                                 |
 | DNSReservationAdmin | Create, Delete DNSReservation                                             |
 | LabelAdmin          | LabelResource, UnlabelResource, without implicit label read permission    |
-| AllActions          | The six customer groups, including LabelAdmin. Not ServiceOperator.       |
-| ServiceOperator     | Create, List, Describe ManagementCluster                                  |
+| AllActions          | The six customer groups, including LabelAdmin.                            |
 
 These examples are validated against the schema in tests.
 
@@ -243,12 +233,6 @@ when { context.requestTime.dayOfWeek >= 1 && context.requestTime.dayOfWeek <= 5 
 ```cedar
 forbid(principal, action, resource)
 unless { ["us-east-1", "us-west-2"].contains(context.region) };
-```
-
-Valid only in `serviceOperatorPolicies`:
-
-```cedar
-permit(principal, action in Seaplane::Action::"ServiceOperator", resource);
 ```
 
 ## Logs and metrics

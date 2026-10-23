@@ -37,13 +37,6 @@ func bundleFixture() map[string]any {
 	}
 }
 
-func serviceBundle() map[string]any {
-	b := bundleFixture()
-	b["serviceOperatorPolicies"] = []map[string]any{{"id": "service", "ownerAccountID": accountID, "content": `permit(principal, action in Seaplane::Action::"ServiceOperator", resource);`}}
-	b["serviceOperatorAttachments"] = []map[string]any{{"id": "service", "policyID": "service", "principalARN": roleARN, "scope": "global"}}
-	return b
-}
-
 func encodeBundle(t *testing.T, bundle map[string]any) string {
 	t.Helper()
 	content, err := yaml.Marshal(bundle)
@@ -156,12 +149,7 @@ func TestLoadConfigRejects(t *testing.T) {
 		{"unattached invalid policy", bundleFixture, func(b map[string]any) {
 			b["policies"] = append(b["policies"].([]map[string]any), map[string]any{"id": "unused", "ownerAccountID": accountID, "content": "forbid("})
 		}},
-		{"service policies without attachments", serviceBundle, func(b map[string]any) { delete(b, "serviceOperatorAttachments") }},
-		{"customer reference cannot resolve service", serviceBundle, func(b map[string]any) { attach(b)["policyID"] = "service" }},
-		{"service reference cannot resolve customer", serviceBundle, func(b map[string]any) { policy(b, "serviceOperatorAttachments")["policyID"] = "read" }},
-		{"cross-domain role ambiguity", serviceBundle, func(b map[string]any) {
-			policy(b, "serviceOperatorAttachments")["principalARN"] = "arn:aws:iam::123456789012:role/other/readers"
-		}},
+		{"service operator domain", bundleFixture, func(b map[string]any) { b["serviceOperatorPolicies"] = []any{} }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -276,14 +264,4 @@ func TestStartupSnapshot(t *testing.T) {
 		t.Fatal("empty bundle granted access")
 	}
 
-	// IDs may coincide across domains; references and provenance stay domain-local.
-	shared := serviceBundle()
-	shared["serviceOperatorPolicies"].([]map[string]any)[0]["id"] = "read"
-	shared["serviceOperatorAttachments"].([]map[string]any)[0]["policyID"] = "read"
-	shared["serviceOperatorAttachments"].([]map[string]any)[0]["id"] = "role-read"
-	a := fixtureAuthorizer(t, shared)
-	mc := Resource{Kind: ManagementCluster, ID: "mc", AccountID: "210987654321", RegistrationRegion: "us-west-2"}
-	if d := decide(t, a, testIdentity(sessionARN), CreateManagementCluster, mc); !d.Allowed || d.Provenance[0].DiagnosticID != "service-operator/attachment/role-read" {
-		t.Fatalf("domain-local IDs: %+v", d)
-	}
 }

@@ -12,12 +12,10 @@ import (
 )
 
 type configBundle struct {
-	FormatVersion              int                `yaml:"formatVersion"`
-	RegisteredAccounts         []string           `yaml:"registeredAccounts"`
-	Policies                   []policyRecord     `yaml:"policies"`
-	Attachments                []attachmentRecord `yaml:"attachments"`
-	ServiceOperatorPolicies    []policyRecord     `yaml:"serviceOperatorPolicies"`
-	ServiceOperatorAttachments []attachmentRecord `yaml:"serviceOperatorAttachments"`
+	FormatVersion      int                `yaml:"formatVersion"`
+	RegisteredAccounts []string           `yaml:"registeredAccounts"`
+	Policies           []policyRecord     `yaml:"policies"`
+	Attachments        []attachmentRecord `yaml:"attachments"`
 }
 
 type policyRecord struct {
@@ -69,7 +67,6 @@ func LoadConfig(path, serviceRegion string) (*Authorizer, error) {
 }
 
 // addBundle validates all records, including off-region and unattached material.
-// Customer and service-operator policies and attachments stay separate.
 func (a *Authorizer) addBundle(bundle configBundle, bundleHash string) error {
 	for _, account := range bundle.RegisteredAccounts {
 		if !accountPattern.MatchString(account) {
@@ -81,65 +78,55 @@ func (a *Authorizer) addBundle(bundle configBundle, bundleHash string) error {
 		a.accounts[account] = struct{}{}
 	}
 	roleAliases := make(map[string]string)
-	for _, domain := range []struct {
-		policies    []policyRecord
-		attachments []attachmentRecord
-		prefix      string
-		bindings    *[]policyAttachment
-	}{
-		{bundle.Policies, bundle.Attachments, "attachment/", &a.customer},
-		{bundle.ServiceOperatorPolicies, bundle.ServiceOperatorAttachments, "service-operator/attachment/", &a.service},
-	} {
-		type compiledPolicy struct {
-			owner  string
-			policy *cedar.Policy
+	type compiledPolicy struct {
+		owner  string
+		policy *cedar.Policy
+	}
+	policies := make(map[string]compiledPolicy, len(bundle.Policies))
+	for _, policy := range bundle.Policies {
+		provenance := Provenance{PolicyID: policy.ID, BundleHash: bundleHash}
+		if !idPattern.MatchString(policy.ID) || !accountPattern.MatchString(policy.OwnerAccountID) {
+			return newFailure(StageParsing, fmt.Errorf("invalid policy ID or owner"), provenance)
 		}
-		policies := make(map[string]compiledPolicy, len(domain.policies))
-		for _, policy := range domain.policies {
-			provenance := Provenance{PolicyID: policy.ID, BundleHash: bundleHash}
-			if !idPattern.MatchString(policy.ID) || !accountPattern.MatchString(policy.OwnerAccountID) {
-				return newFailure(StageParsing, fmt.Errorf("invalid policy ID or owner"), provenance)
-			}
-			if _, exists := policies[policy.ID]; exists {
-				return newFailure(StageParsing, fmt.Errorf("duplicate policy ID %q", policy.ID), provenance)
-			}
-			compiled, err := checkedPolicy(policy.Content, policy.ID, a.validator)
-			if err != nil {
-				return newFailure(StageParsing, err, provenance)
-			}
-			policies[policy.ID] = compiledPolicy{owner: policy.OwnerAccountID, policy: compiled}
+		if _, exists := policies[policy.ID]; exists {
+			return newFailure(StageParsing, fmt.Errorf("duplicate policy ID %q", policy.ID), provenance)
 		}
-		ids := make(map[string]struct{}, len(domain.attachments))
-		for _, attachment := range domain.attachments {
-			provenance := Provenance{DiagnosticID: domain.prefix + attachment.ID, PolicyID: attachment.PolicyID, BundleHash: bundleHash, AttachmentID: attachment.ID}
-			if !idPattern.MatchString(attachment.ID) {
-				return newFailure(StageBinding, fmt.Errorf("invalid attachment ID"), provenance)
-			}
-			if _, exists := ids[attachment.ID]; exists {
-				return newFailure(StageBinding, fmt.Errorf("duplicate attachment ID"), provenance)
-			}
-			ids[attachment.ID] = struct{}{}
-			policy, exists := policies[attachment.PolicyID]
-			if !exists {
-				return newFailure(StageBinding, fmt.Errorf("dangling policy reference"), provenance)
-			}
-			principal, err := parsePrincipal(attachment.PrincipalARN)
-			if err != nil {
+		compiled, err := checkedPolicy(policy.Content, policy.ID, a.validator)
+		if err != nil {
+			return newFailure(StageParsing, err, provenance)
+		}
+		policies[policy.ID] = compiledPolicy{owner: policy.OwnerAccountID, policy: compiled}
+	}
+	ids := make(map[string]struct{}, len(bundle.Attachments))
+	for _, attachment := range bundle.Attachments {
+		provenance := Provenance{DiagnosticID: "attachment/" + attachment.ID, PolicyID: attachment.PolicyID, BundleHash: bundleHash, AttachmentID: attachment.ID}
+		if !idPattern.MatchString(attachment.ID) {
+			return newFailure(StageBinding, fmt.Errorf("invalid attachment ID"), provenance)
+		}
+		if _, exists := ids[attachment.ID]; exists {
+			return newFailure(StageBinding, fmt.Errorf("duplicate attachment ID"), provenance)
+		}
+		ids[attachment.ID] = struct{}{}
+		policy, exists := policies[attachment.PolicyID]
+		if !exists {
+			return newFailure(StageBinding, fmt.Errorf("dangling policy reference"), provenance)
+		}
+		principal, err := parsePrincipal(attachment.PrincipalARN)
+		if err != nil {
+			return newFailure(StageBinding, err, provenance)
+		}
+		if principal.account != policy.owner {
+			return newFailure(StageBinding, fmt.Errorf("cross-account attachment"), provenance)
+		}
+		if err := checkedScope(attachment.Scope, attachment.Region); err != nil {
+			return newFailure(StageBinding, err, provenance)
+		}
+		if principal.kind == "role" {
+			if err := addRoleAlias(roleAliases, principal.roleAlias(), principal.original); err != nil {
 				return newFailure(StageBinding, err, provenance)
 			}
-			if principal.account != policy.owner {
-				return newFailure(StageBinding, fmt.Errorf("cross-account attachment"), provenance)
-			}
-			if err := checkedScope(attachment.Scope, attachment.Region); err != nil {
-				return newFailure(StageBinding, err, provenance)
-			}
-			if principal.kind == "role" {
-				if err := addRoleAlias(roleAliases, principal.roleAlias(), principal.original); err != nil {
-					return newFailure(StageBinding, err, provenance)
-				}
-			}
-			*domain.bindings = append(*domain.bindings, policyAttachment{Provenance: provenance, policy: policy.policy, principal: principal, scope: attachment.Scope, region: attachment.Region})
 		}
+		a.customer = append(a.customer, policyAttachment{Provenance: provenance, policy: policy.policy, principal: principal, scope: attachment.Scope, region: attachment.Region})
 	}
 	return nil
 }
@@ -166,7 +153,7 @@ func readBundleNode(content []byte) (*yaml.Node, error) {
 }
 
 // decodeBundle decodes a version-1 bundle, requiring enrollment, policies, and attachments.
-// It rejects unknown fields and requires the optional service-operator lists together.
+// It rejects unknown fields.
 func decodeBundle(content []byte) (configBundle, error) {
 	root, err := readBundleNode(content)
 	if err != nil {
@@ -180,9 +167,6 @@ func decodeBundle(content []byte) (configBundle, error) {
 		if !present {
 			return configBundle{}, fmt.Errorf("missing bundle field %q", key)
 		}
-	}
-	if required["serviceOperatorPolicies"] != required["serviceOperatorAttachments"] {
-		return configBundle{}, fmt.Errorf("service operator policies and attachments must be supplied together")
 	}
 	// KnownFields also checks nested records. The node pass forbids YAML coercions and aliases.
 	decoder := yaml.NewDecoder(bytes.NewReader(content))
@@ -242,7 +226,7 @@ func checkYAML(node *yaml.Node, path string, depth int) error {
 	}
 	// Null lists and scalar substitutes for collections are not valid bundle shapes.
 	switch path {
-	case "registeredAccounts", "policies", "attachments", "serviceOperatorPolicies", "serviceOperatorAttachments":
+	case "registeredAccounts", "policies", "attachments":
 		if node.Kind != yaml.SequenceNode {
 			return fmt.Errorf("expected sequence at %s", path)
 		}

@@ -39,7 +39,7 @@ func TestCustomerResourceIdentity(t *testing.T) {
 					return fmt.Sprintf(`permit(principal, action == Seaplane::Action::"%s%s", resource == Seaplane::%s::"123456789012/us-east-1/%s");`, action, tc.kind, tc.kind, id)
 				}
 				writes := 0
-				srv, _ := resourceServer(t, []string{policy("Create", createID), policy("Describe", tc.storedID)}, nil, interceptor.Funcs{
+				srv, _ := resourceServer(t, []string{policy("Create", createID), policy("Describe", tc.storedID)}, interceptor.Funcs{
 					Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
 						writes++
 						obj.SetUID("database-uid")

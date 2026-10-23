@@ -32,8 +32,7 @@ type Server struct {
 	redisCloser   io.Closer
 }
 
-// New creates a new Server instance. The dbClient is used by cluster,
-// nodepool, and management cluster handlers.
+// New creates a new Server instance. The dbClient is used by the resource handlers.
 func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Authorizer, logger *slog.Logger) (*Server, error) {
 	if authorizer == nil {
 		return nil, fmt.Errorf("authorizer is required")
@@ -43,7 +42,6 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 	// Create handlers
 	healthHandler := apphandlers.NewHealthHandler(logger)
 	infoHandler := apphandlers.NewInfoHandler(logger)
-	mgmtClusterHandler := apphandlers.NewManagementClusterHandler(dbClient, authorizer, logger)
 	clusterHandler := apphandlers.NewClusterHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, cfg.Regional.DefaultClusterExpiration, authorizer, logger)
 	nodePoolHandler := apphandlers.NewNodePoolHandler(dbClient, authorizer, logger)
 	oidcConfigHandler := apphandlers.NewOidcConfigHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, authorizer, logger)
@@ -107,12 +105,6 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 	}
 
 	apiRouter.Use(middleware.RequireIdentity(logger, authorizer.IsAccountRegistered))
-
-	// Management cluster routes
-	mgmtRouter := apiRouter.PathPrefix("/api/v0/management_clusters").Subrouter()
-	mgmtRouter.HandleFunc("", mgmtClusterHandler.Create).Methods(http.MethodPost)
-	mgmtRouter.HandleFunc("", mgmtClusterHandler.List).Methods(http.MethodGet)
-	mgmtRouter.HandleFunc("/{id}", mgmtClusterHandler.Get).Methods(http.MethodGet)
 
 	// Cluster routes
 	clusterRouter := apiRouter.PathPrefix("/api/v0/clusters").Subrouter()

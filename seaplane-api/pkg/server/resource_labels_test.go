@@ -15,7 +15,7 @@ func TestResourceLabels(t *testing.T) {
 	for _, route := range []struct {
 		path  string
 		index int
-	}{{"clusters/parent", 0}, {"nodepools/parent.workers", 1}, {"oidc_configs/config", 2}, {"dns_reservations/zone", 4}} {
+	}{{"clusters/parent", 0}, {"nodepools/parent.workers", 1}, {"oidc_configs/config", 2}, {"dns_reservations/zone", 3}} {
 		for _, tc := range []struct {
 			name, grant, method, body string
 			status, writes            int
@@ -54,7 +54,7 @@ func TestResourceLabels(t *testing.T) {
 					return c.Update(ctx, obj, opts...)
 				}}
 				policy := fmt.Sprintf(`permit(principal, action in Seaplane::Action::"%s", resource);`, tc.grant)
-				srv, store := resourceServer(t, []string{policy}, nil, hooks, objects...)
+				srv, store := resourceServer(t, []string{policy}, hooks, objects...)
 				w := resourceRequest(srv, tc.method, route.path+"/labels", tc.body)
 				if w.Code != tc.status || writes != tc.writes {
 					t.Fatalf("status=%d writes=%d body=%s, want %d/%d", w.Code, writes, w.Body.String(), tc.status, tc.writes)

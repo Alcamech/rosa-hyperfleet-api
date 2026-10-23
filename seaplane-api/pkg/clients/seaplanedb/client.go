@@ -466,29 +466,6 @@ func (c *Client) CreateManagementCluster(ctx context.Context, mc *seaplanev1alph
 	return c.client.Create(ctx, mc)
 }
 
-// GetManagementCluster retrieves a ManagementCluster by ID with global scope.
-func (c *Client) GetManagementCluster(ctx context.Context, id string) (*seaplanev1alpha1.ManagementCluster, error) {
-	var mc seaplanev1alpha1.ManagementCluster
-	err := c.client.Get(ctx, k8stypes.NamespacedName{
-		Namespace: "",
-		Name:      id,
-	}, &mc)
-	if err != nil {
-		return nil, err
-	}
-	return &mc, nil
-}
-
-// ListManagementClusters lists all ManagementCluster resources (global scope).
-func (c *Client) ListManagementClusters(ctx context.Context) (*seaplanev1alpha1.ManagementClusterList, error) {
-	var list seaplanev1alpha1.ManagementClusterList
-	err := c.client.List(ctx, &list)
-	if err != nil {
-		return nil, err
-	}
-	return &list, nil
-}
-
 // --- OidcConfig operations ---
 
 // CreateOidcConfig creates an OidcConfig in the caller's account namespace.

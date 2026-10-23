@@ -102,6 +102,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Management clusters to register on startup, replacing the registration endpoint.
+	mgmtClusters, err := managementClusters(os.Getenv("MANAGEMENT_CLUSTERS"), awsCfg.Region)
+	if err != nil {
+		return err
+	}
+
 	cfg.Logging.Level = logLevel
 	cfg.Logging.Format = logFormat
 	if postgresDSN == "" {
@@ -169,6 +175,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create seaplanedb client: %w", err)
 	}
 	defer dbClient.Close()
+
+	if err := registerManagementClusters(context.Background(), dbClient, mgmtClusters, logger); err != nil {
+		return err
+	}
 
 	// Create server
 	srv, err := server.New(cfg, dbClient, authorizer, logger)

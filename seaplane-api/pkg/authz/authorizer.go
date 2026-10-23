@@ -18,7 +18,6 @@ type evaluator func(*cedar.PolicySet, cedar.EntityMap, cedar.Request) (cedar.Dec
 type Authorizer struct {
 	bundleHash string
 	customer   []policyAttachment
-	service    []policyAttachment
 	region     string
 	accounts   map[string]struct{}
 	model      *resolved.Schema
@@ -28,16 +27,15 @@ type Authorizer struct {
 
 // Prepared owns concrete immutable policy inputs for one identity and request.
 type Prepared struct {
-	identity        Identity
-	region          string
-	principal       cedar.EntityUID
-	entities        cedar.EntityMap
-	policies        *cedar.PolicySet
-	servicePolicies *cedar.PolicySet
-	requestContext  cedar.Record
-	provenance      map[cedar.PolicyID]Provenance
-	validator       *validate.Validator
-	evaluate        evaluator
+	identity       Identity
+	region         string
+	principal      cedar.EntityUID
+	entities       cedar.EntityMap
+	policies       *cedar.PolicySet
+	requestContext cedar.Record
+	provenance     map[cedar.PolicyID]Provenance
+	validator      *validate.Validator
+	evaluate       evaluator
 }
 
 // BundleHash returns the SHA-256 hash of the bundle file loaded at startup.
@@ -76,7 +74,7 @@ func (a *Authorizer) Prepare(ctx context.Context, id Identity, req RequestContex
 	if day == 0 {
 		day = 7
 	}
-	prepared := &Prepared{identity: id, region: a.region, principal: entityUID("Principal", id.CallerARN), entities: make(cedar.EntityMap), policies: cedar.NewPolicySet(), servicePolicies: cedar.NewPolicySet(), provenance: make(map[cedar.PolicyID]Provenance), validator: a.validator, evaluate: a.evaluate,
+	prepared := &Prepared{identity: id, region: a.region, principal: entityUID("Principal", id.CallerARN), entities: make(cedar.EntityMap), policies: cedar.NewPolicySet(), provenance: make(map[cedar.PolicyID]Provenance), validator: a.validator, evaluate: a.evaluate,
 		requestContext: cedar.NewRecord(cedar.RecordMap{
 			"region": cedar.String(a.region), "accountId": cedar.String(id.AccountID), "principalArn": cedar.String(id.CallerARN),
 			"sourceIp": cedar.String(req.SourceIP), "userAgent": cedar.String(req.UserAgent),
@@ -88,25 +86,17 @@ func (a *Authorizer) Prepare(ctx context.Context, id Identity, req RequestContex
 	}
 	attrs := cedar.NewRecord(cedar.RecordMap{"account": cedar.String(id.AccountID)})
 	parents := []cedar.EntityUID{}
-	for _, domain := range []struct {
-		bindings []policyAttachment
-		set      *cedar.PolicySet
-	}{
-		{a.customer, prepared.policies},
-		{a.service, prepared.servicePolicies},
-	} {
-		for _, binding := range domain.bindings {
-			if !matchesPrincipal(binding.principal, caller) || !appliesInRegion(binding.scope, binding.region, a.region) {
-				continue
-			}
-			diagnosticID := cedar.PolicyID(binding.DiagnosticID)
-			domain.set.Add(diagnosticID, binding.policy)
-			prepared.provenance[diagnosticID] = binding.Provenance
-			if binding.principal.kind == "role" {
-				role := entityUID("Role", binding.principal.original)
-				prepared.entities[role] = cedar.Entity{UID: role, Attributes: attrs}
-				parents = append(parents, role)
-			}
+	for _, binding := range a.customer {
+		if !matchesPrincipal(binding.principal, caller) || !appliesInRegion(binding.scope, binding.region, a.region) {
+			continue
+		}
+		diagnosticID := cedar.PolicyID(binding.DiagnosticID)
+		prepared.policies.Add(diagnosticID, binding.policy)
+		prepared.provenance[diagnosticID] = binding.Provenance
+		if binding.principal.kind == "role" {
+			role := entityUID("Role", binding.principal.original)
+			prepared.entities[role] = cedar.Entity{UID: role, Attributes: attrs}
+			parents = append(parents, role)
 		}
 	}
 	prepared.entities[prepared.principal] = cedar.Entity{UID: prepared.principal, Parents: cedar.NewEntityUIDSet(parents...), Attributes: attrs}
@@ -142,11 +132,7 @@ func (p *Prepared) Check(ctx context.Context, action Action, resource Resource) 
 	if err := p.validator.Request(req); err != nil {
 		return Decision{}, newFailure(StageEntityValidation, err)
 	}
-	set := p.policies
-	if actionResourceKind(action) == ManagementCluster {
-		set = p.servicePolicies
-	}
-	verdict, diagnostics, err := p.evaluate(set, entities, req)
+	verdict, diagnostics, err := p.evaluate(p.policies, entities, req)
 	if err != nil {
 		return Decision{}, newFailure(StageEvaluation, err)
 	}
@@ -197,7 +183,7 @@ func (p *Prepared) mapProvenance(ids []cedar.PolicyID) ([]Provenance, error) {
 // validateResourceIdentity checks action compatibility, ownership, and collection or object identity before building entities.
 func (p *Prepared) validateResourceIdentity(action Action, resource Resource) (ResourceKind, error) {
 	kind := actionResourceKind(action)
-	// Label actions share the four customer kinds, never service resources.
+	// Label actions share the four resource kinds.
 	if action == ListLabelsForResource || action == LabelResource || action == UnlabelResource {
 		switch resource.Kind {
 		case Cluster, NodePool, OIDCConfig, DNSReservation:
@@ -207,8 +193,7 @@ func (p *Prepared) validateResourceIdentity(action Action, resource Resource) (R
 	if kind == "" {
 		return "", fmt.Errorf("unsupported action")
 	}
-	service := kind == ManagementCluster
-	if !service && resource.AccountID != p.identity.AccountID {
+	if resource.AccountID != p.identity.AccountID {
 		return "", fmt.Errorf("resource ownership does not match identity account")
 	}
 	if owner, exists := resource.Labels["seaplane.io/account-id"]; exists && owner != resource.AccountID {
@@ -217,15 +202,8 @@ func (p *Prepared) validateResourceIdentity(action Action, resource Resource) (R
 	if resource.Kind != NodePool && resource.ParentCluster != nil {
 		return "", fmt.Errorf("unexpected parent cluster")
 	}
-	if resource.Kind != ManagementCluster && resource.RegistrationRegion != "" {
-		return "", fmt.Errorf("unexpected registration region")
-	}
 	if listAction(action) {
-		want := Collection
-		if service {
-			want = ServiceCollection
-		}
-		if resource.Kind != want || resource.ID != "" || len(resource.Labels) != 0 || resource.ParentCluster != nil || resource.RegistrationRegion != "" || (!service && resource.CollectionKind != kind) || (service && (resource.AccountID != "" || resource.CollectionKind != "")) {
+		if resource.Kind != Collection || resource.ID != "" || len(resource.Labels) != 0 || resource.ParentCluster != nil || resource.CollectionKind != kind {
 			return "", fmt.Errorf("invalid collection identity or object metadata")
 		}
 	} else if resource.Kind != kind || !idPattern.MatchString(resource.ID) || resource.CollectionKind != "" {
@@ -240,16 +218,10 @@ func (p *Prepared) resourceEntities(action Action, resource Resource) (cedar.Ent
 	if err != nil {
 		return nil, cedar.EntityUID{}, err
 	}
-	service := kind == ManagementCluster
 	entities := maps.Clone(p.entities)
 	attrs := cedar.NewRecord(cedar.RecordMap{"account": cedar.String(resource.AccountID), "region": cedar.String(p.region)})
 	collection := entityUID("Collection", resource.AccountID+"/"+p.region+"/"+collectionName(kind))
-	if service {
-		collection = entityUID("ServiceCollection", p.region+"/management_clusters")
-		entities[collection] = cedar.Entity{UID: collection, Attributes: cedar.NewRecord(cedar.RecordMap{"region": cedar.String(p.region)})}
-	} else {
-		entities[collection] = cedar.Entity{UID: collection, Attributes: attrs}
-	}
+	entities[collection] = cedar.Entity{UID: collection, Attributes: attrs}
 	if listAction(action) {
 		return entities, collection, nil
 	}
@@ -269,13 +241,6 @@ func (p *Prepared) resourceEntities(action Action, resource Resource) (cedar.Ent
 		entities[cluster] = cedar.Entity{UID: cluster, Attributes: attrs, Parents: cedar.NewEntityUIDSet(clusterCollection), Tags: resourceTags(parent.Labels)}
 		parents = append(parents, cluster)
 		id = resource.AccountID + "/" + p.region + "/" + parent.ID + "/" + resource.ID
-	}
-	if kind == ManagementCluster {
-		if resource.AccountID == "" || resource.RegistrationRegion == "" {
-			return nil, cedar.EntityUID{}, fmt.Errorf("management cluster requires hosting account and registration region")
-		}
-		id = p.region + "/" + resource.ID
-		attrs = cedar.NewRecord(cedar.RecordMap{"account": cedar.String(resource.AccountID), "region": cedar.String(p.region), "registrationRegion": cedar.String(resource.RegistrationRegion)})
 	}
 	uid := entityUID(string(kind), id)
 	entities[uid] = cedar.Entity{UID: uid, Attributes: attrs, Parents: cedar.NewEntityUIDSet(parents...), Tags: resourceTags(resource.Labels)}

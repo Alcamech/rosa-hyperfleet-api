@@ -144,21 +144,6 @@ var (
 	ErrDNSReservationDeleteFailed   APIError
 )
 
-// Management cluster error codes
-var (
-	ErrMCCreateInvalidBody APIError
-	ErrMCCreateMissingID   APIError
-	ErrMCCreateMissingReg  APIError
-	ErrMCCreateMissingAcct APIError
-	ErrMCCreateExists      APIError
-	ErrMCCreateFailed      APIError
-
-	ErrMCListFailed APIError
-
-	ErrMCGetNotFound APIError
-	ErrMCGetFailed   APIError
-)
-
 // Info error codes
 var ErrInfoRegionalAccountUnavailable APIError
 
@@ -301,21 +286,6 @@ func init() {
 	ErrDNSReservationDeleteNotFound = APIError{Code: "DNSRESERVATIONS-MGMT-DELETE-001", HTTPStatus: http.StatusNotFound, Message: "DNS reservation not found"}
 	ErrDNSReservationDeleteClaimed = APIError{Code: "DNSRESERVATIONS-MGMT-DELETE-002", HTTPStatus: http.StatusConflict, Message: "Cannot delete a claimed DNS reservation"}
 	ErrDNSReservationDeleteFailed = APIError{Code: "DNSRESERVATIONS-MGMT-DELETE-003", HTTPStatus: http.StatusInternalServerError, Message: "Failed to delete DNS reservation"}
-
-	// Management clusters — Create
-	ErrMCCreateInvalidBody = APIError{Code: "MC-MGMT-CREATE-001", HTTPStatus: http.StatusBadRequest, Message: "Invalid request body"}
-	ErrMCCreateMissingID = APIError{Code: "MC-MGMT-CREATE-002", HTTPStatus: http.StatusBadRequest, Message: "id is required"}
-	ErrMCCreateMissingReg = APIError{Code: "MC-MGMT-CREATE-003", HTTPStatus: http.StatusBadRequest, Message: "region is required"}
-	ErrMCCreateMissingAcct = APIError{Code: "MC-MGMT-CREATE-004", HTTPStatus: http.StatusBadRequest, Message: "accountId is required"}
-	ErrMCCreateExists = APIError{Code: "MC-MGMT-CREATE-005", HTTPStatus: http.StatusConflict, Message: "Management cluster already registered", Reason: "management cluster already registered: %s"}
-	ErrMCCreateFailed = APIError{Code: "MC-MGMT-CREATE-006", HTTPStatus: http.StatusInternalServerError, Message: "Failed to save management cluster config"}
-
-	// Management clusters — List
-	ErrMCListFailed = APIError{Code: "MC-MGMT-LIST-001", HTTPStatus: http.StatusInternalServerError, Message: "Failed to load management cluster config"}
-
-	// Management clusters — Get
-	ErrMCGetNotFound = APIError{Code: "MC-MGMT-GET-001", HTTPStatus: http.StatusNotFound, Message: "Management cluster not found"}
-	ErrMCGetFailed = APIError{Code: "MC-MGMT-GET-002", HTTPStatus: http.StatusInternalServerError, Message: "Failed to load management cluster config"}
 
 	// Info
 	ErrInfoRegionalAccountUnavailable = APIError{Code: "INFO-001", HTTPStatus: http.StatusServiceUnavailable, Message: "regional account ID is not configured"}
