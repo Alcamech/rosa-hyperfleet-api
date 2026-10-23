@@ -67,6 +67,9 @@ func resourceServer(t *testing.T, customer []string, hooks interceptor.Funcs, ob
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).
 		WithIndex(&v1.OidcConfig{}, "metadata.uid", func(obj client.Object) []string {
 			return []string{string(obj.GetUID())}
+		}).
+		WithIndex(&v1.DNSReservation{}, "metadata.uid", func(obj client.Object) []string {
+			return []string{string(obj.GetUID())}
 		}).WithInterceptorFuncs(hooks).Build()
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))

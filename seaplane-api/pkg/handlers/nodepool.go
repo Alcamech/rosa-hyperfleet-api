@@ -387,6 +387,10 @@ func (h *NodePoolHandler) updateOnce(w http.ResponseWriter, r *http.Request, nod
 		writeAPIError(w, ErrNodePoolUpdateFailed, h.logger)
 		return nil, errResponded
 	}
+	// Authorize before validation, so a caller without UpdateNodePool learns no field details.
+	if !h.authorizeNodePool(w, r, authz.UpdateNodePool, cr) {
+		return nil, errResponded
+	}
 
 	errs := h.validator.ValidateUpdate(rawSpec, &cr.Spec, featuregate.Default)
 	errs = append(errs, validateNodePoolReplicas(reqSpec)...)

@@ -240,23 +240,24 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Spec.IssuerUrl = normalizedIssuerURL
 
-	indexName := seaplanev1alpha1.IssuerURLIndexName(normalizedIssuerURL)
-
-	// Fast-path check (best-effort, NOT atomic): reserveIssuerURLIndex is the real enforcement point.
-	if _, err := h.db.GetOidcIssuerIndex(ctx, indexName); err == nil {
-		writeAPIError(w, ErrOidcConfigCreateDuplicateIssuerUrl, h.logger)
-		return
-	} else if !seaplanedb.IsNotFound(err) {
-		h.logger.Warn("fast-path issuer URL uniqueness check failed; falling through to async reservation", "error", err, "account_id", accountID, "config_name", configName)
-	}
-
 	if !validateCreateLabels(w, req.Labels, h.logger) {
 		return
 	}
 	cr := seaplanedb.PublicToInternalOidcConfig(&req, accountID)
 
-	if !authorizeResource(w, r, h.authorizer, h.logger, authz.CreateOIDCConfig, candidateResource(h.oidcConfigResource(cr), cr.Name)) {
+	// Authorize before probing the global issuer index, so a caller without
+	// CreateOIDCConfig cannot learn which issuers are registered.
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.CreateOIDCConfig, candidateResource(oidcConfigResource(cr), cr.Name)) {
 		return
+	}
+
+	// Fast-path check (best-effort, NOT atomic): reserveIssuerURLIndex is the real enforcement point.
+	indexName := seaplanev1alpha1.IssuerURLIndexName(normalizedIssuerURL)
+	if _, err := h.db.GetOidcIssuerIndex(ctx, indexName); err == nil {
+		writeAPIError(w, ErrOidcConfigCreateDuplicateIssuerUrl, h.logger)
+		return
+	} else if !seaplanedb.IsNotFound(err) {
+		h.logger.Warn("fast-path issuer URL uniqueness check failed; falling through to async reservation", "error", err, "account_id", accountID, "config_name", configName)
 	}
 	if err := h.db.CreateOidcConfig(ctx, cr); err != nil {
 		if seaplanedb.IsAlreadyExists(err) {
@@ -292,7 +293,7 @@ func (h *OidcConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !authorizeResource(w, r, h.authorizer, h.logger, authz.DescribeOIDCConfig, h.oidcConfigResource(cr)) {
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.DescribeOIDCConfig, oidcConfigResource(cr)) {
 		return
 	}
 	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicOidcConfig(cr)); err != nil {
@@ -320,7 +321,7 @@ func (h *OidcConfigHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !authorizeResource(w, r, h.authorizer, h.logger, authz.DeleteOIDCConfig, h.oidcConfigResource(oc)) {
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.DeleteOIDCConfig, oidcConfigResource(oc)) {
 		return
 	}
 	if oc.Labels[claimedByClusterUIDLabel] != "" {

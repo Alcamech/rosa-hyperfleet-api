@@ -33,6 +33,7 @@ const (
 	lifecyclePermit       = `permit(principal, action in Seaplane::Action::"AllActions", resource);`
 	clusterAuthzRegion    = "us-east-1"
 	clusterReadPermit     = `permit(principal, action in Seaplane::Action::"ReadOnly", resource);`
+	clusterAdminPermit    = `permit(principal, action in Seaplane::Action::"AllActions", resource);`
 	clusterListPermit     = `permit(principal, action == Seaplane::Action::"ListClusters", resource);`
 	clusterDescribePermit = `permit(principal, action == Seaplane::Action::"DescribeCluster", resource);`
 	clusterLabelPermit    = `permit(principal, action == Seaplane::Action::"DescribeCluster", resource)

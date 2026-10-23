@@ -15,9 +15,13 @@ import (
 
 // Parent authorization loading failures on retry must replace, not accompany, earlier allows.
 func TestRetryAuthzFailure(t *testing.T) {
-	for _, tc := range []struct{ path, body, operation string }{
-		{"nodepools/parent.workers", `{"spec":{"labels":{"change":"requested"}}}`, "UpdateNodePool"},
-		{"nodepools/parent.workers/labels", `{"change":"requested"}`, "LabelResource"},
+	// failingRead is the retry's authorization parent load; updates also check before validation.
+	for _, tc := range []struct {
+		path, body, operation string
+		failingRead           int
+	}{
+		{"nodepools/parent.workers", `{"spec":{"labels":{"change":"requested"}}}`, "UpdateNodePool", 5},
+		{"nodepools/parent.workers/labels", `{"change":"requested"}`, "LabelResource", 4},
 	} {
 		t.Run(tc.operation, func(t *testing.T) {
 			objects := resourceFixtures()
@@ -26,7 +30,7 @@ func TestRetryAuthzFailure(t *testing.T) {
 				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 					if _, ok := obj.(*v1.Cluster); ok {
 						reads++
-						if reads == 4 {
+						if reads == tc.failingRead {
 							return fmt.Errorf("private parent load failure")
 						}
 					}

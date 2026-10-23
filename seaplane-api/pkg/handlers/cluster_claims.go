@@ -2,10 +2,13 @@ package handlers
 
 import (
 	"context"
+	"net/http"
 
 	"k8s.io/client-go/util/retry"
 
 	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
+	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/authz"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/clients/seaplanedb"
 )
 
@@ -241,4 +244,17 @@ func oidcConfigUsable(oidcConfig *seaplanev1alpha1.OidcConfig) bool {
 	}
 	return oidcConfig.Spec.Type != seaplanev1alpha1.OidcConfigTypeUnmanaged ||
 		oidcConfig.Status.Phase == seaplanev1alpha1.OidcConfigPhaseReady
+}
+
+// authorizeCreate checks CreateCluster before any lookup, so a caller without it learns nothing about references.
+func (h *ClusterHandler) authorizeCreate(w http.ResponseWriter, r *http.Request, req *public.Cluster, accountID string) bool {
+	return validateCreateLabels(w, req.Labels, h.logger) && authorizeResource(w, r, h.authorizer, h.logger, authz.CreateCluster, candidateResource(h.clusterResource(seaplanedb.PublicToInternalCluster(req, accountID)), req.Name))
+}
+
+// authorizeReferences requires Describe on each referenced resource before it is claimed, so a forbid on it holds.
+func (h *ClusterHandler) authorizeReferences(w http.ResponseWriter, r *http.Request, dns *seaplanev1alpha1.DNSReservation, oidc *seaplanev1alpha1.OidcConfig) bool {
+	if dns != nil && !authorizeResource(w, r, h.authorizer, h.logger, authz.DescribeDNSReservation, dnsReservationResource(dns)) {
+		return false
+	}
+	return oidc == nil || authorizeResource(w, r, h.authorizer, h.logger, authz.DescribeOIDCConfig, oidcConfigResource(oidc))
 }

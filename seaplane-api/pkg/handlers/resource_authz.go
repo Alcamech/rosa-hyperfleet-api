@@ -57,11 +57,11 @@ func namespaceAccount(namespace string) string {
 	return account
 }
 
-func (h *OidcConfigHandler) oidcConfigResource(oc *v1.OidcConfig) authz.Resource {
+func oidcConfigResource(oc *v1.OidcConfig) authz.Resource {
 	return authz.Resource{Kind: authz.OIDCConfig, ID: string(oc.UID), AccountID: namespaceAccount(oc.Namespace), Labels: maps.Clone(oc.Labels)}
 }
 
-func (h *DNSReservationHandler) dnsReservationResource(res *v1.DNSReservation) authz.Resource {
+func dnsReservationResource(res *v1.DNSReservation) authz.Resource {
 	return authz.Resource{Kind: authz.DNSReservation, ID: string(res.UID), AccountID: namespaceAccount(res.Namespace), Labels: maps.Clone(res.Labels)}
 }
 

@@ -130,6 +130,8 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 // Request body: public.Cluster (K8s-native). Name comes from metadata.name;
 // accountID is taken from the authenticated identity (middleware), not from the body.
 func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
+	r, finish := withAuthzOutcome(r)
+	defer finish()
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
 
@@ -145,6 +147,10 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.authorizeCreate(w, r, req, accountID) {
+		return
+	}
+
 	var dnsReservation *seaplanev1alpha1.DNSReservation
 	var apiErr *APIError
 	if req.Spec.DNSReservationID != "" {
@@ -157,6 +163,9 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	oidcConfig, apiErr := h.resolveOidcConfig(ctx, accountID, req.Spec.OidcConfigID)
 	if apiErr != nil {
 		writeAPIError(w, *apiErr, h.logger)
+		return
+	}
+	if !h.authorizeReferences(w, r, dnsReservation, oidcConfig) {
 		return
 	}
 
@@ -188,9 +197,6 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if oidcConfig != nil {
 		req.Spec.OidcConfigID = string(oidcConfig.UID)
 	}
-	if !validateCreateLabels(w, req.Labels, h.logger) {
-		return
-	}
 	cr := seaplanedb.PublicToInternalCluster(req, accountID)
 	cr.Spec.HostedClusterName = req.Name
 	if dnsReservation != nil {
@@ -213,9 +219,6 @@ func (h *ClusterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		cr.Spec.HostedCluster.IssuerURL = oidcConfig.Spec.IssuerUrl
 	}
 
-	if !authorizeResource(w, r, h.authorizer, h.logger, authz.CreateCluster, candidateResource(h.clusterResource(cr), cr.Name)) {
-		return
-	}
 	// Reserve the queue only after validation and Cedar authorization succeed.
 	queueClaimCreated := false
 	if queueURL != "" {
@@ -508,6 +511,10 @@ func (h *ClusterHandler) updateOnce(w http.ResponseWriter, r *http.Request, clus
 		}
 		h.logger.Error("failed to get cluster for update", "error", err, "account_id", accountID, "cluster_name", clusterName)
 		writeAPIError(w, ErrClusterUpdateFailed, h.logger)
+		return nil, errResponded
+	}
+	// Authorize before validation, so a caller without UpdateCluster learns no field details.
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.UpdateCluster, h.clusterResource(cr)) {
 		return nil, errResponded
 	}
 	if errs := h.validator.ValidateUpdate(rawSpec, &cr.Spec, featuregate.Default); errs != nil {

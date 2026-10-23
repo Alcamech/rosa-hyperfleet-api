@@ -176,13 +176,13 @@ func (h *NodePoolHandler) Labels(w http.ResponseWriter, r *http.Request) {
 }
 func (h *OidcConfigHandler) Labels(w http.ResponseWriter, r *http.Request) {
 	resourceLabels(w, r, h.authorizer, h.logger, h.db.GetOidcConfig, h.db.UpdateOidcConfigObject, func(_ context.Context, obj *seaplanev1alpha1.OidcConfig) (authz.Resource, error) {
-		return h.oidcConfigResource(obj), nil
+		return oidcConfigResource(obj), nil
 	})
 }
 func (h *DNSReservationHandler) Labels(w http.ResponseWriter, r *http.Request) {
 	resourceLabels(w, r, h.authorizer, h.logger, func(ctx context.Context, name string) (*seaplanev1alpha1.DNSReservation, error) {
 		return h.db.GetDNSReservation(ctx, name)
 	}, h.db.UpdateDNSReservation, func(_ context.Context, obj *seaplanev1alpha1.DNSReservation) (authz.Resource, error) {
-		return h.dnsReservationResource(obj), nil
+		return dnsReservationResource(obj), nil
 	})
 }

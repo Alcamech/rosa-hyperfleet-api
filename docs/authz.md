@@ -75,22 +75,22 @@ fails the request, even when Cedar would allow.
 
 ## Operations
 
-| Resource       | Operation             | Required actions                                                     |
-| -------------- | --------------------- | -------------------------------------------------------------------- |
-| Cluster        | List                  | ListClusters                                                         |
-| Cluster        | Get                   | DescribeCluster                                                      |
-| Cluster        | Create                | CreateCluster                                                        |
-| Cluster        | PUT / PATCH           | UpdateCluster + changed-field actions                                |
-| Cluster        | Delete                | DeleteCluster                                                        |
-| NodePool       | List                  | ListNodePools                                                        |
-| NodePool       | Get                   | DescribeNodePool                                                     |
-| NodePool       | Create                | CreateNodePool                                                       |
-| NodePool       | PUT / PATCH           | UpdateNodePool + changed-field actions                               |
-| NodePool       | Delete                | DeleteNodePool                                                       |
-| OIDCConfig     | List                  | ListOIDCConfigs                                                      |
-| OIDCConfig     | Get / Create / Delete | DescribeOIDCConfig / CreateOIDCConfig / DeleteOIDCConfig             |
-| DNSReservation | List                  | ListDNSReservations                                                  |
-| DNSReservation | Get / Create / Delete | DescribeDNSReservation / CreateDNSReservation / DeleteDNSReservation |
+| Resource       | Operation             | Required actions                                                         |
+| -------------- | --------------------- | ------------------------------------------------------------------------ |
+| Cluster        | List                  | ListClusters                                                             |
+| Cluster        | Get                   | DescribeCluster                                                          |
+| Cluster        | Create                | CreateCluster; Describe on each referenced OIDCConfig and DNSReservation |
+| Cluster        | PUT / PATCH           | UpdateCluster + changed-field actions                                    |
+| Cluster        | Delete                | DeleteCluster                                                            |
+| NodePool       | List                  | ListNodePools                                                            |
+| NodePool       | Get                   | DescribeNodePool                                                         |
+| NodePool       | Create                | CreateNodePool                                                           |
+| NodePool       | PUT / PATCH           | UpdateNodePool + changed-field actions                                   |
+| NodePool       | Delete                | DeleteNodePool                                                           |
+| OIDCConfig     | List                  | ListOIDCConfigs                                                          |
+| OIDCConfig     | Get / Create / Delete | DescribeOIDCConfig / CreateOIDCConfig / DeleteOIDCConfig                 |
+| DNSReservation | List                  | ListDNSReservations                                                      |
+| DNSReservation | Get / Create / Delete | DescribeDNSReservation / CreateDNSReservation / DeleteDNSReservation     |
 
 Changed-field actions, required in addition to the base update:
 
@@ -105,6 +105,8 @@ Rules:
 
 - Lists return every item in full and count it in `total`. List permission
   alone is enough; Describe is not checked per item.
+- Create and update check the base action before any lookup or validation, so a
+  caller without it learns nothing about referenced resources or fields.
 - Updates compare the stored spec with the merged object to be written. All
   required actions must allow before any write.
 - Service-set fields never change on update. An exact echo is accepted;

@@ -101,7 +101,7 @@ func (h *DNSReservationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reservation := seaplanedb.PublicToInternalDNSReservation(&req, accountID)
-	if !authorizeResource(w, r, h.authorizer, h.logger, authz.CreateDNSReservation, candidateResource(h.dnsReservationResource(reservation), reservation.Name)) {
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.CreateDNSReservation, candidateResource(dnsReservationResource(reservation), reservation.Name)) {
 		return
 	}
 	reservation.Status.Phase = "Pending"
@@ -133,7 +133,7 @@ func (h *DNSReservationHandler) Get(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, ErrDNSReservationGetFailed, h.logger)
 		return
 	}
-	if !authorizeResource(w, r, h.authorizer, h.logger, authz.DescribeDNSReservation, h.dnsReservationResource(reservation)) {
+	if !authorizeResource(w, r, h.authorizer, h.logger, authz.DescribeDNSReservation, dnsReservationResource(reservation)) {
 		return
 	}
 	if err := api.Write(w, http.StatusOK, seaplanedb.InternalToPublicDNSReservation(reservation)); err != nil {
@@ -157,7 +157,7 @@ func (h *DNSReservationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		// Authorize each attempt's stored snapshot before revealing its claim state.
-		if !authorizeResource(w, r, h.authorizer, h.logger, authz.DeleteDNSReservation, h.dnsReservationResource(reservation)) {
+		if !authorizeResource(w, r, h.authorizer, h.logger, authz.DeleteDNSReservation, dnsReservationResource(reservation)) {
 			return errResponded
 		}
 		if reservation.Labels["seaplane.io/claimed-by-cluster-uid"] != "" {

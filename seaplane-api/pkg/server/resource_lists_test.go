@@ -197,3 +197,57 @@ func TestDeniedClusterCreateDoesNotClaimOIDC(t *testing.T) {
 		t.Fatalf("claim changed: %+v %v", stored, err)
 	}
 }
+
+// Create checks CreateCluster before any lookup, then Describe on each referenced
+// object before claiming it, so a forbid on the reference holds.
+func TestClusterCreateAuthorizesReferences(t *testing.T) {
+	for _, tc := range []struct {
+		name, spec string
+		policies   []string
+		want       int
+	}{
+		{"no create grant hides reference existence", `{"dnsReservationId":"missing"}`, nil, 403},
+		{"create alone cannot claim OIDC config", `{"oidcConfigId":"config-uid"}`, []string{actionPermit("CreateCluster")}, 403},
+		{"create alone cannot claim DNS reservation", `{"dnsReservationId":"zone-uid"}`, []string{actionPermit("CreateCluster")}, 403},
+		{"describe on the OIDC config allows the claim", `{"oidcConfigId":"config-uid"}`, []string{actionPermit("CreateCluster"), actionPermit("DescribeOIDCConfig")}, 201},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			objects := resourceFixtures()
+			oc := objects[2].(*v1.OidcConfig)
+			oc.Spec.Type = v1.OidcConfigTypeManaged
+			oc.Spec.IssuerUrl = "https://example.com/config"
+			dns := objects[3].(*v1.DNSReservation)
+			dns.Status.Phase, dns.Status.BaseDomain, dns.Status.InternalHostedClusterName = v1.DNSReservationPhaseReady, "example.com", "new"
+			writes := 0
+			hooks := interceptor.Funcs{Create: func(ctx context.Context, c client.WithWatch, o client.Object, opts ...client.CreateOption) error {
+				writes++
+				return c.Create(ctx, o, opts...)
+			}}
+			srv, _ := resourceServer(t, tc.policies, hooks, objects...)
+			w := resourceRequest(srv, "POST", "clusters", `{"metadata":{"name":"new"},"spec":`+tc.spec+`}`)
+			if w.Code != tc.want || (tc.want == 403 && writes != 0) {
+				t.Fatalf("want %d (writes on deny 0), got %d writes=%d: %s", tc.want, w.Code, writes, w.Body.String())
+			}
+		})
+	}
+}
+
+// Updates check the base action against the stored object before returning validation details.
+func TestUpdateAuthorizesBeforeValidation(t *testing.T) {
+	srv, _ := resourceServer(t, nil, interceptor.Funcs{}, resourceFixtures()...)
+	w := resourceRequest(srv, "PATCH", "clusters/parent", `{"spec":{"accountId":"222222222222"}}`)
+	if w.Code != 403 {
+		t.Fatalf("caller without UpdateCluster got %d instead of 403: %s", w.Code, w.Body.String())
+	}
+}
+
+// OIDC create checks CreateOIDCConfig before probing the global issuer index,
+// so a caller without it cannot learn which issuers are already registered.
+func TestOidcCreateAuthorizesBeforeIssuerProbe(t *testing.T) {
+	taken := &v1.Index{ObjectMeta: metav1.ObjectMeta{Namespace: v1.OidcIssuerReservationsNamespace, Name: v1.IssuerURLIndexName("https://example.com")}}
+	srv, _ := resourceServer(t, nil, interceptor.Funcs{}, append(resourceFixtures(), taken)...)
+	w := resourceRequest(srv, "POST", "oidc_configs", `{"metadata":{"name":"new"},"spec":{"type":"unmanaged","issuerUrl":"https://example.com","secretArn":"secret","installerRoleArn":"role"}}`)
+	if w.Code != 403 {
+		t.Fatalf("caller without CreateOIDCConfig got %d instead of 403: %s", w.Code, w.Body.String())
+	}
+}

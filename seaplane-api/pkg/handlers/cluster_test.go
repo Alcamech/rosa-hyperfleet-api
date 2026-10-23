@@ -653,7 +653,7 @@ func TestClusterHandler_Create_OidcConfigNotFound(t *testing.T) {
 	scheme := newTestScheme()
 	fc := newClusterTestClientBuilder(scheme).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterAdminPermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -686,7 +686,7 @@ func TestClusterHandler_Create_OidcConfigLookupFailure(t *testing.T) {
 	scheme := newTestScheme()
 	fc := &oidcConfigListFailingClient{Client: newClusterTestClientBuilder(scheme).Build()}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterAdminPermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -709,7 +709,7 @@ func TestClusterHandler_Create_OidcConfigWrongAccount(t *testing.T) {
 		testReadyOidcConfig(testOidcConfigID, otherAccount, testOidcConfigIssuerURL),
 	).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterAdminPermit), logger)
 
 	// The OidcConfig exists but belongs to a different account; it must not
 	// be resolvable by a caller in testAccountID.
@@ -730,7 +730,7 @@ func TestClusterHandler_Create_UnmanagedOidcConfigNotReady(t *testing.T) {
 	pending.Status.Phase = seaplanev1alpha1.OidcConfigPhasePending
 	fc := newClusterTestClientBuilder(scheme).WithObjects(pending).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterAdminPermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -791,7 +791,7 @@ func TestClusterHandler_Create_OidcConfigError_Rejected(t *testing.T) {
 		errored.Status.Phase = seaplanev1alpha1.OidcConfigPhaseError
 		fc := newClusterTestClientBuilder(scheme).WithObjects(errored).Build()
 		logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-		handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
+		handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterAdminPermit), logger)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("my-cluster", specWithOidcConfigID(testOidcConfigID))))
 		req = req.WithContext(testContext(testAccountID))
@@ -817,7 +817,7 @@ func TestClusterHandler_Create_OidcConfigAlreadyInUse(t *testing.T) {
 	fc := newClusterTestClientBuilder(scheme).WithObjects(oidcConfig, existingCluster).
 		WithStatusSubresource(oidcConfig).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterAdminPermit), logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v0/clusters", bytes.NewReader(clusterBody("new-cluster", specWithOidcConfigID(testOidcConfigID))))
 	req = req.WithContext(testContext(testAccountID))
@@ -1607,7 +1607,7 @@ func TestClusterHandler_Update_RejectsOidcConfigIdChange(t *testing.T) {
 	cr.Spec.OidcConfigID = testOidcConfigID
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterAdminPermit), logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"spec": map[string]any{
@@ -1637,7 +1637,7 @@ func TestClusterHandler_Update_RejectsOidcConfigIdAddition(t *testing.T) {
 	cr := testClusterCR("cluster-123", "test-cluster", testAccountID)
 	fc := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).Build()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterReadPermit), logger)
+	handler := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, clusterAuthorizer(t, clusterAdminPermit), logger)
 
 	body, _ := json.Marshal(map[string]any{
 		"spec": map[string]any{
