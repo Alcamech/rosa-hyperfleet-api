@@ -329,6 +329,7 @@ func TestNodePoolHandler_List_InvalidSelector(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := newTestNodePoolHandler(t)
+			registry := testAuthzMetrics(t)
 			req := httptest.NewRequest(http.MethodGet, "/api/v0/nodepools?"+tt.query, nil)
 			req = req.WithContext(testContext(testAccountID))
 			w := httptest.NewRecorder()
@@ -341,6 +342,7 @@ func TestNodePoolHandler_List_InvalidSelector(t *testing.T) {
 			if message := decodeErrorMessage(t, w); !strings.Contains(message, tt.wantErrCode) {
 				t.Errorf("error message = %q, want code %s", message, tt.wantErrCode)
 			}
+			assertNoAuthzMetrics(t, registry)
 		})
 	}
 }

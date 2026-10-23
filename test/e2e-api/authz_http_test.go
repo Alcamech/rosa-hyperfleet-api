@@ -182,8 +182,8 @@ func TestAuthzHTTP(t *testing.T) {
 		{"list-only cannot describe", authzUser("list-only"), authzAccount, "/" + blueOneName, "deny", http.StatusForbidden},
 		{"describe-only cannot list", authzUser("describe-only"), authzAccount, "", "deny", http.StatusForbidden},
 		{"describe-only permit", authzUser("describe-only"), authzAccount, "/" + blueOneName, "allow", http.StatusOK},
-		{"broad foreign get", broad, authzAccount, "/" + foreignName, "deny", http.StatusNotFound},
-		{"broad missing get", broad, authzAccount, "/missing-cluster", "deny", http.StatusNotFound},
+		{"broad foreign get", broad, authzAccount, "/" + foreignName, "", http.StatusNotFound},
+		{"broad missing get", broad, authzAccount, "/missing-cluster", "", http.StatusNotFound},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			operation := "DescribeCluster"
@@ -330,7 +330,7 @@ func TestAuthzHTTP(t *testing.T) {
 		response := authzRawRequest(t, request)
 		authzAssertStatus(t, response, http.StatusForbidden)
 		authzMetricDelta(t, before, authzMetrics(t, process), "DescribeCluster", "deny", "")
-		response = authzMeasuredGet(t, process, authzClustersPath+"/"+foreignName+"?accountId="+authzAccount+"&example.com%2Fteam=blue", broad, authzAccount, "DescribeCluster", "deny")
+		response = authzMeasuredGet(t, process, authzClustersPath+"/"+foreignName+"?accountId="+authzAccount+"&example.com%2Fteam=blue", broad, authzAccount, "DescribeCluster", "")
 		authzAssertStatus(t, response, http.StatusNotFound)
 		var stored seaplanev1.Cluster
 		if err := store.Get(context.Background(), client.ObjectKey{Namespace: "account-" + authzAccount, Name: authzStoredClusters[0].name}, &stored); err != nil || stored.Annotations[authzTeamLabel] != "red" {

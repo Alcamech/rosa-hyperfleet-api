@@ -89,6 +89,12 @@ func clusterAuthzFixture(t *testing.T, fc client.Client, a *authz.Authorizer) (*
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logs, nil)).With("region", clusterAuthzRegion)
 	h := NewClusterHandler(seaplanedb.NewClientFrom(fc, logger), "", 0, a, logger)
+	return h, testAuthzMetrics(t), &logs
+}
+
+// testAuthzMetrics points authz.DefaultMetrics at a fresh registry for one test.
+func testAuthzMetrics(t *testing.T) *prometheus.Registry {
+	t.Helper()
 	registry := prometheus.NewRegistry()
 	metrics, err := authz.NewMetrics(registry)
 	if err != nil {
@@ -97,7 +103,14 @@ func clusterAuthzFixture(t *testing.T, fc client.Client, a *authz.Authorizer) (*
 	original := authz.DefaultMetrics
 	authz.DefaultMetrics = metrics
 	t.Cleanup(func() { authz.DefaultMetrics = original })
-	return h, registry, &logs
+	return registry
+}
+
+func assertNoAuthzMetrics(t *testing.T, registry *prometheus.Registry) {
+	t.Helper()
+	if families, err := registry.Gather(); err != nil || len(families) != 0 {
+		t.Fatalf("want no authorization outcome, got %v (%v)", families, err)
+	}
 }
 
 // The fake still applies real storage selectors. Only its output order is controlled.
@@ -380,7 +393,7 @@ func TestClusterAuthz_ForeignAndMissing(t *testing.T) {
 			h, registry, _ := clusterAuthzFixture(t, fc, clusterAuthorizer(t, clusterReadPermit))
 			w := clusterAuthzRequest(h, authz.DescribeCluster, "", id)
 			assertClusterAuthzStatus(t, w, http.StatusNotFound, ErrClusterGetNotFound.Code+": "+ErrClusterGetNotFound.Message)
-			assertClusterAuthzMetrics(t, registry, authz.DescribeCluster, authz.OutcomeDeny, authz.StageNone)
+			assertNoAuthzMetrics(t, registry)
 		})
 	}
 }

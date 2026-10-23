@@ -77,6 +77,11 @@ func validateNodePoolEC2InstanceMetadataHttpTokens(value public.EC2InstanceMetad
 func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := middleware.GetAccountID(ctx)
+	clusterUID, apiErr := listClusterUID(r.URL.Query())
+	if apiErr != nil {
+		writeAPIError(w, *apiErr, h.logger)
+		return
+	}
 	prepared, attempt := authorizeCollection(w, r, h.authorizer, h.logger, authz.ListNodePools, authz.Resource{Kind: authz.Collection, CollectionKind: authz.NodePool, AccountID: accountID})
 	if prepared == nil {
 		return
@@ -84,11 +89,6 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
-	clusterUID, apiErr := listClusterUID(r.URL.Query())
-	if apiErr != nil {
-		writeAPIError(w, *apiErr, h.logger)
-		return
-	}
 
 	limit := 50
 	offset := 0

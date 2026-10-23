@@ -389,8 +389,8 @@ func (h *ClusterHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	cr, err := h.db.GetCluster(ctx, clusterName)
 	if err != nil {
+		// Not found is not an authorization outcome; other kinds record nothing either.
 		if seaplanedb.IsNotFound(err) {
-			attempt.Finish(authz.OutcomeDeny, authz.StageNone)
 			writeAPIError(w, ErrClusterGetNotFound, h.logger)
 			return
 		}
