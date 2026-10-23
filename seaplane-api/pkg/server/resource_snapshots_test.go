@@ -55,7 +55,7 @@ func resourceServer(t *testing.T, customer []string, hooks interceptor.Funcs, ob
 	if err := v1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	// FleetDB assigns the UID at create time; controller-runtime's fake does not.
+	// seaplane-db assigns the UID at create time; controller-runtime's fake does not.
 	create := hooks.Create
 	hooks.Create = func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
 		obj.SetUID(types.UID(uuid.NewString()))

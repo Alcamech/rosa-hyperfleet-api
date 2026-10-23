@@ -167,7 +167,7 @@ transfer.
 ## Entities
 
 Namespace `Seaplane`. The schema is embedded from
-`seaplane-api/pkg/authz/testdata/seaplane.cedarschema`.
+`seaplane-api/pkg/authz/schema/seaplane.cedarschema`.
 
 | Entity         | UID                                                                     | Parents                        |
 | -------------- | ----------------------------------------------------------------------- | ------------------------------ |
@@ -182,7 +182,7 @@ Namespace `Seaplane`. The schema is embedded from
   service region.
 - Customer labels (annotations) are entity tags; system labels are not.
   Use `hasTag` before `getTag`. Collections have no tags.
-- UIDs are FleetDB object UIDs. Create checks use the validated candidate name in
+- UIDs are seaplane-db object UIDs. Create checks use the validated candidate name in
   place of the UID, before any write.
 - Ownership comes from storage (`account-<accountID>` namespace, account label),
   never from the request. A NodePool's parent is its stored controller reference

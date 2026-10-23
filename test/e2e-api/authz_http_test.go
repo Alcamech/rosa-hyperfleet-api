@@ -46,7 +46,7 @@ const (
 	authzStopTimeout  = 10 * time.Second
 )
 
-// id is the FleetDB-assigned UID, recorded by authzSeedClusters.
+// id is the seaplane-db-assigned UID, recorded by authzSeedClusters.
 var authzStoredClusters = []struct {
 	id, name, account, team string
 }{
@@ -96,7 +96,7 @@ func TestAuthzHTTP(t *testing.T) {
 		t.Fatalf("API binary is not executable: %s (%v)", binary, err)
 	}
 	if _, err := exec.LookPath("podman"); err != nil {
-		t.Fatal("Podman is required by FleetDB testinfra: ", err)
+		t.Fatal("Podman is required by seaplane-db testinfra: ", err)
 	}
 	authzClearAWS(t)
 	bundle, err := os.ReadFile("testdata/authz-http.json")
@@ -718,7 +718,7 @@ func authzDetailedIDs(clusters []public.Cluster) []string {
 	return ids
 }
 
-// authzSorted orders FleetDB UIDs like the list helpers do.
+// authzSorted orders seaplane-db UIDs like the list helpers do.
 func authzSorted(ids ...string) []string {
 	slices.Sort(ids)
 	return ids

@@ -11,7 +11,7 @@ import (
 	"github.com/cedar-policy/cedar-go/x/exp/schema/validate"
 )
 
-//go:embed testdata/seaplane.cedarschema
+//go:embed schema/seaplane.cedarschema
 var schemaContent []byte
 
 // loadSchema resolves the embedded Cedar schema and creates its strict validator.

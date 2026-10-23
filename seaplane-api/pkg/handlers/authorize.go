@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"maps"
 	"net/http"
 	"time"
 
-	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/api"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/authz"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/middleware"
@@ -18,16 +16,6 @@ var (
 	errAuthzDenied = api.APIError{Code: "AUTHZ-DENIED-001", HTTPStatus: http.StatusForbidden, Message: "Access denied"}
 	errAuthzFailed = api.APIError{Code: "AUTHZ-FAILED-001", HTTPStatus: http.StatusInternalServerError, Message: "Authorization failed"}
 )
-
-func (h *ClusterHandler) clusterResource(cr *seaplanev1alpha1.Cluster) authz.Resource {
-	// FleetDB's UID identifies this object incarnation independently of its name.
-	return authz.Resource{
-		Kind:      authz.Cluster,
-		ID:        string(cr.UID),
-		AccountID: cr.Labels["seaplane.io/account-id"],
-		Labels:    maps.Clone(cr.Annotations),
-	}
-}
 
 func writeResourceAuthzError(w http.ResponseWriter, r *http.Request, attempt *authz.Attempt, operation authz.Action, err error, logger *slog.Logger) {
 	stage, action := authz.StageEvaluation, operation

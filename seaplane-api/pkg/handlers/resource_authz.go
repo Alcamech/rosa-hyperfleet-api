@@ -13,10 +13,20 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Creation is authorized before FleetDB assigns a UID.
+// Creation is authorized before seaplane-db assigns a UID.
 func candidateResource(resource authz.Resource, name string) authz.Resource {
 	resource.ID = name
 	return resource
+}
+
+func (h *ClusterHandler) clusterResource(cr *v1.Cluster) authz.Resource {
+	// The seaplane-db UID identifies this object incarnation independently of its name.
+	return authz.Resource{
+		Kind:      authz.Cluster,
+		ID:        string(cr.UID),
+		AccountID: cr.Labels["seaplane.io/account-id"],
+		Labels:    maps.Clone(cr.Annotations),
+	}
 }
 
 func (h *NodePoolHandler) nodePoolResource(ctx context.Context, np *v1.NodePool) (authz.Resource, error) {

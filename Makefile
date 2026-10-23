@@ -106,7 +106,7 @@ help:
 	@echo "  test                 All tests (unit + integration)"
 	@echo "  test-unit            Unit tests: API + operator + codegen + clientset (no external services)"
 	@echo "  test-clientset       Clientset unit tests (transport, platform)"
-	@echo "  test-integration     Integration tests: FleetDB + operator (podman) + API handlers"
+	@echo "  test-integration     Integration tests: seaplane-db + operator (podman) + API handlers"
 	@echo "  test-api-int         API handler integration tests (build tag: integration)"
 	@echo "  test-e2e-api         E2E API"
 	@echo "  test-e2e-authz       Local HTTP authorization (Podman PostgreSQL 16, no AWS credentials)"
