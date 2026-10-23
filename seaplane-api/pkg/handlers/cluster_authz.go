@@ -73,6 +73,7 @@ func prepareResourceAuthz(r *http.Request, authorizer *authz.Authorizer) (*authz
 	}
 	prepared, err := authorizer.Prepare(r.Context(), authz.Identity{
 		AccountID: middleware.GetAccountID(r.Context()), CallerARN: middleware.GetCallerARN(r.Context()),
+		IsAllowlisted: middleware.IsAllowlisted(r.Context()),
 	}, authz.RequestContext{SourceIP: middleware.GetSourceIP(r.Context()), UserAgent: r.UserAgent(), RequestTime: time.Now()})
 	if shared != nil && err == nil {
 		shared.prepared = prepared

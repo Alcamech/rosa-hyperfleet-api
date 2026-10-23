@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -46,6 +47,7 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 	nodePoolHandler := apphandlers.NewNodePoolHandler(dbClient, authorizer, logger)
 	oidcConfigHandler := apphandlers.NewOidcConfigHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, authorizer, logger)
 	dnsReservationHandler := apphandlers.NewDNSReservationHandler(dbClient, authorizer, logger)
+	accountsHandler := apphandlers.NewAccountsHandler(dbClient, cfg.Regional.AccountID, logger)
 
 	// Create API router
 	apiRouter := mux.NewRouter()
@@ -104,7 +106,13 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 		apiRouter.Use(rl.Middleware)
 	}
 
-	apiRouter.Use(middleware.RequireIdentity(logger, authorizer.IsAccountRegistered))
+	apiRouter.Use(allowlistAccounts(authorizer, dbClient, logger))
+	apiRouter.Use(middleware.RequireIdentity(logger, func(ctx context.Context, accountID string) bool {
+		return authorizer.IsAccountRegistered(ctx, accountID) || middleware.IsAllowlisted(ctx)
+	}))
+
+	apiRouter.HandleFunc("/api/v0/accounts", accountsHandler.Enroll).Methods(http.MethodPost)
+	apiRouter.HandleFunc("/api/v0/accounts/{id}", accountsHandler.Unenroll).Methods(http.MethodDelete)
 
 	// Cluster routes
 	clusterRouter := apiRouter.PathPrefix("/api/v0/clusters").Subrouter()
@@ -253,3 +261,26 @@ func (s *Server) shutdown() error {
 	s.logger.Info("all servers stopped")
 	return nil
 }
+
+// allowlistAccounts marks requests from accounts outside the bundle that are on the
+// seaplane-db allowlist. The bundle stays authoritative: its accounts are never marked.
+// shortcut: one allowlist read per request for accounts outside the bundle; DynamoDB replaces it.
+func allowlistAccounts(authorizer *authz.Authorizer, db *seaplanedb.Client, logger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			accountID := middleware.GetAccountID(r.Context())
+			if db != nil && allowlistAccountPattern.MatchString(accountID) && !authorizer.IsAccountRegistered(r.Context(), accountID) {
+				enrolled, err := db.IsAccountEnrolled(r.Context(), accountID)
+				if err != nil {
+					// Fail closed: a lookup error leaves the request unmarked.
+					logger.Error("account allowlist lookup failed", "error", err, "account_id", accountID)
+				} else if enrolled {
+					r = r.WithContext(middleware.WithAllowlisted(r.Context()))
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+var allowlistAccountPattern = regexp.MustCompile(`^\d{12}$`)

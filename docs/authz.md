@@ -2,7 +2,8 @@
 
 The API evaluates Cedar in-process (`cedar-go v1.8.0`) against a configuration
 bundle loaded at startup. Every implemented resource operation requires an
-explicit grant. Enrollment and gateway authentication grant nothing.
+explicit grant. Bundle enrollment and gateway authentication grant nothing; the temporary
+account allowlist grants its accounts full access to their own resources.
 
 Not implemented: policy/attachment management, account linking,
 AccessEntry, `/authz/check`. Chart delivery and provisioning grants:
@@ -43,6 +44,13 @@ attachments:
 ```
 
 - `registeredAccounts`: accounts admitted to the API. Admission only.
+- Temporary allowlist: `POST /api/v0/accounts` (`{"accountId": "<id>"}`) and
+  `DELETE /api/v0/accounts/{id}` admit or revoke an account without a bundle
+  change. Only callers from the platform's own account (`AWS_ACCOUNT_ID`) may
+  call them; unset denies all. Both are idempotent and return 204. An
+  allowlisted account gets full access to its own resources (diagnostic ID
+  `allowlist/<account>`). Bundle accounts are never treated as allowlisted; a
+  lookup error denies. DynamoDB policy storage replaces this.
 - Each policy holds one Cedar statement, strictly validated against the schema.
 - An attachment's principal account must equal its policy's `ownerAccountID`.
 - `regional` attachments apply only in their region; `global` applies everywhere.

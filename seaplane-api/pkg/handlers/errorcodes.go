@@ -144,6 +144,13 @@ var (
 	ErrDNSReservationDeleteFailed   APIError
 )
 
+// Account allowlist error codes
+var (
+	ErrAccountsForbidden APIError
+	ErrAccountsInvalidID APIError
+	ErrAccountsFailed    APIError
+)
+
 // Info error codes
 var ErrInfoRegionalAccountUnavailable APIError
 
@@ -286,6 +293,11 @@ func init() {
 	ErrDNSReservationDeleteNotFound = APIError{Code: "DNSRESERVATIONS-MGMT-DELETE-001", HTTPStatus: http.StatusNotFound, Message: "DNS reservation not found"}
 	ErrDNSReservationDeleteClaimed = APIError{Code: "DNSRESERVATIONS-MGMT-DELETE-002", HTTPStatus: http.StatusConflict, Message: "Cannot delete a claimed DNS reservation"}
 	ErrDNSReservationDeleteFailed = APIError{Code: "DNSRESERVATIONS-MGMT-DELETE-003", HTTPStatus: http.StatusInternalServerError, Message: "Failed to delete DNS reservation"}
+
+	// Account allowlist
+	ErrAccountsForbidden = APIError{Code: "ACCOUNTS-MGMT-001", HTTPStatus: http.StatusForbidden, Message: "Only the platform account may manage the account allowlist"}
+	ErrAccountsInvalidID = APIError{Code: "ACCOUNTS-MGMT-002", HTTPStatus: http.StatusBadRequest, Message: "accountId must be a 12-digit AWS account ID"}
+	ErrAccountsFailed = APIError{Code: "ACCOUNTS-MGMT-003", HTTPStatus: http.StatusInternalServerError, Message: "Failed to update the account allowlist"}
 
 	// Info
 	ErrInfoRegionalAccountUnavailable = APIError{Code: "INFO-001", HTTPStatus: http.StatusServiceUnavailable, Message: "regional account ID is not configured"}

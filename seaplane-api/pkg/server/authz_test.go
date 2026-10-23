@@ -18,6 +18,7 @@ import (
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/config"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/middleware"
 	"github.com/prometheus/client_golang/prometheus"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -207,5 +208,48 @@ func TestServerRateLimitBeforeAdmission(t *testing.T) {
 	}
 	if !reflect.DeepEqual(before, authzMetricSamples(t)) {
 		t.Fatal("admission rejection or rate-limited request counted as authorization attempt")
+	}
+}
+
+// Allowlisted accounts get full access to their own resources until revoked.
+func TestServerAccountAllowlist(t *testing.T) {
+	cfg := config.NewConfig()
+	cfg.Regional.AccountID = "123456789012"
+	scheme := runtime.NewScheme()
+	if err := seaplanev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db := seaplanedb.NewClientFrom(fake.NewClientBuilder().WithScheme(scheme).Build(), logger)
+	srv, err := newConfiguredServer(t, cfg, db, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(method, path, account, body string) int {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set(middleware.HeaderAccountID, account)
+		req.Header.Set(middleware.HeaderCallerARN, "arn:aws:iam::"+account+":user/test")
+		w := httptest.NewRecorder()
+		srv.apiServer.Handler.ServeHTTP(w, req)
+		return w.Code
+	}
+	const customer = "333333333333"
+	if code := call(http.MethodGet, "/api/v0/clusters", customer, ""); code != http.StatusForbidden {
+		t.Fatalf("unenrolled account: %d", code)
+	}
+	if code := call(http.MethodPost, "/api/v0/accounts", "123456789012", `{"accountId":"`+customer+`"}`); code != http.StatusNoContent {
+		t.Fatalf("enroll: %d", code)
+	}
+	if code := call(http.MethodGet, "/api/v0/clusters", customer, ""); code != http.StatusOK {
+		t.Fatalf("allowlisted account not granted: %d", code)
+	}
+	if code := call(http.MethodDelete, "/api/v0/accounts/"+customer, "123456789012", ""); code != http.StatusNoContent {
+		t.Fatalf("revoke: %d", code)
+	}
+	if code := call(http.MethodGet, "/api/v0/clusters", customer, ""); code != http.StatusForbidden {
+		t.Fatalf("revoked account still granted: %d", code)
 	}
 }

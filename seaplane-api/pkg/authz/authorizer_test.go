@@ -148,7 +148,7 @@ unless { resource.hasTag("example.com/blocked") };`
 
 func TestPrepareRejects(t *testing.T) {
 	a := fixtureAuthorizer(t, bundleFixture())
-	identities := []Identity{{"123", userARN}, {"", userARN}, {accountID, "arn:aws:iam::210987654321:user/alice"}}
+	identities := []Identity{{AccountID: "123", CallerARN: userARN}, {AccountID: "", CallerARN: userARN}, {AccountID: accountID, CallerARN: "arn:aws:iam::210987654321:user/alice"}}
 	for _, arn := range []string{
 		"", "arn:aws-us-gov:iam::123456789012:user/alice", "arn:aws:s3::123456789012:user/alice", "arn:aws:iam:us-east-1:123456789012:user/alice",
 		"arn:aws:iam::123:user/alice", "arn:aws:iam::123456789012:root", "arn:aws:iam::123456789012:role/readers",
@@ -353,5 +353,32 @@ func TestResourceEntities(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Allowlisted callers get full access to their own account's resources, and nothing beyond it.
+func TestAllowlistedFullAccess(t *testing.T) {
+	a := fixtureAuthorizer(t, map[string]any{"formatVersion": 1, "registeredAccounts": []string{}, "policies": []any{}, "attachments": []any{}})
+	id := testIdentity(userARN)
+	if decide(t, a, id, DeleteCluster, testCluster()).Allowed {
+		t.Fatal("caller without grants was allowed")
+	}
+	id.IsAllowlisted = true
+	for _, check := range []struct {
+		action   Action
+		resource Resource
+	}{{DeleteCluster, testCluster()}, {ListClusters, testCollection()}, {LabelResource, testCluster()}} {
+		if d := decide(t, a, id, check.action, check.resource); !d.Allowed || len(d.Provenance) != 1 || d.Provenance[0].DiagnosticID != "allowlist/"+accountID {
+			t.Fatalf("%s: allowlisted caller not granted by the allowlist: %+v", check.action, d)
+		}
+	}
+	foreign := testCluster()
+	foreign.AccountID = "999999999999"
+	p, err := a.Prepare(t.Context(), id, testRequestContext())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Check(t.Context(), DescribeCluster, foreign); err == nil {
+		t.Fatal("allowlist grant reached another account's resource")
 	}
 }

@@ -59,7 +59,11 @@ func LoadConfig(path, serviceRegion string) (*Authorizer, error) {
 	if err != nil {
 		return nil, newFailure(StageParsing, err)
 	}
-	authorizer := &Authorizer{bundleHash: bundleHash, region: serviceRegion, accounts: make(map[string]struct{}), model: model, validator: v, evaluate: nativeEvaluate}
+	allowlist, err := checkedPolicy(`permit(principal, action, resource);`, "allowlist", v)
+	if err != nil {
+		return nil, newFailure(StageParsing, err)
+	}
+	authorizer := &Authorizer{bundleHash: bundleHash, region: serviceRegion, accounts: make(map[string]struct{}), allowlist: allowlist, model: model, validator: v, evaluate: nativeEvaluate}
 	if err := authorizer.addBundle(bundle, bundleHash); err != nil {
 		return nil, err
 	}

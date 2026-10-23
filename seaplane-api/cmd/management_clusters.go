@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var mcAccountPattern = regexp.MustCompile(`^\d{12}$`)
+var accountIDPattern = regexp.MustCompile(`^\d{12}$`)
 
 // managementClusters parses MANAGEMENT_CLUSTERS, "name:account" entries separated
 // by commas (the regional Terraform format), into the clusters to register here.
@@ -24,7 +24,7 @@ func managementClusters(value, region string) ([]*seaplanev1alpha1.ManagementClu
 			continue
 		}
 		name, account, ok := strings.Cut(entry, ":")
-		if !ok || name == "" || !mcAccountPattern.MatchString(account) {
+		if !ok || name == "" || !accountIDPattern.MatchString(account) {
 			return nil, fmt.Errorf("invalid MANAGEMENT_CLUSTERS entry %q: want name:12-digit-account", entry)
 		}
 		clusters = append(clusters, &seaplanev1alpha1.ManagementCluster{

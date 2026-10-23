@@ -10,6 +10,8 @@ import (
 type Identity struct {
 	AccountID string
 	CallerARN string
+	// IsAllowlisted grants full access to the account's own resources (temporary allowlist).
+	IsAllowlisted bool
 }
 
 type Action string

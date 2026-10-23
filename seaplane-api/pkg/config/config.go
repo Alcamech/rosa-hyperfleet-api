@@ -34,6 +34,8 @@ type RegionalConfig struct {
 	DefaultClusterExpiration time.Duration
 	// AWSRegion is the fixed service region used for authorization and logs.
 	AWSRegion string
+	// AccountID is the platform's own AWS account, the only caller of the account allowlist.
+	AccountID string
 }
 
 type ServerConfig struct {

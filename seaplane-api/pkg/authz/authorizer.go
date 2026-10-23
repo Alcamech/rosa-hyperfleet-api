@@ -18,6 +18,7 @@ type evaluator func(*cedar.PolicySet, cedar.EntityMap, cedar.Request) (cedar.Dec
 type Authorizer struct {
 	bundleHash string
 	customer   []policyAttachment
+	allowlist  *cedar.Policy
 	region     string
 	accounts   map[string]struct{}
 	model      *resolved.Schema
@@ -98,6 +99,12 @@ func (a *Authorizer) Prepare(ctx context.Context, id Identity, req RequestContex
 			prepared.entities[role] = cedar.Entity{UID: role, Attributes: attrs}
 			parents = append(parents, role)
 		}
+	}
+	// Checks pin resources to the caller's account, so this grant covers only its own resources.
+	if id.IsAllowlisted {
+		diagnosticID := cedar.PolicyID("allowlist/" + id.AccountID)
+		prepared.policies.Add(diagnosticID, a.allowlist)
+		prepared.provenance[diagnosticID] = Provenance{DiagnosticID: string(diagnosticID), PolicyID: "allowlist", BundleHash: a.bundleHash}
 	}
 	prepared.entities[prepared.principal] = cedar.Entity{UID: prepared.principal, Parents: cedar.NewEntityUIDSet(parents...), Attributes: attrs}
 	if err := prepared.validator.Entities(prepared.entities); err != nil {

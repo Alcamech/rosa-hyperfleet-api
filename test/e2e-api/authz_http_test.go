@@ -276,6 +276,38 @@ func TestAuthzHTTP(t *testing.T) {
 			t.Errorf("list-only got %d items, details for %v", len(items), detailed)
 		}
 	})
+	t.Run("account allowlist grants and revokes in seaplane-db", func(t *testing.T) {
+		const newcomer = "333333333333"
+		send := func(method, path, account, body string) *APIResponse {
+			request, err := http.NewRequest(method, process.apiURL+path, strings.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Header.Set("X-Amz-Account-Id", account)
+			request.Header.Set("X-Amz-Caller-Arn", "arn:aws:iam::"+account+":user/allowlist")
+			return authzRawRequest(t, request)
+		}
+		unregistered := func() bool {
+			return bytes.Contains(send(http.MethodGet, authzClustersPath, newcomer, "").Body, []byte("Account is not registered"))
+		}
+		if !unregistered() {
+			t.Fatal("newcomer admitted before enrollment")
+		}
+		authzAssertStatus(t, send(http.MethodPost, "/api/v0/accounts", newcomer, `{"accountId":"`+newcomer+`"}`), http.StatusForbidden)
+		if code := send(http.MethodPost, "/api/v0/accounts", authzAccount, `{"accountId":"`+newcomer+`"}`).StatusCode; code != http.StatusNoContent {
+			t.Fatalf("enroll status = %d, want 204", code)
+		}
+		// Allowlisted accounts get full access to their own resources.
+		if code := send(http.MethodGet, authzClustersPath, newcomer, "").StatusCode; code != http.StatusOK {
+			t.Fatalf("allowlisted newcomer list status = %d, want 200", code)
+		}
+		if code := send(http.MethodDelete, "/api/v0/accounts/"+newcomer, authzAccount, "").StatusCode; code != http.StatusNoContent {
+			t.Fatalf("revoke status = %d, want 204", code)
+		}
+		if !unregistered() {
+			t.Fatal("revoked newcomer still admitted")
+		}
+	})
 	t.Run("broad list still excludes foreign account", func(t *testing.T) {
 		response := authzMeasuredGet(t, process, authzClustersPath, broad, authzAccount, "ListClusters", "allow")
 		items := authzReadList(t, response, 4, 50, 0)
@@ -479,7 +511,7 @@ func authzStartProcess(t *testing.T, binary, config, dsn, output, name string) *
 	}
 	process.cmd = exec.Command(binary, "serve", "--api-port", ports[0], "--health-port", ports[1], "--metrics-port", ports[2])
 	process.cmd.Env = append(os.Environ(),
-		"POSTGRES_DSN="+dsn, "AUTHZ_CONFIG_FILE="+config,
+		"POSTGRES_DSN="+dsn, "AUTHZ_CONFIG_FILE="+config, "AWS_ACCOUNT_ID="+authzAccount,
 		"API_BIND_ADDRESS=127.0.0.1", "HEALTH_BIND_ADDRESS=127.0.0.1", "METRICS_BIND_ADDRESS=127.0.0.1",
 		"TARGET_GROUP_ARN=arn:aws:elasticloadbalancing:"+authzRegion+":"+authzAccount+":targetgroup/authz-http/fixture",
 	)

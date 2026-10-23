@@ -8,6 +8,7 @@ import (
 	"time"
 
 	seaplanedb "github.com/openshift-online/rosa-seaplane-api/seaplane-db"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -37,6 +38,10 @@ func NewClient(ctx context.Context, dsn string, logger *slog.Logger) (*Client, e
 	scheme := runtime.NewScheme()
 	if err := seaplanev1alpha1.AddToScheme(scheme); err != nil {
 		return nil, fmt.Errorf("register seaplane scheme: %w", err)
+	}
+	// ConfigMaps back the temporary account allowlist.
+	if err := corev1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("register core scheme: %w", err)
 	}
 
 	c, cleanup, err := seaplanedb.NewClient(seaplanedb.Options{
@@ -464,6 +469,38 @@ func (c *Client) DeleteManifest(ctx context.Context, namespace, name string) err
 func (c *Client) CreateManagementCluster(ctx context.Context, mc *seaplanev1alpha1.ManagementCluster) error {
 	mc.Namespace = ""
 	return c.client.Create(ctx, mc)
+}
+
+// --- Account allowlist ---
+
+// shortcut: one empty ConfigMap per enrolled account in seaplane-db; replace with DynamoDB account storage.
+const enrolledAccountsNamespace = "accounts"
+
+// EnrollAccount adds an account to the allowlist. Enrolling twice succeeds.
+func (c *Client) EnrollAccount(ctx context.Context, accountID string) error {
+	err := c.client.Create(ctx, &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: enrolledAccountsNamespace, Name: accountID}})
+	if apierrors.IsAlreadyExists(err) {
+		return nil
+	}
+	return err
+}
+
+// UnenrollAccount removes an account from the allowlist. Removing a missing account succeeds.
+func (c *Client) UnenrollAccount(ctx context.Context, accountID string) error {
+	err := c.client.Delete(ctx, &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: enrolledAccountsNamespace, Name: accountID}})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
+// IsAccountEnrolled reports whether an account is on the allowlist.
+func (c *Client) IsAccountEnrolled(ctx context.Context, accountID string) (bool, error) {
+	err := c.client.Get(ctx, client.ObjectKey{Namespace: enrolledAccountsNamespace, Name: accountID}, &corev1.ConfigMap{})
+	if apierrors.IsNotFound(err) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // --- OidcConfig operations ---

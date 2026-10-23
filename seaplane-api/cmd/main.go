@@ -102,6 +102,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	cfg.Regional.AccountID = os.Getenv("AWS_ACCOUNT_ID")
+	if cfg.Regional.AccountID != "" && !accountIDPattern.MatchString(cfg.Regional.AccountID) {
+		return fmt.Errorf("AWS_ACCOUNT_ID must be a 12-digit AWS account ID")
+	}
+
 	// Management clusters to register on startup, replacing the registration endpoint.
 	mgmtClusters, err := managementClusters(os.Getenv("MANAGEMENT_CLUSTERS"), awsCfg.Region)
 	if err != nil {
