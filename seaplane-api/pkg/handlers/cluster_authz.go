@@ -12,7 +12,6 @@ import (
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/api"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/authz"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/middleware"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var (
@@ -152,9 +151,4 @@ func authorizeResource(w http.ResponseWriter, r *http.Request, authorizer *authz
 		attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 	}
 	return true
-}
-
-// listMeta is the metadata List shows for an item the caller cannot Describe.
-func listMeta(meta metav1.ObjectMeta) metav1.ObjectMeta {
-	return metav1.ObjectMeta{Name: meta.Name, Namespace: meta.Namespace, UID: meta.UID}
 }

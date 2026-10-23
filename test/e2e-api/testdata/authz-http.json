@@ -44,7 +44,6 @@
     {"id":"wildcard", "ownerAccountID":"111111111111", "content":"permit(principal, action, resource);"},
     {"id":"resource-list", "ownerAccountID":"111111111111", "content":"permit(principal, action in [Seaplane::Action::\"ListNodePools\", Seaplane::Action::\"ListOIDCConfigs\", Seaplane::Action::\"ListDNSReservations\"], resource);"},
     {"id":"resource-blue", "ownerAccountID":"111111111111", "content":"permit(principal, action in [Seaplane::Action::\"DescribeNodePool\", Seaplane::Action::\"DescribeOIDCConfig\", Seaplane::Action::\"DescribeDNSReservation\"], resource) when { resource.hasTag(\"example.com/team\") && resource.getTag(\"example.com/team\") == \"blue\" };"},
-    {"id":"resource-error", "ownerAccountID":"111111111111", "content":"forbid(principal, action in [Seaplane::Action::\"DescribeNodePool\", Seaplane::Action::\"DescribeOIDCConfig\", Seaplane::Action::\"DescribeDNSReservation\"], resource) when { resource.hasTag(\"example.com/fault\") && 9223372036854775807 + 1 == 0 };"},
     {"id":"parent-scoped", "ownerAccountID":"111111111111", "content":"permit(principal, action == Seaplane::Action::\"DescribeNodePool\", resource) when { resource in Seaplane::Cluster::\"111111111111/us-east-1/@@BLUE_CLUSTER_UID@@\" };"},
     {"id":"context", "ownerAccountID":"111111111111", "content":"permit(principal, action == Seaplane::Action::\"DescribeCluster\", resource) when { context.sourceIp == \"192.0.2.50\" && context.userAgent == \"local-authz-http\" && context.requestTime.unixSeconds > 0 && context.requestTime.dayOfWeek >= 1 && context.requestTime.dayOfWeek <= 7 && context.requestTime.hour >= 0 && context.requestTime.hour <= 23 };"}
   ],
@@ -70,8 +69,6 @@
     {"id":"resource-describe-only", "policyID":"resource-blue", "principalARN":"arn:aws:iam::111111111111:user/resource-describe-only", "scope":"global"},
     {"id":"resource-scoped-list", "policyID":"resource-list", "principalARN":"arn:aws:iam::111111111111:user/resource-scoped", "scope":"global"},
     {"id":"resource-scoped-blue", "policyID":"resource-blue", "principalARN":"arn:aws:iam::111111111111:user/resource-scoped", "scope":"global"},
-    {"id":"resource-error-read", "policyID":"read", "principalARN":"arn:aws:iam::111111111111:user/resource-error", "scope":"global"},
-    {"id":"resource-error-forbid", "policyID":"resource-error", "principalARN":"arn:aws:iam::111111111111:user/resource-error", "scope":"global"},
     {"id":"parent-scoped", "policyID":"parent-scoped", "principalARN":"arn:aws:iam::111111111111:user/parent-scoped", "scope":"global"},
     {"id":"context", "policyID":"context", "principalARN":"arn:aws:iam::111111111111:user/context", "scope":"global"}
   ]

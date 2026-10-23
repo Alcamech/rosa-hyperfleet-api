@@ -15,54 +15,40 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
-// List shows every item; Describe decides full details or ID, name, and state.
-func TestResourceCollectionsListDetails(t *testing.T) {
+// List permission alone returns every item in full; Describe is not checked per item.
+func TestResourceCollectionsListFull(t *testing.T) {
 	for _, tc := range []struct {
 		path, list, describe string
 		index                int
 	}{
 		{"clusters", "ListClusters", "DescribeCluster", 0}, {"nodepools", "ListNodePools", "DescribeNodePool", 1}, {"oidc_configs", "ListOIDCConfigs", "DescribeOIDCConfig", 2}, {"dns_reservations", "ListDNSReservations", "DescribeDNSReservation", 3},
 	} {
-		for _, mode := range []string{"filtered", "list-only", "describe-only", "late-error"} {
+		for _, mode := range []string{"list-only", "describe-only"} {
 			t.Run(tc.path+"/"+mode, func(t *testing.T) {
 				objects := resourceFixtures()
 				second := objects[tc.index].DeepCopyObject().(client.Object)
 				second.SetName("second")
 				second.SetUID(types.UID(string(objects[tc.index].GetUID()) + "-second"))
-				labels := second.GetLabels()
-				labels["team"], labels["fault"] = "red", "yes"
-				second.SetLabels(labels)
 				objects = append(objects, second)
-				list := actionPermit(tc.list)
-				describe := `permit(principal, action == Seaplane::Action::"` + tc.describe + `", resource) when { resource.hasTag("team") && resource.getTag("team") == "blue" };`
-				policies := map[string][]string{
-					"filtered":      {list, describe},
-					"list-only":     {list},
-					"describe-only": {describe},
-					"late-error":    {list, describe, `forbid(principal, action == Seaplane::Action::"` + tc.describe + `", resource) when { resource.hasTag("fault") && 9223372036854775807 + 1 == 0 };`},
-				}[mode]
-				srv, _ := resourceServer(t, policies, interceptor.Funcs{}, objects...)
+				policy := map[string]string{"list-only": actionPermit(tc.list), "describe-only": actionPermit(tc.describe)}[mode]
+				srv, _ := resourceServer(t, []string{policy}, interceptor.Funcs{}, objects...)
 				w := resourceRequest(srv, "GET", tc.path, "")
-				want := map[string]int{"filtered": 200, "list-only": 200, "describe-only": 403, "late-error": 500}[mode]
-				if w.Code != want || (want != 200 && strings.Contains(w.Body.String(), `"items"`)) {
-					t.Fatalf("want %d without items, got %d: %s", want, w.Code, w.Body.String())
-				}
-				if want != 200 {
+				if mode == "describe-only" {
+					if w.Code != 403 || strings.Contains(w.Body.String(), `"items"`) {
+						t.Fatalf("want 403 without items, got %d: %s", w.Code, w.Body.String())
+					}
 					return
 				}
 				var body struct {
 					Total int
 					Items []json.RawMessage
 				}
-				if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body.Total != 2 || len(body.Items) != 2 {
-					t.Fatalf("want every item: %s (%v)", w.Body.String(), err)
+				if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || w.Code != 200 || body.Total != 2 || len(body.Items) != 2 {
+					t.Fatalf("want every item: %d %s (%v)", w.Code, w.Body.String(), err)
 				}
-				detail := `"team"`
 				for _, item := range body.Items {
-					isFull := strings.Contains(string(item), detail)
-					wantFull := mode == "filtered" && !strings.Contains(string(item), `"second"`)
-					if isFull != wantFull {
-						t.Fatalf("item details = %v, want %v: %s", isFull, wantFull, item)
+					if !strings.Contains(string(item), `"team"`) {
+						t.Fatalf("list item lacks full details: %s", item)
 					}
 				}
 			})
@@ -106,7 +92,7 @@ func TestNodePoolNamePinsParent(t *testing.T) {
 			t.Fatalf("path %s want %d got %d: %s", tc.path, tc.want, w.Code, w.Body.String())
 		}
 	}
-	// List has independent collection permission; Describe on the actual parent decides full details.
+	// List permission returns every pool in full, whatever the parent grants.
 	srv, _ = resourceServer(t, []string{actionPermit("ListNodePools"), policy}, hooks, objects...)
 	w := resourceRequest(srv, "GET", "nodepools", "")
 	var result struct {
@@ -125,23 +111,26 @@ func TestNodePoolNamePinsParent(t *testing.T) {
 			detailed = append(detailed, item.Metadata.Name)
 		}
 	}
-	if w.Code != 200 || result.Total != 2 || len(result.Items) != 2 || len(detailed) != 1 || detailed[0] != second.Name {
-		t.Fatalf("wrong per-parent list details: %s", w.Body.String())
+	if w.Code != 200 || result.Total != 2 || len(result.Items) != 2 || len(detailed) != 2 {
+		t.Fatalf("list must return every pool in full: %s", w.Body.String())
 	}
 }
 
-func TestNodePoolParentFailureAbortsList(t *testing.T) {
+// List no longer loads each pool's parent cluster, so a parent lookup cannot fail it.
+func TestNodePoolListSkipsParentLookups(t *testing.T) {
 	objects := resourceFixtures()
+	lookups := 0
 	hooks := interceptor.Funcs{Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 		if _, ok := obj.(*v1.Cluster); ok {
+			lookups++
 			return fmt.Errorf("parent lookup failed")
 		}
 		return c.Get(ctx, key, obj, opts...)
 	}}
 	srv, _ := resourceServer(t, []string{`permit(principal,action in Seaplane::Action::"ReadOnly",resource);`}, hooks, objects...)
 	w := resourceRequest(srv, "GET", "nodepools?limit=1", "")
-	if w.Code != 500 || strings.Contains(w.Body.String(), `"items"`) {
-		t.Fatalf("unchecked parent yielded partial success: %s", w.Body.String())
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"items"`) || lookups != 0 {
+		t.Fatalf("list loaded parents or failed: %d lookups=%d %s", w.Code, lookups, w.Body.String())
 	}
 }
 

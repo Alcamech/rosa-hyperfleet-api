@@ -49,19 +49,10 @@ func (h *DNSReservationHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Every item is listed; without Describe it shows only ID, name, and state.
+	// List permission returns every item in full; Describe is not checked per item.
 	items := make([]*public.DNSReservation, 0, len(list.Items))
 	for i := range list.Items {
-		decision, err := prepared.Check(ctx, authz.DescribeDNSReservation, h.dnsReservationResource(&list.Items[i]))
-		if err != nil {
-			writeResourceAuthzError(w, r, attempt, authz.ListDNSReservations, err, h.logger)
-			return
-		}
-		reservation := seaplanedb.InternalToPublicDNSReservation(&list.Items[i])
-		if !decision.Allowed {
-			reservation = &public.DNSReservation{ObjectMeta: listMeta(reservation.ObjectMeta), Status: public.DNSReservationStatus{Phase: reservation.Status.Phase}}
-		}
-		items = append(items, reservation)
+		items = append(items, seaplanedb.InternalToPublicDNSReservation(&list.Items[i]))
 	}
 	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 	total := len(items)

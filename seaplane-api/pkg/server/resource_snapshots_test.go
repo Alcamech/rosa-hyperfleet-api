@@ -212,10 +212,11 @@ func TestImplementedRoutesActionSpecific(t *testing.T) {
 				if writes != expectedWrites {
 					t.Fatalf("writes=%d want=%d", writes, expectedWrites)
 				}
-				if strings.HasPrefix(tc.action, "List") && tc.action != "ListLabelsForResource" && canAccess && grant != "group" && grant != "AllActions" {
+				// List permission alone returns full objects, labels included.
+				if strings.HasPrefix(tc.action, "List") && tc.action != "ListLabelsForResource" && canAccess {
 					var b struct{ Total int }
-					if err := json.Unmarshal(w.Body.Bytes(), &b); err != nil || b.Total != 1 || strings.Contains(w.Body.String(), "labels") || strings.Contains(w.Body.String(), "us-west-2") {
-						t.Fatalf("List without Describe must return identifiers only: %s (%v)", w.Body.String(), err)
+					if err := json.Unmarshal(w.Body.Bytes(), &b); err != nil || b.Total != 1 || !strings.Contains(w.Body.String(), "labels") {
+						t.Fatalf("List must return full objects: %s (%v)", w.Body.String(), err)
 					}
 				}
 			})

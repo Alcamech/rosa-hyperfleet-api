@@ -69,19 +69,19 @@ fails the request, even when Cedar would allow.
 
 | Resource       | Operation             | Required actions                                                     |
 | -------------- | --------------------- | -------------------------------------------------------------------- |
-| Cluster        | List                  | ListClusters; DescribeCluster per item for details                   |
+| Cluster        | List                  | ListClusters                                                         |
 | Cluster        | Get                   | DescribeCluster                                                      |
 | Cluster        | Create                | CreateCluster                                                        |
 | Cluster        | PUT / PATCH           | UpdateCluster + changed-field actions                                |
 | Cluster        | Delete                | DeleteCluster                                                        |
-| NodePool       | List                  | ListNodePools; DescribeNodePool per item for details                 |
+| NodePool       | List                  | ListNodePools                                                        |
 | NodePool       | Get                   | DescribeNodePool                                                     |
 | NodePool       | Create                | CreateNodePool                                                       |
 | NodePool       | PUT / PATCH           | UpdateNodePool + changed-field actions                               |
 | NodePool       | Delete                | DeleteNodePool                                                       |
-| OIDCConfig     | List                  | ListOIDCConfigs; DescribeOIDCConfig per item for details             |
+| OIDCConfig     | List                  | ListOIDCConfigs                                                      |
 | OIDCConfig     | Get / Create / Delete | DescribeOIDCConfig / CreateOIDCConfig / DeleteOIDCConfig             |
-| DNSReservation | List                  | ListDNSReservations; DescribeDNSReservation per item for details     |
+| DNSReservation | List                  | ListDNSReservations                                                  |
 | DNSReservation | Get / Create / Delete | DescribeDNSReservation / CreateDNSReservation / DeleteDNSReservation |
 
 Changed-field actions, required in addition to the base update:
@@ -95,10 +95,8 @@ Changed-field actions, required in addition to the base update:
 
 Rules:
 
-- Lists return every item and count it in `total` (EKS style). Items without
-  Describe show only `metadata.name`, `namespace`, `uid`, and `status.phase`
-  other fields are zero values. Any Describe error
-  fails the whole list.
+- Lists return every item in full and count it in `total`. List permission
+  alone is enough; Describe is not checked per item.
 - Updates compare the stored spec with the merged object to be written. All
   required actions must allow before any write.
 - Service-set fields never change on update. An exact echo is accepted;

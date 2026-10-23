@@ -216,7 +216,6 @@ func TestAuthzHTTP(t *testing.T) {
 	})
 	for _, tc := range []struct{ name, path, operation string }{
 		{"runtime policy describe failure", "/" + fault.Name, "DescribeCluster"},
-		{"runtime policy late list failure", "?limit=1", "ListClusters"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			beforeLog, err := os.ReadFile(process.logPath)
@@ -255,8 +254,8 @@ func TestAuthzHTTP(t *testing.T) {
 	t.Run("list total and pagination", func(t *testing.T) {
 		response := authzMeasuredGet(t, process, authzClustersPath+"?limit=100", alice, authzAccount, "ListClusters", "allow")
 		full := authzReadList(t, response, 4, 100, 0)
-		if got := authzDetailedIDs(full); !slices.Equal(got, authzSorted(blueOne, blueTwo)) {
-			t.Errorf("detailed membership = %v, want describable %v", got, []string{blueOne, blueTwo})
+		if got := authzDetailedIDs(full); !slices.Equal(got, authzClusterIDs(full)) {
+			t.Errorf("detailed membership = %v, want every item %v", got, authzClusterIDs(full))
 		}
 		for offset := 0; offset <= 5; offset++ {
 			response := authzMeasuredGet(t, process, fmt.Sprintf("%s?limit=1&offset=%d", authzClustersPath, offset), alice, authzAccount, "ListClusters", "allow")
@@ -270,10 +269,10 @@ func TestAuthzHTTP(t *testing.T) {
 			}
 		}
 	})
-	t.Run("list-only identifiers", func(t *testing.T) {
+	t.Run("list-only returns full objects", func(t *testing.T) {
 		response := authzMeasuredGet(t, process, authzClustersPath, authzUser("list-only"), authzAccount, "ListClusters", "allow")
 		items := authzReadList(t, response, 4, 50, 0)
-		if detailed := authzDetailedIDs(items); len(items) != 4 || len(detailed) != 0 {
+		if detailed := authzDetailedIDs(items); len(items) != 4 || len(detailed) != 4 {
 			t.Errorf("list-only got %d items, details for %v", len(items), detailed)
 		}
 	})

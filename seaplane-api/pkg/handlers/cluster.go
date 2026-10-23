@@ -99,20 +99,10 @@ func (h *ClusterHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Every item is listed (EKS style); without Describe it shows only ID, name, and state.
-	// Check all items before paging so a late failure cannot leak partial success.
+	// List permission returns every item in full; Describe is not checked per item.
 	clusters := make([]*public.Cluster, 0, len(list.Items))
 	for i := range list.Items {
-		decision, err := prepared.Check(ctx, authz.DescribeCluster, h.clusterResource(&list.Items[i]))
-		if err != nil {
-			writeResourceAuthzError(w, r, attempt, authz.ListClusters, err, h.logger)
-			return
-		}
-		c := seaplanedb.InternalToPublicCluster(&list.Items[i])
-		if !decision.Allowed {
-			c = &public.Cluster{ObjectMeta: listMeta(c.ObjectMeta), Status: public.ClusterStatus{Phase: c.Status.Phase}}
-		}
-		clusters = append(clusters, c)
+		clusters = append(clusters, seaplanedb.InternalToPublicCluster(&list.Items[i]))
 	}
 	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 

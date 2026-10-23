@@ -118,18 +118,10 @@ func (h *OidcConfigHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// List permission returns every item in full; Describe is not checked per item.
 	configs := make([]*public.OidcConfig, 0, len(list.Items))
 	for i := range list.Items {
-		decision, err := prepared.Check(ctx, authz.DescribeOIDCConfig, h.oidcConfigResource(&list.Items[i]))
-		if err != nil {
-			writeResourceAuthzError(w, r, attempt, authz.ListOIDCConfigs, err, h.logger)
-			return
-		}
-		oc := seaplanedb.InternalToPublicOidcConfig(&list.Items[i])
-		if !decision.Allowed {
-			oc = &public.OidcConfig{ObjectMeta: listMeta(oc.ObjectMeta), Status: public.OidcConfigStatus{Phase: oc.Status.Phase}}
-		}
-		configs = append(configs, oc)
+		configs = append(configs, seaplanedb.InternalToPublicOidcConfig(&list.Items[i]))
 	}
 	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 

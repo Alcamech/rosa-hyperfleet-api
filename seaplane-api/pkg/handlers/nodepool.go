@@ -115,23 +115,10 @@ func (h *NodePoolHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// List permission returns every item in full; Describe is not checked per item.
 	nodepools := make([]*public.NodePool, 0, len(list.Items))
 	for i := range list.Items {
-		resource, err := h.nodePoolResource(ctx, &list.Items[i])
-		if err != nil {
-			writeResourceAuthzError(w, r, attempt, authz.ListNodePools, err, h.logger)
-			return
-		}
-		decision, err := prepared.Check(ctx, authz.DescribeNodePool, resource)
-		if err != nil {
-			writeResourceAuthzError(w, r, attempt, authz.ListNodePools, err, h.logger)
-			return
-		}
-		np := seaplanedb.InternalToPublicNodePool(&list.Items[i])
-		if !decision.Allowed {
-			np = &public.NodePool{ObjectMeta: listMeta(np.ObjectMeta), Status: public.NodePoolStatus{Phase: np.Status.Phase}}
-		}
-		nodepools = append(nodepools, np)
+		nodepools = append(nodepools, seaplanedb.InternalToPublicNodePool(&list.Items[i]))
 	}
 	attempt.Finish(authz.OutcomeAllow, authz.StageNone)
 
