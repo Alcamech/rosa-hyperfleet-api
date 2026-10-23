@@ -136,10 +136,10 @@ func TestNodePoolListSkipsParentLookups(t *testing.T) {
 
 func TestCreatesUseValidatedCandidateLabelsAndOwnership(t *testing.T) {
 	for _, tc := range []struct{ action, path, body string }{
-		{"CreateCluster", "clusters", `{"metadata":{"name":"new","labels":LABELS},"spec":{"properties":{"team":"new"}}}`},
-		{"CreateNodePool", "nodepools?clusterId=foreign", `{"metadata":{"name":"parent.new","labels":LABELS},"spec":{"nodePool":{"clusterName":"parent"}}}`},
-		{"CreateOIDCConfig", "oidc_configs", `{"metadata":{"name":"new","labels":LABELS},"spec":{"type":"unmanaged","issuerUrl":"https://example.com","secretArn":"secret","installerRoleArn":"role"}}`},
-		{"CreateDNSReservation", "dns_reservations", `{"metadata":{"name":"new","labels":LABELS}}`},
+		{"CreateCluster", "clusters", `{"metadata":{"name":"new","annotations":LABELS},"spec":{"properties":{"team":"new"}}}`},
+		{"CreateNodePool", "nodepools?clusterId=foreign", `{"metadata":{"name":"parent.new","annotations":LABELS},"spec":{"nodePool":{"clusterName":"parent"}}}`},
+		{"CreateOIDCConfig", "oidc_configs", `{"metadata":{"name":"new","annotations":LABELS},"spec":{"type":"unmanaged","issuerUrl":"https://example.com","secretArn":"secret","installerRoleArn":"role"}}`},
+		{"CreateDNSReservation", "dns_reservations", `{"metadata":{"name":"new","annotations":LABELS}}`},
 	} {
 		// System labels, even syntactically invalid ones, are discarded; customer syntax errors reject the create.
 		for _, check := range []struct {
@@ -156,8 +156,8 @@ func TestCreatesUseValidatedCandidateLabelsAndOwnership(t *testing.T) {
 				policy := `permit(principal,action == Seaplane::Action::"` + tc.action + `",resource) when { resource.account == "123456789012" && resource.hasTag("team") && resource.getTag("team") == "` + check.grant + `" };`
 				srv, _ := resourceServer(t, []string{policy}, interceptor.Funcs{Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
 					writes++
-					if obj.GetLabels()["team"] != "blue" || obj.GetLabels()["seaplane.io/account-id"] != resourceTestAccount {
-						t.Errorf("lost customer labels or forged ownership: %v", obj.GetLabels())
+					if obj.GetAnnotations()["team"] != "blue" || obj.GetLabels()["team"] != "" || obj.GetLabels()["seaplane.io/account-id"] != resourceTestAccount {
+						t.Errorf("customer labels not stored as tags, or forged ownership: %v %v", obj.GetLabels(), obj.GetAnnotations())
 					}
 					return c.Create(ctx, obj, opts...)
 				}}, resourceFixtures()...)

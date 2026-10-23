@@ -97,7 +97,7 @@ func (h *DNSReservationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !validateCreateLabels(w, req.Labels, h.logger) {
+	if !validateCreateLabels(w, req.Annotations, h.logger) {
 		return
 	}
 	reservation := seaplanedb.PublicToInternalDNSReservation(&req, accountID)

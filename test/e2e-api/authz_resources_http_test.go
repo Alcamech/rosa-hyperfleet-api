@@ -67,7 +67,8 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 		replicas := int32(3)
 		np := &v1.NodePool{ObjectMeta: metav1.ObjectMeta{
 			Name: fixture.cluster + ".workers", Namespace: parent.Namespace,
-			Labels:          map[string]string{authzAccountLabel: fixture.account, authzTeamLabel: fixture.team, "seaplane.io/cluster-uid": string(parent.UID)},
+			Labels:          map[string]string{authzAccountLabel: fixture.account, "seaplane.io/cluster-uid": string(parent.UID)},
+			Annotations:     map[string]string{authzTeamLabel: fixture.team},
 			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(&parent, v1.GroupVersion.WithKind("Cluster"))},
 		}, Spec: v1.NodePoolSpec{AccountID: fixture.account}}
 		np.Spec.NodePool.ClusterName = parent.Name
@@ -78,14 +79,14 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 		pools = append(pools, np)
 	}
 	for _, fixture := range []struct{ name, team, account string }{{"a-config", "blue", authzAccount}, {"z-config", "red", authzAccount}, {"b-config", "blue", authzAccount}, {"c-config", "red", authzAccount}, {"d-config", "red", authzAccount}, {"a-config", "blue", authzOtherAccount}, {"foreign-only", "blue", authzOtherAccount}} {
-		oc := &v1.OidcConfig{ObjectMeta: metav1.ObjectMeta{Name: fixture.name, Namespace: "account-" + fixture.account, Labels: map[string]string{authzAccountLabel: fixture.account, authzTeamLabel: fixture.team}}, Spec: v1.OidcConfigSpec{Type: v1.OidcConfigTypeManaged, AccountID: fixture.account, IssuerUrl: "https://example.com/" + fixture.name}}
+		oc := &v1.OidcConfig{ObjectMeta: metav1.ObjectMeta{Name: fixture.name, Namespace: "account-" + fixture.account, Labels: map[string]string{authzAccountLabel: fixture.account}, Annotations: map[string]string{authzTeamLabel: fixture.team}}, Spec: v1.OidcConfigSpec{Type: v1.OidcConfigTypeManaged, AccountID: fixture.account, IssuerUrl: "https://example.com/" + fixture.name}}
 		if err := store.Create(ctx, oc); err != nil {
 			t.Fatal(err)
 		}
 		if fixture.account != authzAccount {
 			continue
 		}
-		dns := &v1.DNSReservation{ObjectMeta: metav1.ObjectMeta{Name: fixture.name, Namespace: "account-" + authzAccount, Labels: map[string]string{authzAccountLabel: authzAccount, authzTeamLabel: fixture.team}}}
+		dns := &v1.DNSReservation{ObjectMeta: metav1.ObjectMeta{Name: fixture.name, Namespace: "account-" + authzAccount, Labels: map[string]string{authzAccountLabel: authzAccount}, Annotations: map[string]string{authzTeamLabel: fixture.team}}}
 		if err := store.Create(ctx, dns); err != nil {
 			t.Fatal(err)
 		}
@@ -94,9 +95,9 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 	for i := 0; i < 3; i++ {
 		np := pools[1].DeepCopy()
 		np.Name, np.UID, np.ResourceVersion = blue+fmt.Sprintf(".extra-%d", i), "", ""
-		np.Labels[authzTeamLabel] = "red"
+		np.Annotations = map[string]string{authzTeamLabel: "red"}
 		if i == 0 {
-			np.Labels[authzTeamLabel] = "blue"
+			np.Annotations[authzTeamLabel] = "blue"
 		}
 		if err := store.Create(ctx, np); err != nil {
 			t.Fatal(err)
@@ -119,13 +120,13 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 			authzResourceRequest(t, p, "GET", path+"/labels", "", authzUser("labels"), "ListLabelsForResource", 403)
 			response = authzResourceRequest(t, p, "GET", path+"/labels", "", authzUser("broad"), "ListLabelsForResource", 200)
 			var labels map[string]string
-			if err := json.Unmarshal(response.Body, &labels); err != nil || labels["example.com/check"] != "ok" || labels[authzAccountLabel] != authzAccount {
+			if err := json.Unmarshal(response.Body, &labels); err != nil || labels["example.com/check"] != "ok" {
 				t.Fatalf("labels=%v error=%v", labels, err)
 			}
 			response = authzResourceRequest(t, p, "GET", path, "", authzUser("wildcard"), map[string]string{clusterPath: "DescribeCluster", poolPath: "DescribeNodePool", "/api/v0/oidc_configs/a-config": "DescribeOIDCConfig", "/api/v0/dns_reservations/a-config": "DescribeDNSReservation"}[path], 200)
 			var object struct{ Metadata metav1.ObjectMeta }
-			if err := json.Unmarshal(response.Body, &object); err != nil || object.Metadata.Labels["example.com/check"] != "ok" {
-				t.Fatalf("public label round trip failed: %s %v", response.Body, err)
+			if err := json.Unmarshal(response.Body, &object); err != nil || object.Metadata.Annotations["example.com/check"] != "ok" {
+				t.Fatalf("public tag round trip failed: %s %v", response.Body, err)
 			}
 			authzResourceRequest(t, p, "PATCH", path+"/labels", `{"example.com/check":null}`, authzUser("labels"), "UnlabelResource", 204)
 		})
@@ -191,7 +192,7 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 					for _, item := range page.Items {
 						isBlue := item.Metadata.Name == "a-config" || item.Metadata.Name == "b-config" || item.Metadata.Name == blue+".workers" || item.Metadata.Name == blue+".extra-0"
 						hasDetails := len(item.Metadata.Labels) != 0
-						if item.Metadata.Namespace != "account-"+authzAccount || !hasDetails || (isBlue && item.Metadata.Labels[authzTeamLabel] != "blue") {
+						if item.Metadata.Namespace != "account-"+authzAccount || !hasDetails || (isBlue && item.Metadata.Annotations[authzTeamLabel] != "blue") {
 							t.Fatalf("wrong page ownership/summary/detail: %+v", item)
 						}
 					}
@@ -213,7 +214,7 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 	t.Run("wildcard account isolation", func(t *testing.T) {
 		missingPool := pools[1].DeepCopy()
 		missingPool.Name, missingPool.UID, missingPool.ResourceVersion = blue+".missing-tag", "", ""
-		delete(missingPool.Labels, authzTeamLabel)
+		delete(missingPool.Annotations, authzTeamLabel)
 		missingOIDC := &v1.OidcConfig{ObjectMeta: metav1.ObjectMeta{Name: "missing-tag", Namespace: missingPool.Namespace, Labels: map[string]string{authzAccountLabel: authzAccount}}}
 		for _, obj := range []client.Object{missingPool, missingOIDC} {
 			if err := store.Create(ctx, obj); err != nil {
@@ -308,20 +309,20 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 	authzResourceRequest(t, p, "PATCH", clusterPath, `{"spec":{"hostedCluster":{"release":{"image":"new"}}}}`, lifecycle, "UpdateCluster", 200)
 
 	// Actual HTTP create/get/delete for all customer families and global service registration.
-	createCluster := authzResourceRequest(t, p, "POST", authzClustersPath, `{"metadata":{"name":"http-created","labels":{"example.com/team":"blue"}},"spec":{"properties":{"state":"created"}}}`, lifecycle, "CreateCluster", 201)
+	createCluster := authzResourceRequest(t, p, "POST", authzClustersPath, `{"metadata":{"name":"http-created","annotations":{"example.com/team":"blue"}},"spec":{"properties":{"state":"created"}}}`, lifecycle, "CreateCluster", 201)
 	var cluster publicResourceID
 	_ = json.Unmarshal(createCluster.Body, &cluster)
 	if cluster.Metadata.UID == "" {
 		t.Fatal("create lacked UID")
 	}
 	authzResourceRequest(t, p, "GET", authzClustersPath+"/http-created", "", lifecycle, "DescribeCluster", 200)
-	authzResourceRequest(t, p, "POST", "/api/v0/nodepools", `{"metadata":{"name":"http-created.pool","labels":{"example.com/team":"blue","seaplane.io/account-id":"222222222222"}},"spec":{"labels":{"state":"created"}}}`, lifecycle, "CreateNodePool", 201)
+	authzResourceRequest(t, p, "POST", "/api/v0/nodepools", `{"metadata":{"name":"http-created.pool","annotations":{"example.com/team":"blue","seaplane.io/account-id":"222222222222"}},"spec":{"labels":{"state":"created"}}}`, lifecycle, "CreateNodePool", 201)
 	authzResourceRequest(t, p, "GET", "/api/v0/nodepools/http-created.pool", "", lifecycle, "DescribeNodePool", 200)
 	authzAssertLabels(t, store, &v1.NodePool{}, "http-created.pool")
 	authzAssertLabels(t, store, &v1.Cluster{}, "http-created")
 	authzResourceRequest(t, p, "DELETE", "/api/v0/nodepools/http-created.pool", "", lifecycle, "DeleteNodePool", 202)
 	authzResourceRequest(t, p, "DELETE", authzClustersPath+"/http-created", "", lifecycle, "DeleteCluster", 202)
-	createOC := authzResourceRequest(t, p, "POST", "/api/v0/oidc_configs", `{"metadata":{"name":"http-created","labels":{"example.com/team":"blue","seaplane.io/claimed-by-cluster-uid":"forged"}},"spec":{"type":"unmanaged","issuerUrl":"https://example.com/http-created","secretArn":"secret","installerRoleArn":"role"}}`, lifecycle, "CreateOIDCConfig", 201)
+	createOC := authzResourceRequest(t, p, "POST", "/api/v0/oidc_configs", `{"metadata":{"name":"http-created","annotations":{"example.com/team":"blue","seaplane.io/claimed-by-cluster-uid":"forged"}},"spec":{"type":"unmanaged","issuerUrl":"https://example.com/http-created","secretArn":"secret","installerRoleArn":"role"}}`, lifecycle, "CreateOIDCConfig", 201)
 	var config publicResourceID
 	if err := json.Unmarshal(createOC.Body, &config); err != nil || config.Metadata.UID == "" {
 		t.Fatalf("OIDC create lacked UID: %s %v", createOC.Body, err)
@@ -329,7 +330,7 @@ func authzResourceOperations(t *testing.T, p *authzProcess, store client.Client)
 	authzResourceRequest(t, p, "GET", "/api/v0/oidc_configs/http-created", "", lifecycle, "DescribeOIDCConfig", 200)
 	authzAssertLabels(t, store, &v1.OidcConfig{}, "http-created")
 	authzResourceRequest(t, p, "DELETE", "/api/v0/oidc_configs/http-created", "", lifecycle, "DeleteOIDCConfig", 202)
-	authzResourceRequest(t, p, "POST", "/api/v0/dns_reservations", `{"metadata":{"name":"http-created","labels":{"example.com/team":"blue","seaplane.io/claimed-by-cluster-uid":"forged"}}}`, lifecycle, "CreateDNSReservation", 201)
+	authzResourceRequest(t, p, "POST", "/api/v0/dns_reservations", `{"metadata":{"name":"http-created","annotations":{"example.com/team":"blue","seaplane.io/claimed-by-cluster-uid":"forged"}}}`, lifecycle, "CreateDNSReservation", 201)
 	authzResourceRequest(t, p, "GET", "/api/v0/dns_reservations/http-created", "", lifecycle, "DescribeDNSReservation", 200)
 	authzAssertLabels(t, store, &v1.DNSReservation{}, "http-created")
 	authzResourceRequest(t, p, "DELETE", "/api/v0/dns_reservations/http-created", "", lifecycle, "DeleteDNSReservation", 202)
@@ -362,8 +363,8 @@ func authzAssertLabels(t *testing.T, store client.Client, obj client.Object, nam
 	if err := store.Get(context.Background(), client.ObjectKey{Namespace: "account-" + authzAccount, Name: name}, obj); err != nil {
 		t.Fatal(err)
 	}
-	if obj.GetLabels()[authzAccountLabel] != authzAccount || obj.GetLabels()[authzTeamLabel] != "blue" {
-		t.Fatalf("create lost trusted labels: %v", obj.GetLabels())
+	if obj.GetLabels()[authzAccountLabel] != authzAccount || obj.GetAnnotations()[authzTeamLabel] != "blue" {
+		t.Fatalf("create lost trusted labels or tags: %v %v", obj.GetLabels(), obj.GetAnnotations())
 	}
 }
 

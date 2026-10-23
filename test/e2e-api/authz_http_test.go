@@ -333,8 +333,8 @@ func TestAuthzHTTP(t *testing.T) {
 		response = authzMeasuredGet(t, process, authzClustersPath+"/"+foreignName+"?accountId="+authzAccount+"&example.com%2Fteam=blue", broad, authzAccount, "DescribeCluster", "deny")
 		authzAssertStatus(t, response, http.StatusNotFound)
 		var stored seaplanev1.Cluster
-		if err := store.Get(context.Background(), client.ObjectKey{Namespace: "account-" + authzAccount, Name: authzStoredClusters[0].name}, &stored); err != nil || stored.Labels[authzTeamLabel] != "red" {
-			t.Errorf("request changed stored labels: %+v (%v)", stored.Labels, err)
+		if err := store.Get(context.Background(), client.ObjectKey{Namespace: "account-" + authzAccount, Name: authzStoredClusters[0].name}, &stored); err != nil || stored.Annotations[authzTeamLabel] != "red" {
+			t.Errorf("request changed stored tags: %+v (%v)", stored.Annotations, err)
 		}
 	})
 	t.Run("public requests leave authorization metrics unchanged", func(t *testing.T) {
@@ -441,12 +441,12 @@ func authzSeedClusters(t *testing.T, store client.Client) {
 	defer cancel()
 	for i, fixture := range authzStoredClusters {
 		// A copied fault label must not extend the test policy beyond its target UID.
-		labels := map[string]string{authzAccountLabel: fixture.account, authzFaultLabel: authzFaultValue}
+		tags := map[string]string{authzFaultLabel: authzFaultValue}
 		if fixture.team != "" {
-			labels[authzTeamLabel] = fixture.team
+			tags[authzTeamLabel] = fixture.team
 		}
 		cluster := &seaplanev1.Cluster{
-			ObjectMeta: metav1.ObjectMeta{Namespace: "account-" + fixture.account, Name: fixture.name, Labels: labels},
+			ObjectMeta: metav1.ObjectMeta{Namespace: "account-" + fixture.account, Name: fixture.name, Labels: map[string]string{authzAccountLabel: fixture.account}, Annotations: tags},
 			Spec:       seaplanev1.ClusterSpec{AccountID: fixture.account},
 		}
 		cluster.Spec.HostedCluster.Platform = hypershiftv1.PlatformSpec{
@@ -476,7 +476,7 @@ func authzMarkLateFault(t *testing.T, store client.Client) (earlier, fault *seap
 	}
 	// Select by observed database order, which a metadata update may also change.
 	last := candidates.Items[len(candidates.Items)-1].DeepCopy()
-	last.Labels[authzFaultLabel] = authzFaultValue
+	last.Annotations[authzFaultLabel] = authzFaultValue
 	if err := store.Update(ctx, last); err != nil {
 		t.Fatal(err)
 	}

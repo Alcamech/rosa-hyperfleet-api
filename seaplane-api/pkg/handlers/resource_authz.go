@@ -32,8 +32,8 @@ func (h *NodePoolHandler) nodePoolResource(ctx context.Context, np *v1.NodePool)
 	if parent.UID != owner.UID {
 		return authz.Resource{}, &authz.Failure{Stage: authz.StageEntityValidation, Err: fmt.Errorf("node pool parent UID does not match")}
 	}
-	return authz.Resource{Kind: authz.NodePool, ID: string(np.UID), AccountID: np.Labels["seaplane.io/account-id"], Labels: maps.Clone(np.Labels),
-		ParentCluster: &authz.ParentCluster{ID: string(parent.UID), AccountID: parent.Labels["seaplane.io/account-id"], Labels: maps.Clone(parent.Labels)}}, nil
+	return authz.Resource{Kind: authz.NodePool, ID: string(np.UID), AccountID: np.Labels["seaplane.io/account-id"], Labels: maps.Clone(np.Annotations),
+		ParentCluster: &authz.ParentCluster{ID: string(parent.UID), AccountID: parent.Labels["seaplane.io/account-id"], Labels: maps.Clone(parent.Annotations)}}, nil
 }
 func (h *NodePoolHandler) authorizeNodePool(w http.ResponseWriter, r *http.Request, operation authz.Action, np *v1.NodePool, additional ...authz.Action) bool {
 	resource, err := h.nodePoolResource(r.Context(), np)
@@ -58,11 +58,11 @@ func namespaceAccount(namespace string) string {
 }
 
 func oidcConfigResource(oc *v1.OidcConfig) authz.Resource {
-	return authz.Resource{Kind: authz.OIDCConfig, ID: string(oc.UID), AccountID: namespaceAccount(oc.Namespace), Labels: maps.Clone(oc.Labels)}
+	return authz.Resource{Kind: authz.OIDCConfig, ID: string(oc.UID), AccountID: namespaceAccount(oc.Namespace), Labels: maps.Clone(oc.Annotations)}
 }
 
 func dnsReservationResource(res *v1.DNSReservation) authz.Resource {
-	return authz.Resource{Kind: authz.DNSReservation, ID: string(res.UID), AccountID: namespaceAccount(res.Namespace), Labels: maps.Clone(res.Labels)}
+	return authz.Resource{Kind: authz.DNSReservation, ID: string(res.UID), AccountID: namespaceAccount(res.Namespace), Labels: maps.Clone(res.Annotations)}
 }
 
 // clusterUpdateActions returns the specialized actions an update needs beyond

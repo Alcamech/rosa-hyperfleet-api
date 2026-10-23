@@ -240,7 +240,7 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Spec.IssuerUrl = normalizedIssuerURL
 
-	if !validateCreateLabels(w, req.Labels, h.logger) {
+	if !validateCreateLabels(w, req.Annotations, h.logger) {
 		return
 	}
 	cr := seaplanedb.PublicToInternalOidcConfig(&req, accountID)

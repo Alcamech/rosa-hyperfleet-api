@@ -253,7 +253,7 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// internalPoolID is retained as a service-set implementation field; FleetDB UID
 	// is the public object identity.
 	internalPoolID := uuid.New().String()
-	if !validateCreateLabels(w, req.Labels, h.logger) {
+	if !validateCreateLabels(w, req.Annotations, h.logger) {
 		return
 	}
 	cr := seaplanedb.PublicToInternalNodePool(&req, accountID, internalPoolID)

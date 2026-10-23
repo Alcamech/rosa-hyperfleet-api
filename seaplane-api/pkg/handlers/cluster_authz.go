@@ -25,7 +25,7 @@ func (h *ClusterHandler) clusterResource(cr *seaplanev1alpha1.Cluster) authz.Res
 		Kind:      authz.Cluster,
 		ID:        string(cr.UID),
 		AccountID: cr.Labels["seaplane.io/account-id"],
-		Labels:    maps.Clone(cr.Labels),
+		Labels:    maps.Clone(cr.Annotations),
 	}
 }
 

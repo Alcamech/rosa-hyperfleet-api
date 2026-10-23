@@ -126,8 +126,12 @@ Only `clusters`, `nodepools`, `oidc_configs`, and `dns_reservations` support
 `/api/v0/{collection}/{id}/labels`. IDs remain account-scoped names, with
 NodePool IDs `<cluster>.<child>`.
 
+Customer labels are `metadata.annotations`, in the public API and in storage;
+`metadata.labels` hold only system keys (`seaplane.io/`), and client-supplied
+labels are dropped on create. The routes keep the `labels` name.
+
 - GET requires `ListLabelsForResource` and returns 200 with the complete stored
-  JSON map, including system labels (`{}` when empty).
+  JSON map of customer labels (`{}` when empty).
 - PATCH accepts a non-empty JSON map, not an envelope. Strings set keys (including
   empty strings); `null` removes keys. Other keys remain unchanged. Success is
   204 without a body, even for mutation-only principals.
@@ -138,10 +142,10 @@ NodePool IDs `<cluster>.<child>`.
 - Malformed, non-object, null, empty, or wrong-value-type bodies return 400.
   Kubernetes key/value syntax errors and any set/removal under `seaplane.io/`
   return 422. Validation rejects the entire request, never just some keys.
-- Creates discard caller-supplied system-prefix labels, validate customer syntax,
-  install trusted system labels, and check only the resource Create action
-  against the candidate. These are metadata labels, not NodePool `spec.labels`
-  or Cluster `spec.tags`.
+- Creates discard caller-supplied labels and system-prefix annotations, validate
+  customer syntax, install trusted system labels, and check only the resource
+  Create action against the candidate. These are metadata annotations, not
+  NodePool `spec.labels` or Cluster `spec.tags`.
 - Storage resolves the caller's account and stored NodePool parent before
   authorization. Valid missing/foreign requests return 404 even with broad grants.
   Labels cannot grant permission to their own patch. An allowed patch may revoke
@@ -173,8 +177,8 @@ Namespace `Seaplane`. The schema is embedded from
 
 - Resources carry `account` and `region` attributes. `region` is always the
   service region.
-- Stored `metadata.labels` are entity tags. Use `hasTag` before `getTag`.
-  Collections have no tags.
+- Customer labels (annotations) are entity tags; system labels are not.
+  Use `hasTag` before `getTag`. Collections have no tags.
 - UIDs are FleetDB object UIDs. Create checks use the validated candidate name in
   place of the UID, before any write.
 - Ownership comes from storage (`account-<accountID>` namespace, account label),

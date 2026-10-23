@@ -107,12 +107,14 @@ func resourceRequest(srv *Server, method, path, body string) *httptest.ResponseR
 	return w
 }
 func resourceFixtures() []client.Object {
-	labels := map[string]string{"seaplane.io/account-id": resourceTestAccount, "team": "blue"}
-	parent := &v1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "parent", Namespace: "account-" + resourceTestAccount, UID: types.UID(resourceTestClusterID), Labels: labels}}
+	labels := map[string]string{"seaplane.io/account-id": resourceTestAccount}
+	tags := map[string]string{"team": "blue"}
+	parent := &v1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "parent", Namespace: "account-" + resourceTestAccount, UID: types.UID(resourceTestClusterID), Labels: labels, Annotations: tags}}
 	pool := &v1.NodePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "parent.workers", Namespace: parent.Namespace, UID: "pool-uid",
-			Labels:          map[string]string{"seaplane.io/account-id": resourceTestAccount, "seaplane.io/cluster-uid": resourceTestClusterID, "team": "blue"},
+			Labels:          map[string]string{"seaplane.io/account-id": resourceTestAccount, "seaplane.io/cluster-uid": resourceTestClusterID},
+			Annotations:     map[string]string{"team": "blue"},
 			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(parent, v1.GroupVersion.WithKind("Cluster"))},
 		},
 		Spec: v1.NodePoolSpec{NodePool: v1.NodePoolSpecPassthrough{ClusterName: parent.Name}},
@@ -120,8 +122,8 @@ func resourceFixtures() []client.Object {
 	return []client.Object{
 		parent,
 		pool,
-		&v1.OidcConfig{ObjectMeta: metav1.ObjectMeta{Name: "config", Namespace: parent.Namespace, UID: "config-uid", Labels: labels}},
-		&v1.DNSReservation{ObjectMeta: metav1.ObjectMeta{Name: "zone", Namespace: parent.Namespace, UID: "zone-uid", Labels: labels}},
+		&v1.OidcConfig{ObjectMeta: metav1.ObjectMeta{Name: "config", Namespace: parent.Namespace, UID: "config-uid", Labels: labels, Annotations: tags}},
+		&v1.DNSReservation{ObjectMeta: metav1.ObjectMeta{Name: "zone", Namespace: parent.Namespace, UID: "zone-uid", Labels: labels, Annotations: tags}},
 	}
 }
 func actionPermit(action string) string {

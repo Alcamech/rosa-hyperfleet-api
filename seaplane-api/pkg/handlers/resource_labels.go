@@ -129,20 +129,20 @@ func resourceLabels[T client.Object](w http.ResponseWriter, r *http.Request, aut
 			return errResponded
 		}
 		if r.Method == http.MethodGet {
-			labels := obj.GetLabels()
-			if labels == nil {
-				labels = map[string]string{}
+			tags := obj.GetAnnotations()
+			if tags == nil {
+				tags = map[string]string{}
 			}
-			if err := api.Write(w, http.StatusOK, labels); err != nil {
+			if err := api.Write(w, http.StatusOK, tags); err != nil {
 				logger.Error("failed to write labels", "error", err)
 			}
 			return nil
 		}
-		labels := applyLabelPatch(obj.GetLabels(), patch)
-		if maps.Equal(labels, obj.GetLabels()) {
+		tags := applyLabelPatch(obj.GetAnnotations(), patch)
+		if maps.Equal(tags, obj.GetAnnotations()) {
 			return nil
 		}
-		obj.SetLabels(labels)
+		obj.SetAnnotations(tags)
 		if err := save(r.Context(), obj); err != nil {
 			if seaplanedb.IsConflict(err) {
 				return err

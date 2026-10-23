@@ -42,7 +42,7 @@ func TestLabelSnapshotIdentity(t *testing.T) {
 			case "wrong parent label":
 				objects[1].GetLabels()["seaplane.io/cluster-uid"] = "forged"
 			case "cannot escalate":
-				objects[1].GetLabels()["team"] = "red"
+				objects[1].GetAnnotations()["team"] = "red"
 				body = `{"team":"blue"}`
 				want = 403
 			case "self revoke":
@@ -85,8 +85,8 @@ func TestLabelSnapshotIdentity(t *testing.T) {
 					t.Fatalf("post-change access not revoked: %d", w.Code)
 				}
 				var np v1.NodePool
-				if err := store.Get(context.Background(), client.ObjectKeyFromObject(objects[1]), &np); err != nil || np.Labels["team"] != "red" {
-					t.Fatalf("labels=%v error=%v", np.Labels, err)
+				if err := store.Get(context.Background(), client.ObjectKeyFromObject(objects[1]), &np); err != nil || np.Annotations["team"] != "red" {
+					t.Fatalf("tags=%v error=%v", np.Annotations, err)
 				}
 			}
 		})

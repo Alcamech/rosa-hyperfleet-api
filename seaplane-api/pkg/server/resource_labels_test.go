@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"reflect"
 	"testing"
 
@@ -68,7 +69,7 @@ func TestResourceLabels(t *testing.T) {
 				}
 				if tc.method == "GET" && w.Code == 200 {
 					var labels map[string]string
-					if err := json.Unmarshal(w.Body.Bytes(), &labels); err != nil || !reflect.DeepEqual(labels, original.GetLabels()) {
+					if err := json.Unmarshal(w.Body.Bytes(), &labels); err != nil || !reflect.DeepEqual(labels, original.GetAnnotations()) {
 						t.Fatalf("labels=%v error=%v", labels, err)
 					}
 				}
@@ -78,14 +79,18 @@ func TestResourceLabels(t *testing.T) {
 					if err := json.Unmarshal([]byte(tc.body), &patch); err != nil {
 						t.Fatal(err)
 					}
-					labels := expected.GetLabels()
+					tags := maps.Clone(expected.GetAnnotations())
 					for key, value := range patch {
 						if value == nil {
-							delete(labels, key)
+							delete(tags, key)
 						} else {
-							labels[key] = *value
+							tags[key] = *value
 						}
 					}
+					if len(tags) == 0 {
+						tags = nil // the store omits an empty map
+					}
+					expected.SetAnnotations(tags)
 				}
 				expected.SetResourceVersion(stored.GetResourceVersion())
 				if !reflect.DeepEqual(expected, stored) {

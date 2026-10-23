@@ -248,7 +248,7 @@ func oidcConfigUsable(oidcConfig *seaplanev1alpha1.OidcConfig) bool {
 
 // authorizeCreate checks CreateCluster before any lookup, so a caller without it learns nothing about references.
 func (h *ClusterHandler) authorizeCreate(w http.ResponseWriter, r *http.Request, req *public.Cluster, accountID string) bool {
-	return validateCreateLabels(w, req.Labels, h.logger) && authorizeResource(w, r, h.authorizer, h.logger, authz.CreateCluster, candidateResource(h.clusterResource(seaplanedb.PublicToInternalCluster(req, accountID)), req.Name))
+	return validateCreateLabels(w, req.Annotations, h.logger) && authorizeResource(w, r, h.authorizer, h.logger, authz.CreateCluster, candidateResource(h.clusterResource(seaplanedb.PublicToInternalCluster(req, accountID)), req.Name))
 }
 
 // authorizeReferences requires Describe on each referenced resource before it is claimed, so a forbid on it holds.

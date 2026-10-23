@@ -119,9 +119,9 @@ func TestAuthorizedSnapshotConflict(t *testing.T) {
 				if err := c.Get(ctx, key, competitor); err != nil {
 					return err
 				}
-				labels := competitor.GetLabels()
-				labels["team"], labels["competitor"], labels["change"] = tc.competitorTeam, "wrote", "competitor"
-				competitor.SetLabels(labels)
+				tags := competitor.GetAnnotations()
+				tags["team"], tags["competitor"], tags["change"] = tc.competitorTeam, "wrote", "competitor"
+				competitor.SetAnnotations(tags)
 				if err := c.Update(ctx, competitor); err != nil {
 					return err
 				}
@@ -158,8 +158,8 @@ func TestAuthorizedSnapshotConflict(t *testing.T) {
 				t.Fatalf("exhausted update retries must return the upstream conflict code: %s", w.Body.String())
 			}
 			stored := objects[tc.index].DeepCopyObject().(client.Object)
-			if err := store.Get(context.Background(), key, stored); err != nil || stored.GetLabels()["competitor"] != "wrote" || stored.GetLabels()["team"] != tc.competitorTeam {
-				t.Fatalf("newer state lost: labels=%v %v", stored.GetLabels(), err)
+			if err := store.Get(context.Background(), key, stored); err != nil || stored.GetAnnotations()["competitor"] != "wrote" || stored.GetAnnotations()["team"] != tc.competitorTeam {
+				t.Fatalf("newer state lost: tags=%v %v", stored.GetAnnotations(), err)
 			}
 			changed := false
 			switch obj := stored.(type) {
@@ -169,7 +169,7 @@ func TestAuthorizedSnapshotConflict(t *testing.T) {
 				changed = obj.Spec.Labels["change"] == "requested"
 			}
 			if strings.HasSuffix(tc.path, "/labels") {
-				changed = stored.GetLabels()["change"] == "requested"
+				changed = stored.GetAnnotations()["change"] == "requested"
 			}
 			if changed != (tc.want == 200 || tc.want == 204) {
 				t.Fatalf("requested change persisted = %v, want %v", changed, tc.want == 200)

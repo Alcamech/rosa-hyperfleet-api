@@ -345,7 +345,7 @@ func TestClusterAuthz_TrustedMetadata(t *testing.T) {
 			cr.Spec.HostedCluster.Platform.AWS.Region = "us-west-2"
 			cr.Spec.Tags = map[string]string{"example.com/team": tc.tag}
 			if tc.label != "" {
-				cr.Labels["example.com/team"] = tc.label
+				cr.Annotations = map[string]string{"example.com/team": tc.label}
 			}
 			h, registry, _ := clusterAuthzFixture(t, clusterOrderedStore([]*seaplanev1alpha1.Cluster{cr}, nil), clusterAuthorizer(t, tc.policies...))
 			r := httptest.NewRequest(http.MethodGet, "/api/v0/clusters/untrusted-name?example.com/team=blue&accountId=999999999999&region=us-west-2", bytes.NewBufferString(`{"metadata":{"uid":"spoof-id","labels":{"example.com/team":"blue","seaplane.io/account-id":"999999999999"}},"spec":{"tags":{"example.com/team":"blue"}}}`)).WithContext(testContext(testAccountID))
@@ -466,7 +466,7 @@ func TestClusterAuthz_StoredResourceFaults(t *testing.T) {
 func TestClusterAuthz_LateEvaluationError(t *testing.T) {
 	first := testClusterCR("first", "first", testAccountID)
 	late := testClusterCR("late", "late", testAccountID)
-	late.Labels["example.com/fault"] = "fault-detail-secret"
+	late.Annotations = map[string]string{"example.com/fault": "fault-detail-secret"}
 	for _, operation := range []authz.Action{authz.DescribeCluster} {
 		t.Run(string(operation), func(t *testing.T) {
 			h, registry, logs := clusterAuthzFixture(t, clusterOrderedStore([]*seaplanev1alpha1.Cluster{first, late}, nil), clusterAuthorizer(t, clusterReadPermit, clusterFailingForbid))
