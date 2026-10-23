@@ -386,7 +386,7 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 					Release: hypershiftv1beta1.Release{Image: version},
 					Platform: v1alpha1.PlatformSpec{
 						Type: hypershiftv1beta1.AWSPlatform,
-						AWS: &hypershiftv1beta1.AWSPlatformSpec{
+						AWS: &v1alpha1.AWSPlatformSpec{
 							Region:   region,
 							RolesRef: iamOut.Roles,
 							CloudProviderConfig: &hypershiftv1beta1.AWSCloudProviderConfig{

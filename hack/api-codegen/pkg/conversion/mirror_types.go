@@ -8,7 +8,7 @@ import "strings"
 // and need automatic conversion logic for
 type MirrorTypeMapping struct {
 	FieldName          string // Name of the field in the struct (e.g., "Configuration", "AutoNode")
-	SeaplaneType     string // Our mirror type (e.g., "v1alpha1.ClusterConfiguration")
+	SeaplaneType       string // Our mirror type (e.g., "v1alpha1.ClusterConfiguration")
 	HyperShiftType     string // Upstream HyperShift type (e.g., "v1beta1.ClusterConfiguration")
 	ConversionStrategy string // "json-roundtrip" or "field-by-field"
 }
@@ -29,7 +29,7 @@ var mirrorTypeMappings = []MirrorTypeMapping{
 	// on kubelet and machine config fields, while HyperShift has the upstream version in v1beta1
 	{
 		FieldName:          "Configuration",
-		SeaplaneType:     "v1alpha1.ClusterConfiguration",
+		SeaplaneType:       "v1alpha1.ClusterConfiguration",
 		HyperShiftType:     "v1beta1.ClusterConfiguration",
 		ConversionStrategy: "json-roundtrip",
 	},
@@ -38,7 +38,7 @@ var mirrorTypeMappings = []MirrorTypeMapping{
 	// the AWS platform, excluding Azure, GCP, OpenStack, and other non-supported platforms.
 	{
 		FieldName:          "Platform",
-		SeaplaneType:     "v1alpha1.PlatformSpec",
+		SeaplaneType:       "v1alpha1.PlatformSpec",
 		HyperShiftType:     "v1beta1.PlatformSpec",
 		ConversionStrategy: "json-roundtrip",
 	},
@@ -48,7 +48,7 @@ var mirrorTypeMappings = []MirrorTypeMapping{
 	// collapsing the field to an opaque object.
 	{
 		FieldName:          "Capabilities",
-		SeaplaneType:     "v1alpha1.Capabilities",
+		SeaplaneType:       "v1alpha1.Capabilities",
 		HyperShiftType:     "v1beta1.Capabilities",
 		ConversionStrategy: "json-roundtrip",
 	},
@@ -56,7 +56,7 @@ var mirrorTypeMappings = []MirrorTypeMapping{
 	// NodePool Platform: same as above for node pool platform configuration.
 	{
 		FieldName:          "Platform",
-		SeaplaneType:     "v1alpha1.NodePoolPlatform",
+		SeaplaneType:       "v1alpha1.NodePoolPlatform",
 		HyperShiftType:     "v1beta1.NodePoolPlatform",
 		ConversionStrategy: "json-roundtrip",
 	},
@@ -64,7 +64,7 @@ var mirrorTypeMappings = []MirrorTypeMapping{
 	// NodePool AWS platform: reduced further so RootVolume's sub-fields can carry independent write-modes.
 	{
 		FieldName:          "AWS",
-		SeaplaneType:     "v1alpha1.AWSNodePoolPlatform",
+		SeaplaneType:       "v1alpha1.AWSNodePoolPlatform",
 		HyperShiftType:     "v1beta1.AWSNodePoolPlatform",
 		ConversionStrategy: "json-roundtrip",
 	},
@@ -72,7 +72,7 @@ var mirrorTypeMappings = []MirrorTypeMapping{
 	// Root volume: size is customer-settable (create only); type/iops/encrypted/encryptionKey are service-set.
 	{
 		FieldName:          "RootVolume",
-		SeaplaneType:     "v1alpha1.Volume",
+		SeaplaneType:       "v1alpha1.Volume",
 		HyperShiftType:     "v1beta1.Volume",
 		ConversionStrategy: "json-roundtrip",
 	},

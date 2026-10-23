@@ -94,6 +94,8 @@ type ServiceSetFieldsHostedCluster struct {
 	PullSecret corev1.LocalObjectReference `json:"pullSecret,omitempty"`
 	// ReadinessEndpoints is service-set (platform-managed, hidden from API)
 	ReadinessEndpoints string `json:"readinessEndpoints,omitempty"`
+	// ResourceTags is service-set (platform-managed, hidden from API)
+	ResourceTags string `json:"resourceTags,omitempty"`
 	// SecretEncryption is service-set (platform-managed, hidden from API)
 	SecretEncryption *hypershiftv1beta1.SecretEncryptionSpec `json:"secretEncryption,omitempty"`
 	// ServiceAccountSigningKey is service-set (platform-managed, hidden from API)
@@ -174,8 +176,6 @@ type ServiceSetFields struct {
 	MemoryThrottlingFactor *float64 `json:"memoryThrottlingFactor,omitempty"`
 	// Network is service-set (platform-managed, hidden from API)
 	Network *v1alpha1.NetworkConfiguration `json:"network,omitempty"`
-	// NodeVolumeDetachTimeout is service-set (platform-managed, hidden from API)
-	NodeVolumeDetachTimeout *metav1.Duration `json:"nodeVolumeDetachTimeout,omitempty"`
 	// Oauth is service-set (platform-managed, hidden from API)
 	Oauth *v1alpha1.OAuthConfiguration `json:"oauth,omitempty"`
 	// OsImageStream is service-set (platform-managed, hidden from API)
@@ -188,6 +188,8 @@ type ServiceSetFields struct {
 	PublicZoneID string `json:"publicZoneID,omitempty"`
 	// ReadinessEndpoints is service-set (platform-managed, hidden from API)
 	ReadinessEndpoints []string `json:"readinessEndpoints,omitempty"`
+	// ResourceTags is service-set (platform-managed, hidden from API)
+	ResourceTags []hypershiftv1beta1.AWSResourceTag `json:"resourceTags,omitempty"`
 	// SystemdUnits is service-set (platform-managed, hidden from API)
 	SystemdUnits []v1alpha1.SystemdUnit `json:"systemdUnits,omitempty"`
 	// TopologyManagerPolicy is service-set (platform-managed, hidden from API)

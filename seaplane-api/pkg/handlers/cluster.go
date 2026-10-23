@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 
@@ -291,7 +290,10 @@ func (h *ClusterHandler) decodeClusterCreateRequest(accountID string, body []byt
 	if err := validation.ValidateAccountNamespace(req.Namespace, accountID); err != nil {
 		return nil, &ErrClusterCreateNamespaceMismatch
 	}
-	if errs := h.validator.ValidateCreate(&req.Spec, featuregate.Default); errs != nil {
+	errs := h.validator.ValidateCreate(&req.Spec, featuregate.Default)
+	errs = append(errs, validation.ValidateCustomerAWSTags(req.Spec.Tags, "spec.tags")...)
+	errs = append(errs, validation.ValidateClusterAWSTagBudget(req.Spec.Tags)...)
+	if len(errs) > 0 {
 		apiErr := ErrClusterValidation.WithErrors(errs)
 		return nil, &apiErr
 	}
@@ -536,6 +538,18 @@ func (h *ClusterHandler) updateOnce(w http.ResponseWriter, r *http.Request, clus
 	if !authorizeResource(w, r, h.authorizer, h.logger, authz.UpdateCluster, h.clusterResource(cr), clusterUpdateActions(&cr.Spec, &candidate.Spec)...) {
 		return nil, errResponded
 	}
+	if clusterTagsSupplied(rawSpec) {
+		errs, err := h.validateUpdatedClusterTags(ctx, candidate)
+		if len(errs) > 0 {
+			writeAPIError(w, ErrClusterValidation.WithErrors(errs), h.logger)
+			return nil, errResponded
+		}
+		if err != nil {
+			h.logger.Error("failed to validate cluster AWS tags", "error", err, "account_id", accountID, "cluster_name", clusterName)
+			writeAPIError(w, ErrClusterUpdateFailed, h.logger)
+			return nil, errResponded
+		}
+	}
 
 	// Preserve queue uniqueness checks without writing before authorization.
 	oldQueueURL, oldRegion := clusterTerminationHandlerQueue(cr)
@@ -577,7 +591,7 @@ func (h *ClusterHandler) updateOnce(w http.ResponseWriter, r *http.Request, clus
 	return candidate, nil
 }
 
-func requestedTerminationHandlerQueue(aws *hypershiftv1beta1.AWSPlatformSpec) (queueURL, region string) {
+func requestedTerminationHandlerQueue(aws *public.AWSPlatformSpec) (queueURL, region string) {
 	if aws == nil {
 		return "", ""
 	}
@@ -588,7 +602,42 @@ func clusterTerminationHandlerQueue(cluster *seaplanev1alpha1.Cluster) (queueURL
 	if cluster == nil {
 		return "", ""
 	}
-	return requestedTerminationHandlerQueue(cluster.Spec.HostedCluster.Platform.AWS)
+	aws := cluster.Spec.HostedCluster.Platform.AWS
+	if aws == nil {
+		return "", ""
+	}
+	return aws.TerminationHandlerQueueURL, aws.Region
+}
+
+// validateUpdatedClusterTags checks the cluster's AWS tags and each NodePool's tag budget under it.
+func (h *ClusterHandler) validateUpdatedClusterTags(ctx context.Context, cluster *seaplanev1alpha1.Cluster) (validation.ValidationErrors, error) {
+	errs := validation.ValidateCustomerAWSTags(cluster.Spec.Tags, "spec.tags")
+	errs = append(errs, validation.ValidateClusterAWSTagBudget(cluster.Spec.Tags)...)
+	if len(errs) > 0 {
+		return errs, nil
+	}
+
+	nodePools, err := h.db.ListNodePools(ctx, string(cluster.UID))
+	if err != nil {
+		return nil, fmt.Errorf("list NodePools for AWS tag validation: %w", err)
+	}
+	for i := range nodePools.Items {
+		nodePool := &nodePools.Items[i]
+		if nodePool.Spec.NodePool.ClusterName != cluster.Name && !strings.HasPrefix(nodePool.Name, cluster.Name+".") {
+			continue
+		}
+		poolErrs := validation.ValidateNodePoolAWSTagBudget(cluster.Spec.Tags, nodePool.Spec.Tags, "spec.tags")
+		for _, tagErr := range poolErrs {
+			tagErr.Reason = fmt.Sprintf("NodePool %q: %s", nodePool.Name, tagErr.Reason)
+		}
+		errs = append(errs, poolErrs...)
+	}
+	return errs, nil
+}
+
+func clusterTagsSupplied(rawSpec map[string]any) bool {
+	_, exists := rawSpec["tags"]
+	return exists
 }
 
 func terminationHandlerQueueURLs(clusters []seaplanev1alpha1.Cluster, excludeName string) []string {

@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
+	public "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/clients/seaplanedb"
 )
 
@@ -258,6 +259,51 @@ func TestNodePoolHandler_Update_AllowsUnchangedServiceManagedManagement(t *testi
 	}
 	if !updated.Spec.NodePool.Management.AutoRepair {
 		t.Error("round-trip update changed service-managed management.autoRepair")
+	}
+}
+
+func TestNodePoolHandler_Update_ReplacesRootTags(t *testing.T) {
+	cluster := testClusterCR("550e8400-e29b-41d4-a716-446655440000", "test-cluster", testAccountID)
+	cluster.Spec.Tags = map[string]string{"environment": "test"}
+	nodePool := testNodePoolCR("test-cluster.workers", cluster)
+	nodePool.Spec.Tags = map[string]string{"owner": "old", "remove": "this"}
+	nodePool.Spec.NodePool = seaplanev1alpha1.NodePoolSpecPassthrough{
+		ClusterName: cluster.Name,
+		Platform: hypershiftv1beta1.NodePoolPlatform{
+			Type: hypershiftv1beta1.AWSPlatform,
+			AWS: &hypershiftv1beta1.AWSNodePoolPlatform{
+				InstanceType: "m5.xlarge",
+			},
+		},
+	}
+	handler := newTestNodePoolHandler(t, cluster, nodePool)
+	request := seaplanedb.InternalToPublicNodePool(nodePool)
+	request.Spec.Tags = map[string]string{"owner": "new"}
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v0/nodepools/"+nodePool.Name, bytes.NewReader(mustMarshal(t, request)))
+	req = req.WithContext(testContext(testAccountID))
+	req = mux.SetURLVars(req, map[string]string{"id": nodePool.Name})
+	w := httptest.NewRecorder()
+
+	handler.Update(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var response public.NodePool
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Spec.Tags) != 1 || response.Spec.Tags["owner"] != "new" {
+		t.Errorf("response tags = %v, want only owner=new", response.Spec.Tags)
+	}
+
+	stored, err := handler.db.GetNodePool(testContext(testAccountID), nodePool.Name)
+	if err != nil {
+		t.Fatalf("get updated NodePool: %v", err)
+	}
+	if len(stored.Spec.Tags) != 1 || stored.Spec.Tags["owner"] != "new" {
+		t.Errorf("stored tags = %v, want only owner=new", stored.Spec.Tags)
 	}
 }
 

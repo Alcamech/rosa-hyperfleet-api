@@ -1,5 +1,16 @@
 # Changes
 
+## 0.1.22 Oct 22 2026
+
+- ROSAENG-65107 | chore: Enable node drain grace period for v2
+
+
+## 0.1.21 Oct 21 2026
+
+- Rename platform-api to seaplane-api
+- Rename ROSA HyperFleet to ROSA Seaplane
+
+
 ## 0.1.20 Oct 16 2026
 
 - feat: add resettable pathbind updates

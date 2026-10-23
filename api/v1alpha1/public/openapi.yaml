@@ -1116,14 +1116,12 @@ components:
               additionalProperties:
                   type: string
               description: |-
-                  Tags are customer-defined AWS tags applied to the AWS resources created
-                  for this cluster, for cost allocation, resource organization and
-                  compliance tracking. They are applied at provisioning time only: AWS
-                  resources created by OpenShift cannot be retagged after the fact, so this
-                  field is immutable once the cluster is created.
-                  HyperShift caps platform.aws.resourceTags at 25 entries and the operator
-                  injects 2 system tags (red-hat-managed and kubernetes.io/cluster/<id>),
-                  so 23 customer tags are available here.
+                  Tags are customer-defined AWS tags applied to AWS resources for this
+                  cluster and its NodePools. The operator propagates changes to the
+                  HostedCluster and NodePool resources after creation.
+                  HyperShift caps platform.aws.resourceTags at 25 entries. Reserved system
+                  tags consume part of that budget; NodePool-specific tags share the same
+                  rendered limit.
               maxProperties: 23
               type: object
       required:
@@ -1192,6 +1190,16 @@ components:
                     rule: 'type(self) == int ? self >= 0 : self.matches(''^(0|[1-9][0-9]?|100)%$'')'
           nodePool:
               $ref: '#/components/schemas/NodePoolSpecPassthrough'
+          tags:
+              additionalProperties:
+                  type: string
+              description: |-
+                  Tags are customer-defined AWS tags for resources created for this NodePool.
+                  They combine with the parent Cluster's tags, with NodePool values taking
+                  precedence when keys overlap. Reserved system tags share the rendered AWS
+                  resource tag budget.
+              maxProperties: 25
+              type: object
       required:
           - nodePool
       type: object
@@ -3520,23 +3528,14 @@ components:
                                       description: aws specifies AWS-specific configuration for the cluster.
                                       properties:
                                           additionalAllowedPrincipals:
-                                              description: |-
-                                                  additionalAllowedPrincipals specifies a list of additional allowed principal ARNs
-                                                  to be added to the hosted control plane's VPC Endpoint Service to enable additional
-                                                  VPC Endpoint connection requests to be automatically accepted.
-                                                  See https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html
-                                                  for more details around VPC Endpoint Service allowed principals.
+                                              description: additionalAllowedPrincipals specifies extra principals allowed to connect to the VPC endpoint service.
                                               items:
                                                   maxLength: 255
                                                   type: string
                                               maxItems: 25
                                               type: array
                                           cloudProviderConfig:
-                                              description: |-
-                                                  cloudProviderConfig specifies AWS networking configuration for the control
-                                                  plane.
-                                                  This is mainly used for cloud provider controller config:
-                                                  https://github.com/kubernetes/kubernetes/blob/f5be5052e3d0808abb904aebd3218fe4a5c2dd82/staging/src/k8s.io/legacy-cloud-providers/aws/aws.go#L1347-L1364
+                                              description: cloudProviderConfig specifies AWS networking configuration for the control plane.
                                               properties:
                                                   subnet:
                                                       description: subnet is the subnet to use for control plane cloud resources.
@@ -3586,9 +3585,7 @@ components:
                                               type: object
                                           endpointAccess:
                                               default: Public
-                                              description: |-
-                                                  endpointAccess specifies the publishing scope of cluster endpoints. The
-                                                  default is Public.
+                                              description: endpointAccess specifies the publishing scope of cluster endpoints.
                                               enum:
                                                   - Public
                                                   - PublicAndPrivate
@@ -3596,62 +3593,14 @@ components:
                                               type: string
                                           multiArch:
                                               default: false
-                                              description: |-
-                                                  multiArch specifies whether the Hosted Cluster will be expected to support NodePools with different
-                                                  CPU architectures, i.e., supporting arm64 NodePools and supporting amd64 NodePools on the same Hosted Cluster.
-                                                  Deprecated: This field is no longer used. The HyperShift Operator now performs multi-arch validations
-                                                  automatically despite the platform type. The HyperShift Operator will set HostedCluster.Status.PayloadArch based
-                                                  on the HostedCluster release image. This field is used by the NodePool controller to validate the
-                                                  NodePool.Spec.Arch is supported.
+                                              description: multiArch indicates whether this cluster supports NodePools with multiple CPU architectures.
                                               type: boolean
                                           region:
-                                              description: |-
-                                                  region is the AWS region in which the cluster resides. This configures the
-                                                  OCP control plane cloud integrations, and is used by NodePool to resolve
-                                                  the correct boot AMI for a given release.
+                                              description: region is the AWS region in which the cluster resides.
                                               maxLength: 255
                                               type: string
-                                          resourceTags:
-                                              description: |-
-                                                  resourceTags is a list of additional tags to apply to AWS resources created
-                                                  for the cluster. See
-                                                  https://docs.aws.amazon.com/general/latest/gr/aws_tagging.html for
-                                                  information on tagging AWS resources. AWS supports a maximum of 50 tags per
-                                                  resource. OpenShift reserves 25 tags for its use, leaving 25 tags available
-                                                  for the user.
-                                                  Changes to this field will be propagated in-place to AWS resources (VPC Endpoints, EC2 instances, initial EBS volumes and default/endpoint security groups).
-                                                  These tags will be propagated to the infrastructure CR in the guest cluster, where other OCP operators might choose to honor this input to reconcile AWS resources created by them.
-                                                  Please consult the official documentation for a list of all AWS resources that support in-place tag updates.
-                                                  These take precedence over tags defined out of band (i.e., tags added manually or by other tools outside of HyperShift) in AWS in case of conflicts.
-                                              items:
-                                                  description: AWSResourceTag is a tag to apply to AWS resources created for the cluster.
-                                                  properties:
-                                                      key:
-                                                          description: key is the key of the tag.
-                                                          maxLength: 128
-                                                          minLength: 1
-                                                          pattern: ^[0-9A-Za-z_.:/=+-@]+$
-                                                          type: string
-                                                      value:
-                                                          description: |-
-                                                              value is the value of the tag.
-                                                              Some AWS service do not support empty values. Since tags are added to
-                                                              resources in many services, the length of the tag value must meet the
-                                                              requirements of all services.
-                                                          maxLength: 256
-                                                          minLength: 1
-                                                          pattern: ^[0-9A-Za-z_.:/=+-@]+$
-                                                          type: string
-                                                  required:
-                                                      - key
-                                                      - value
-                                                  type: object
-                                              maxItems: 25
-                                              type: array
                                           rolesRef:
-                                              description: |-
-                                                  rolesRef contains references to various AWS IAM roles required to enable
-                                                  integrations such as OIDC.
+                                              description: rolesRef contains references to the AWS IAM roles required by the cluster.
                                               properties:
                                                   controlPlaneOperatorARN:
                                                       description: |-
@@ -4012,10 +3961,7 @@ components:
                                                   - storageARN
                                               type: object
                                           serviceEndpoints:
-                                              description: |-
-                                                  serviceEndpoints specifies optional custom endpoints which will override
-                                                  the default service endpoint of specific AWS Services.
-                                                  There must be only one ServiceEndpoint for a given service name.
+                                              description: serviceEndpoints specifies optional custom endpoints for AWS services.
                                               items:
                                                   description: |-
                                                       AWSServiceEndpoint stores the configuration for services to
@@ -4042,10 +3988,7 @@ components:
                                               maxItems: 50
                                               type: array
                                           sharedVPC:
-                                              description: |-
-                                                  sharedVPC contains fields that must be specified if the HostedCluster must use a VPC that is
-                                                  created in a different AWS account and is shared with the AWS account where the HostedCluster
-                                                  will be created.
+                                              description: sharedVPC contains configuration for a VPC shared from another AWS account.
                                               properties:
                                                   localZoneID:
                                                       description: |-
@@ -4168,17 +4111,9 @@ components:
                                                   - rolesRef
                                               type: object
                                           terminationHandlerQueueURL:
-                                              description: |-
-                                                  terminationHandlerQueueURL specifies the SQS queue URL for EC2 spot interruption events.
-                                                  This is required when using spot instances (marketType: Spot) in NodePools to enable
-                                                  graceful handling of spot instance terminations.
-                                                  The queue should be configured to receive EC2 Spot Instance Interruption Warnings
-                                                  and EC2 Instance Rebalance Recommendations via EventBridge rules.
-                                                  The AWS Node Termination Handler will poll this queue and cordon/drain nodes
-                                                  before they are terminated, providing a best effort for graceful shutdown.
-                                                  Supports both standard and FIFO queues (FIFO queues end with .fifo suffix).
+                                              description: terminationHandlerQueueURL specifies the SQS queue for EC2 Spot interruption events.
                                               maxLength: 512
-                                              pattern: ^https://sqs\.[a-z0-9-]+\.amazonaws\.com/[0-9]{12}/[a-zA-Z0-9_-]+(\.fifo)?$
+                                              pattern: ^https://sqs(-fips)?\.([a-z0-9-]+)\.amazonaws\.com/[0-9]{12}/[a-zA-Z0-9_-]+(\.fifo)?$
                                               type: string
                                       required:
                                           - region
@@ -4227,14 +4162,12 @@ components:
                       additionalProperties:
                           type: string
                       description: |-
-                          Tags are customer-defined AWS tags applied to the AWS resources created
-                          for this cluster, for cost allocation, resource organization and
-                          compliance tracking. They are applied at provisioning time only: AWS
-                          resources created by OpenShift cannot be retagged after the fact, so this
-                          field is immutable once the cluster is created.
-                          HyperShift caps platform.aws.resourceTags at 25 entries and the operator
-                          injects 2 system tags (red-hat-managed and kubernetes.io/cluster/<id>),
-                          so 23 customer tags are available here.
+                          Tags are customer-defined AWS tags applied to AWS resources for this
+                          cluster and its NodePools. The operator propagates changes to the
+                          HostedCluster and NodePool resources after creation.
+                          HyperShift caps platform.aws.resourceTags at 25 entries. Reserved system
+                          tags consume part of that budget; NodePool-specific tags share the same
+                          rendered limit.
                       maxProperties: 23
                       type: object
               required:
@@ -6712,23 +6645,14 @@ components:
                                                   description: aws specifies AWS-specific configuration for the cluster.
                                                   properties:
                                                       additionalAllowedPrincipals:
-                                                          description: |-
-                                                              additionalAllowedPrincipals specifies a list of additional allowed principal ARNs
-                                                              to be added to the hosted control plane's VPC Endpoint Service to enable additional
-                                                              VPC Endpoint connection requests to be automatically accepted.
-                                                              See https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html
-                                                              for more details around VPC Endpoint Service allowed principals.
+                                                          description: additionalAllowedPrincipals specifies extra principals allowed to connect to the VPC endpoint service.
                                                           items:
                                                               maxLength: 255
                                                               type: string
                                                           maxItems: 25
                                                           type: array
                                                       cloudProviderConfig:
-                                                          description: |-
-                                                              cloudProviderConfig specifies AWS networking configuration for the control
-                                                              plane.
-                                                              This is mainly used for cloud provider controller config:
-                                                              https://github.com/kubernetes/kubernetes/blob/f5be5052e3d0808abb904aebd3218fe4a5c2dd82/staging/src/k8s.io/legacy-cloud-providers/aws/aws.go#L1347-L1364
+                                                          description: cloudProviderConfig specifies AWS networking configuration for the control plane.
                                                           properties:
                                                               subnet:
                                                                   description: subnet is the subnet to use for control plane cloud resources.
@@ -6778,9 +6702,7 @@ components:
                                                           type: object
                                                       endpointAccess:
                                                           default: Public
-                                                          description: |-
-                                                              endpointAccess specifies the publishing scope of cluster endpoints. The
-                                                              default is Public.
+                                                          description: endpointAccess specifies the publishing scope of cluster endpoints.
                                                           enum:
                                                               - Public
                                                               - PublicAndPrivate
@@ -6788,62 +6710,14 @@ components:
                                                           type: string
                                                       multiArch:
                                                           default: false
-                                                          description: |-
-                                                              multiArch specifies whether the Hosted Cluster will be expected to support NodePools with different
-                                                              CPU architectures, i.e., supporting arm64 NodePools and supporting amd64 NodePools on the same Hosted Cluster.
-                                                              Deprecated: This field is no longer used. The HyperShift Operator now performs multi-arch validations
-                                                              automatically despite the platform type. The HyperShift Operator will set HostedCluster.Status.PayloadArch based
-                                                              on the HostedCluster release image. This field is used by the NodePool controller to validate the
-                                                              NodePool.Spec.Arch is supported.
+                                                          description: multiArch indicates whether this cluster supports NodePools with multiple CPU architectures.
                                                           type: boolean
                                                       region:
-                                                          description: |-
-                                                              region is the AWS region in which the cluster resides. This configures the
-                                                              OCP control plane cloud integrations, and is used by NodePool to resolve
-                                                              the correct boot AMI for a given release.
+                                                          description: region is the AWS region in which the cluster resides.
                                                           maxLength: 255
                                                           type: string
-                                                      resourceTags:
-                                                          description: |-
-                                                              resourceTags is a list of additional tags to apply to AWS resources created
-                                                              for the cluster. See
-                                                              https://docs.aws.amazon.com/general/latest/gr/aws_tagging.html for
-                                                              information on tagging AWS resources. AWS supports a maximum of 50 tags per
-                                                              resource. OpenShift reserves 25 tags for its use, leaving 25 tags available
-                                                              for the user.
-                                                              Changes to this field will be propagated in-place to AWS resources (VPC Endpoints, EC2 instances, initial EBS volumes and default/endpoint security groups).
-                                                              These tags will be propagated to the infrastructure CR in the guest cluster, where other OCP operators might choose to honor this input to reconcile AWS resources created by them.
-                                                              Please consult the official documentation for a list of all AWS resources that support in-place tag updates.
-                                                              These take precedence over tags defined out of band (i.e., tags added manually or by other tools outside of HyperShift) in AWS in case of conflicts.
-                                                          items:
-                                                              description: AWSResourceTag is a tag to apply to AWS resources created for the cluster.
-                                                              properties:
-                                                                  key:
-                                                                      description: key is the key of the tag.
-                                                                      maxLength: 128
-                                                                      minLength: 1
-                                                                      pattern: ^[0-9A-Za-z_.:/=+-@]+$
-                                                                      type: string
-                                                                  value:
-                                                                      description: |-
-                                                                          value is the value of the tag.
-                                                                          Some AWS service do not support empty values. Since tags are added to
-                                                                          resources in many services, the length of the tag value must meet the
-                                                                          requirements of all services.
-                                                                      maxLength: 256
-                                                                      minLength: 1
-                                                                      pattern: ^[0-9A-Za-z_.:/=+-@]+$
-                                                                      type: string
-                                                              required:
-                                                                  - key
-                                                                  - value
-                                                              type: object
-                                                          maxItems: 25
-                                                          type: array
                                                       rolesRef:
-                                                          description: |-
-                                                              rolesRef contains references to various AWS IAM roles required to enable
-                                                              integrations such as OIDC.
+                                                          description: rolesRef contains references to the AWS IAM roles required by the cluster.
                                                           properties:
                                                               controlPlaneOperatorARN:
                                                                   description: |-
@@ -7204,10 +7078,7 @@ components:
                                                               - storageARN
                                                           type: object
                                                       serviceEndpoints:
-                                                          description: |-
-                                                              serviceEndpoints specifies optional custom endpoints which will override
-                                                              the default service endpoint of specific AWS Services.
-                                                              There must be only one ServiceEndpoint for a given service name.
+                                                          description: serviceEndpoints specifies optional custom endpoints for AWS services.
                                                           items:
                                                               description: |-
                                                                   AWSServiceEndpoint stores the configuration for services to
@@ -7234,10 +7105,7 @@ components:
                                                           maxItems: 50
                                                           type: array
                                                       sharedVPC:
-                                                          description: |-
-                                                              sharedVPC contains fields that must be specified if the HostedCluster must use a VPC that is
-                                                              created in a different AWS account and is shared with the AWS account where the HostedCluster
-                                                              will be created.
+                                                          description: sharedVPC contains configuration for a VPC shared from another AWS account.
                                                           properties:
                                                               localZoneID:
                                                                   description: |-
@@ -7360,17 +7228,9 @@ components:
                                                               - rolesRef
                                                           type: object
                                                       terminationHandlerQueueURL:
-                                                          description: |-
-                                                              terminationHandlerQueueURL specifies the SQS queue URL for EC2 spot interruption events.
-                                                              This is required when using spot instances (marketType: Spot) in NodePools to enable
-                                                              graceful handling of spot instance terminations.
-                                                              The queue should be configured to receive EC2 Spot Instance Interruption Warnings
-                                                              and EC2 Instance Rebalance Recommendations via EventBridge rules.
-                                                              The AWS Node Termination Handler will poll this queue and cordon/drain nodes
-                                                              before they are terminated, providing a best effort for graceful shutdown.
-                                                              Supports both standard and FIFO queues (FIFO queues end with .fifo suffix).
+                                                          description: terminationHandlerQueueURL specifies the SQS queue for EC2 Spot interruption events.
                                                           maxLength: 512
-                                                          pattern: ^https://sqs\.[a-z0-9-]+\.amazonaws\.com/[0-9]{12}/[a-zA-Z0-9_-]+(\.fifo)?$
+                                                          pattern: ^https://sqs(-fips)?\.([a-z0-9-]+)\.amazonaws\.com/[0-9]{12}/[a-zA-Z0-9_-]+(\.fifo)?$
                                                           type: string
                                                   required:
                                                       - region
@@ -7419,14 +7279,12 @@ components:
                                   additionalProperties:
                                       type: string
                                   description: |-
-                                      Tags are customer-defined AWS tags applied to the AWS resources created
-                                      for this cluster, for cost allocation, resource organization and
-                                      compliance tracking. They are applied at provisioning time only: AWS
-                                      resources created by OpenShift cannot be retagged after the fact, so this
-                                      field is immutable once the cluster is created.
-                                      HyperShift caps platform.aws.resourceTags at 25 entries and the operator
-                                      injects 2 system tags (red-hat-managed and kubernetes.io/cluster/<id>),
-                                      so 23 customer tags are available here.
+                                      Tags are customer-defined AWS tags applied to AWS resources for this
+                                      cluster and its NodePools. The operator propagates changes to the
+                                      HostedCluster and NodePool resources after creation.
+                                      HyperShift caps platform.aws.resourceTags at 25 entries. Reserved system
+                                      tags consume part of that budget; NodePool-specific tags share the same
+                                      rendered limit.
                                   maxProperties: 23
                                   type: object
                           required:
@@ -7895,6 +7753,9 @@ components:
                                   type: string
                               description: nodeLabels propagates a list of labels to Nodes, only once on creation.
                               type: object
+                          nodeVolumeDetachTimeout:
+                              description: nodeVolumeDetachTimeout is the maximum amount of time that the controller will spend on detaching volumes from a node.
+                              type: string
                           platform:
                               description: platform specifies the underlying infrastructure provider for the NodePool
                               properties:
@@ -8053,35 +7914,6 @@ components:
                                                     rule: '!has(self.marketType) || self.marketType != ''CapacityBlocks'' || has(self.capacityReservation)'
                                                   - message: spot options can only be specified when marketType is 'Spot'
                                                     rule: '!has(self.spot) || (has(self.marketType) && self.marketType == ''Spot'')'
-                                          resourceTags:
-                                              description: |-
-                                                  resourceTags is an optional list of additional tags to apply to AWS node
-                                                  instances.
-                                              items:
-                                                  description: AWSResourceTag is a tag to apply to AWS resources created for the cluster.
-                                                  properties:
-                                                      key:
-                                                          description: key is the key of the tag.
-                                                          maxLength: 128
-                                                          minLength: 1
-                                                          pattern: ^[0-9A-Za-z_.:/=+-@]+$
-                                                          type: string
-                                                      value:
-                                                          description: |-
-                                                              value is the value of the tag.
-                                                              Some AWS service do not support empty values. Since tags are added to
-                                                              resources in many services, the length of the tag value must meet the
-                                                              requirements of all services.
-                                                          maxLength: 256
-                                                          minLength: 1
-                                                          pattern: ^[0-9A-Za-z_.:/=+-@]+$
-                                                          type: string
-                                                  required:
-                                                      - key
-                                                      - value
-                                                  type: object
-                                              maxItems: 25
-                                              type: array
                                           rootVolume:
                                               description: |-
                                                   rootVolume specifies configuration for the root volume of node instances.
@@ -8293,6 +8125,16 @@ components:
                           - management
                           - platform
                           - release
+                      type: object
+                  tags:
+                      additionalProperties:
+                          type: string
+                      description: |-
+                          Tags are customer-defined AWS tags for resources created for this NodePool.
+                          They combine with the parent Cluster's tags, with NodePool values taking
+                          precedence when keys overlap. Reserved system tags share the rendered AWS
+                          resource tag budget.
+                      maxProperties: 25
                       type: object
               required:
                   - nodePool
@@ -8661,6 +8503,9 @@ components:
                                               type: string
                                           description: nodeLabels propagates a list of labels to Nodes, only once on creation.
                                           type: object
+                                      nodeVolumeDetachTimeout:
+                                          description: nodeVolumeDetachTimeout is the maximum amount of time that the controller will spend on detaching volumes from a node.
+                                          type: string
                                       platform:
                                           description: platform specifies the underlying infrastructure provider for the NodePool
                                           properties:
@@ -8819,35 +8664,6 @@ components:
                                                                 rule: '!has(self.marketType) || self.marketType != ''CapacityBlocks'' || has(self.capacityReservation)'
                                                               - message: spot options can only be specified when marketType is 'Spot'
                                                                 rule: '!has(self.spot) || (has(self.marketType) && self.marketType == ''Spot'')'
-                                                      resourceTags:
-                                                          description: |-
-                                                              resourceTags is an optional list of additional tags to apply to AWS node
-                                                              instances.
-                                                          items:
-                                                              description: AWSResourceTag is a tag to apply to AWS resources created for the cluster.
-                                                              properties:
-                                                                  key:
-                                                                      description: key is the key of the tag.
-                                                                      maxLength: 128
-                                                                      minLength: 1
-                                                                      pattern: ^[0-9A-Za-z_.:/=+-@]+$
-                                                                      type: string
-                                                                  value:
-                                                                      description: |-
-                                                                          value is the value of the tag.
-                                                                          Some AWS service do not support empty values. Since tags are added to
-                                                                          resources in many services, the length of the tag value must meet the
-                                                                          requirements of all services.
-                                                                      maxLength: 256
-                                                                      minLength: 1
-                                                                      pattern: ^[0-9A-Za-z_.:/=+-@]+$
-                                                                      type: string
-                                                              required:
-                                                                  - key
-                                                                  - value
-                                                              type: object
-                                                          maxItems: 25
-                                                          type: array
                                                       rootVolume:
                                                           description: |-
                                                               rootVolume specifies configuration for the root volume of node instances.
@@ -9059,6 +8875,16 @@ components:
                                       - management
                                       - platform
                                       - release
+                                  type: object
+                              tags:
+                                  additionalProperties:
+                                      type: string
+                                  description: |-
+                                      Tags are customer-defined AWS tags for resources created for this NodePool.
+                                      They combine with the parent Cluster's tags, with NodePool values taking
+                                      precedence when keys overlap. Reserved system tags share the rendered AWS
+                                      resource tag budget.
+                                  maxProperties: 25
                                   type: object
                           required:
                               - nodePool
@@ -9352,6 +9178,9 @@ components:
                   type: string
               description: nodeLabels propagates a list of labels to Nodes, only once on creation.
               type: object
+          nodeVolumeDetachTimeout:
+              description: nodeVolumeDetachTimeout is the maximum amount of time that the controller will spend on detaching volumes from a node.
+              type: string
           platform:
               $ref: '#/components/schemas/NodePoolPlatform'
           release:
@@ -10978,35 +10807,6 @@ components:
                             rule: '!has(self.marketType) || self.marketType != ''CapacityBlocks'' || has(self.capacityReservation)'
                           - message: spot options can only be specified when marketType is 'Spot'
                             rule: '!has(self.spot) || (has(self.marketType) && self.marketType == ''Spot'')'
-                  resourceTags:
-                      description: |-
-                          resourceTags is an optional list of additional tags to apply to AWS node
-                          instances.
-                      items:
-                          description: AWSResourceTag is a tag to apply to AWS resources created for the cluster.
-                          properties:
-                              key:
-                                  description: key is the key of the tag.
-                                  maxLength: 128
-                                  minLength: 1
-                                  pattern: ^[0-9A-Za-z_.:/=+-@]+$
-                                  type: string
-                              value:
-                                  description: |-
-                                      value is the value of the tag.
-                                      Some AWS service do not support empty values. Since tags are added to
-                                      resources in many services, the length of the tag value must meet the
-                                      requirements of all services.
-                                  maxLength: 256
-                                  minLength: 1
-                                  pattern: ^[0-9A-Za-z_.:/=+-@]+$
-                                  type: string
-                          required:
-                              - key
-                              - value
-                          type: object
-                      maxItems: 25
-                      type: array
                   rootVolume:
                       description: |-
                           rootVolume specifies configuration for the root volume of node instances.
@@ -11146,23 +10946,14 @@ components:
               description: aws specifies AWS-specific configuration for the cluster.
               properties:
                   additionalAllowedPrincipals:
-                      description: |-
-                          additionalAllowedPrincipals specifies a list of additional allowed principal ARNs
-                          to be added to the hosted control plane's VPC Endpoint Service to enable additional
-                          VPC Endpoint connection requests to be automatically accepted.
-                          See https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html
-                          for more details around VPC Endpoint Service allowed principals.
+                      description: additionalAllowedPrincipals specifies extra principals allowed to connect to the VPC endpoint service.
                       items:
                           maxLength: 255
                           type: string
                       maxItems: 25
                       type: array
                   cloudProviderConfig:
-                      description: |-
-                          cloudProviderConfig specifies AWS networking configuration for the control
-                          plane.
-                          This is mainly used for cloud provider controller config:
-                          https://github.com/kubernetes/kubernetes/blob/f5be5052e3d0808abb904aebd3218fe4a5c2dd82/staging/src/k8s.io/legacy-cloud-providers/aws/aws.go#L1347-L1364
+                      description: cloudProviderConfig specifies AWS networking configuration for the control plane.
                       properties:
                           subnet:
                               description: subnet is the subnet to use for control plane cloud resources.
@@ -11212,9 +11003,7 @@ components:
                       type: object
                   endpointAccess:
                       default: Public
-                      description: |-
-                          endpointAccess specifies the publishing scope of cluster endpoints. The
-                          default is Public.
+                      description: endpointAccess specifies the publishing scope of cluster endpoints.
                       enum:
                           - Public
                           - PublicAndPrivate
@@ -11222,62 +11011,14 @@ components:
                       type: string
                   multiArch:
                       default: false
-                      description: |-
-                          multiArch specifies whether the Hosted Cluster will be expected to support NodePools with different
-                          CPU architectures, i.e., supporting arm64 NodePools and supporting amd64 NodePools on the same Hosted Cluster.
-                          Deprecated: This field is no longer used. The HyperShift Operator now performs multi-arch validations
-                          automatically despite the platform type. The HyperShift Operator will set HostedCluster.Status.PayloadArch based
-                          on the HostedCluster release image. This field is used by the NodePool controller to validate the
-                          NodePool.Spec.Arch is supported.
+                      description: multiArch indicates whether this cluster supports NodePools with multiple CPU architectures.
                       type: boolean
                   region:
-                      description: |-
-                          region is the AWS region in which the cluster resides. This configures the
-                          OCP control plane cloud integrations, and is used by NodePool to resolve
-                          the correct boot AMI for a given release.
+                      description: region is the AWS region in which the cluster resides.
                       maxLength: 255
                       type: string
-                  resourceTags:
-                      description: |-
-                          resourceTags is a list of additional tags to apply to AWS resources created
-                          for the cluster. See
-                          https://docs.aws.amazon.com/general/latest/gr/aws_tagging.html for
-                          information on tagging AWS resources. AWS supports a maximum of 50 tags per
-                          resource. OpenShift reserves 25 tags for its use, leaving 25 tags available
-                          for the user.
-                          Changes to this field will be propagated in-place to AWS resources (VPC Endpoints, EC2 instances, initial EBS volumes and default/endpoint security groups).
-                          These tags will be propagated to the infrastructure CR in the guest cluster, where other OCP operators might choose to honor this input to reconcile AWS resources created by them.
-                          Please consult the official documentation for a list of all AWS resources that support in-place tag updates.
-                          These take precedence over tags defined out of band (i.e., tags added manually or by other tools outside of HyperShift) in AWS in case of conflicts.
-                      items:
-                          description: AWSResourceTag is a tag to apply to AWS resources created for the cluster.
-                          properties:
-                              key:
-                                  description: key is the key of the tag.
-                                  maxLength: 128
-                                  minLength: 1
-                                  pattern: ^[0-9A-Za-z_.:/=+-@]+$
-                                  type: string
-                              value:
-                                  description: |-
-                                      value is the value of the tag.
-                                      Some AWS service do not support empty values. Since tags are added to
-                                      resources in many services, the length of the tag value must meet the
-                                      requirements of all services.
-                                  maxLength: 256
-                                  minLength: 1
-                                  pattern: ^[0-9A-Za-z_.:/=+-@]+$
-                                  type: string
-                          required:
-                              - key
-                              - value
-                          type: object
-                      maxItems: 25
-                      type: array
                   rolesRef:
-                      description: |-
-                          rolesRef contains references to various AWS IAM roles required to enable
-                          integrations such as OIDC.
+                      description: rolesRef contains references to the AWS IAM roles required by the cluster.
                       properties:
                           controlPlaneOperatorARN:
                               description: |-
@@ -11638,10 +11379,7 @@ components:
                           - storageARN
                       type: object
                   serviceEndpoints:
-                      description: |-
-                          serviceEndpoints specifies optional custom endpoints which will override
-                          the default service endpoint of specific AWS Services.
-                          There must be only one ServiceEndpoint for a given service name.
+                      description: serviceEndpoints specifies optional custom endpoints for AWS services.
                       items:
                           description: |-
                               AWSServiceEndpoint stores the configuration for services to
@@ -11668,10 +11406,7 @@ components:
                       maxItems: 50
                       type: array
                   sharedVPC:
-                      description: |-
-                          sharedVPC contains fields that must be specified if the HostedCluster must use a VPC that is
-                          created in a different AWS account and is shared with the AWS account where the HostedCluster
-                          will be created.
+                      description: sharedVPC contains configuration for a VPC shared from another AWS account.
                       properties:
                           localZoneID:
                               description: |-
@@ -11794,17 +11529,9 @@ components:
                           - rolesRef
                       type: object
                   terminationHandlerQueueURL:
-                      description: |-
-                          terminationHandlerQueueURL specifies the SQS queue URL for EC2 spot interruption events.
-                          This is required when using spot instances (marketType: Spot) in NodePools to enable
-                          graceful handling of spot instance terminations.
-                          The queue should be configured to receive EC2 Spot Instance Interruption Warnings
-                          and EC2 Instance Rebalance Recommendations via EventBridge rules.
-                          The AWS Node Termination Handler will poll this queue and cordon/drain nodes
-                          before they are terminated, providing a best effort for graceful shutdown.
-                          Supports both standard and FIFO queues (FIFO queues end with .fifo suffix).
+                      description: terminationHandlerQueueURL specifies the SQS queue for EC2 Spot interruption events.
                       maxLength: 512
-                      pattern: ^https://sqs\.[a-z0-9-]+\.amazonaws\.com/[0-9]{12}/[a-zA-Z0-9_-]+(\.fifo)?$
+                      pattern: ^https://sqs(-fips)?\.([a-z0-9-]+)\.amazonaws\.com/[0-9]{12}/[a-zA-Z0-9_-]+(\.fifo)?$
                       type: string
               required:
                   - region

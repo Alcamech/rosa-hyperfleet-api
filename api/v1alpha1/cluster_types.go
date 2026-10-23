@@ -65,15 +65,14 @@ type ClusterSpec struct {
 	// +optional
 	AdditionalTrustBundle *string `json:"additionalTrustBundle,omitempty"`
 
-	// Tags are customer-defined AWS tags applied to the AWS resources created
-	// for this cluster, for cost allocation, resource organization and
-	// compliance tracking. They are applied at provisioning time only: AWS
-	// resources created by OpenShift cannot be retagged after the fact, so this
-	// field is immutable once the cluster is created.
-	// HyperShift caps platform.aws.resourceTags at 25 entries and the operator
-	// injects 2 system tags (red-hat-managed and kubernetes.io/cluster/<id>),
-	// so 23 customer tags are available here.
-	// +seaplane:write-mode=immutable
+	// Tags are customer-defined AWS tags applied to AWS resources for this
+	// cluster and its NodePools. The operator propagates changes to the
+	// HostedCluster and NodePool resources after creation.
+	// HyperShift caps platform.aws.resourceTags at 25 entries. Reserved system
+	// tags consume part of that budget; NodePool-specific tags share the same
+	// rendered limit.
+	// +seaplane:write-mode=mutable
+	// +seaplane:resettable=true
 	// +kubebuilder:validation:MaxProperties=23
 	// +optional
 	Tags map[string]string `json:"tags,omitempty"`
@@ -242,5 +241,82 @@ type PlatformSpec struct {
 	// +k8s:openapi-gen=true
 	// +seaplane:write-mode=mutable
 	// +optional
-	AWS *hypershiftv1beta1.AWSPlatformSpec `json:"aws,omitempty"`
+	AWS *AWSPlatformSpec `json:"aws,omitempty"`
+}
+
+// AWSPlatformSpec mirrors upstream AWSPlatformSpec so Seaplane can control
+// visibility and write modes for individual AWS fields.
+// +seaplane:upstream-reduced-object=hypershiftv1beta1.AWSPlatformSpec
+// +k8s:openapi-gen=true
+type AWSPlatformSpec struct {
+	// region is the AWS region in which the cluster resides.
+	// +k8s:openapi-gen=true
+	// +seaplane:write-mode=mutable
+	// +kubebuilder:validation:MaxLength=255
+	// +required
+	Region string `json:"region"`
+
+	// cloudProviderConfig specifies AWS networking configuration for the control plane.
+	// +k8s:openapi-gen=true
+	// +seaplane:write-mode=mutable
+	// +optional
+	CloudProviderConfig *hypershiftv1beta1.AWSCloudProviderConfig `json:"cloudProviderConfig,omitempty"`
+
+	// serviceEndpoints specifies optional custom endpoints for AWS services.
+	// +k8s:openapi-gen=true
+	// +seaplane:write-mode=mutable
+	// +kubebuilder:validation:MaxItems=50
+	// +optional
+	ServiceEndpoints []hypershiftv1beta1.AWSServiceEndpoint `json:"serviceEndpoints,omitempty"`
+
+	// rolesRef contains references to the AWS IAM roles required by the cluster.
+	// +k8s:openapi-gen=true
+	// +seaplane:write-mode=mutable
+	// +required
+	RolesRef hypershiftv1beta1.AWSRolesRef `json:"rolesRef"`
+
+	// resourceTags is an internal HyperShift passthrough. Customer tags must use
+	// ClusterSpec.Tags instead.
+	// +k8s:openapi-gen=false
+	// +seaplane:write-mode=service-set
+	// +kubebuilder:validation:MaxItems=25
+	// +optional
+	ResourceTags []hypershiftv1beta1.AWSResourceTag `json:"resourceTags,omitempty"`
+
+	// endpointAccess specifies the publishing scope of cluster endpoints.
+	// +k8s:openapi-gen=true
+	// +seaplane:write-mode=mutable
+	// +kubebuilder:validation:Enum=Public;PublicAndPrivate;Private
+	// +kubebuilder:default=Public
+	// +optional
+	EndpointAccess hypershiftv1beta1.AWSEndpointAccessType `json:"endpointAccess,omitempty"`
+
+	// additionalAllowedPrincipals specifies extra principals allowed to connect to the VPC endpoint service.
+	// +k8s:openapi-gen=true
+	// +seaplane:write-mode=mutable
+	// +kubebuilder:validation:MaxItems=25
+	// +kubebuilder:validation:items:MaxLength=255
+	// +optional
+	AdditionalAllowedPrincipals []string `json:"additionalAllowedPrincipals,omitempty"`
+
+	// multiArch indicates whether this cluster supports NodePools with multiple CPU architectures.
+	// +k8s:openapi-gen=true
+	// +seaplane:write-mode=mutable
+	// +kubebuilder:default=false
+	// +optional
+	MultiArch bool `json:"multiArch"`
+
+	// sharedVPC contains configuration for a VPC shared from another AWS account.
+	// +k8s:openapi-gen=true
+	// +seaplane:write-mode=mutable
+	// +optional
+	SharedVPC *hypershiftv1beta1.AWSSharedVPC `json:"sharedVPC,omitempty"`
+
+	// terminationHandlerQueueURL specifies the SQS queue for EC2 Spot interruption events.
+	// +k8s:openapi-gen=true
+	// +seaplane:write-mode=mutable
+	// +kubebuilder:validation:MaxLength=512
+	// +kubebuilder:validation:Pattern=`^https://sqs(-fips)?\.([a-z0-9-]+)\.amazonaws\.com/[0-9]{12}/[a-zA-Z0-9_-]+(\.fifo)?$`
+	// +optional
+	TerminationHandlerQueueURL string `json:"terminationHandlerQueueURL,omitempty"`
 }

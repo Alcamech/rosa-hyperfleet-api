@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi9/go-toolset:9.8-1792010711 AS builder
+FROM registry.access.redhat.com/ubi9/go-toolset:9.8-1792671270 AS builder
 ARG TARGETOS=linux
 ARG TARGETARCH=amd64
 
@@ -17,6 +17,9 @@ RUN cd seaplane-operator && go mod download
 COPY api/ ./api/
 COPY seaplane-db/ ./seaplane-db/
 COPY seaplane-operator/ ./seaplane-operator/
+
+ENV GOMEMLIMIT=3500MiB
+ENV GOMAXPROCS=4
 
 RUN cd seaplane-operator && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /workspace/manager ./cmd/manager

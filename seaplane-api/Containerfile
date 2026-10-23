@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi9/go-toolset:9.8-1792010711 AS builder
+FROM registry.access.redhat.com/ubi9/go-toolset:9.8-1792671270 AS builder
 USER root
 
 ARG TARGETOS=linux
@@ -16,6 +16,9 @@ COPY seaplane-db/ ./seaplane-db/
 COPY api/ ./api/
 COPY hack/api-codegen/ ./hack/api-codegen/
 COPY seaplane-api/ ./seaplane-api/
+
+ENV GOMEMLIMIT=3500MiB
+ENV GOMAXPROCS=4
 
 RUN cd seaplane-api && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \

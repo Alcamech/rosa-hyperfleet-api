@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -228,6 +230,7 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	errs := append(h.validator.ValidateCreate(&req.Spec, featuregate.Default), validateNodePoolReplicas(&req.Spec)...)
+	errs = append(errs, validation.ValidateCustomerAWSTags(req.Spec.Tags, "spec.tags")...)
 	errs = append(errs, validateNodePoolEC2InstanceMetadataHttpTokens(req.Spec.EC2InstanceMetadataHttpTokens)...)
 	if len(errs) > 0 {
 		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
@@ -246,6 +249,10 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if !cluster.DeletionTimestamp.IsZero() {
 		writeAPIError(w, ErrNodePoolCreateClusterDeleting, h.logger)
+		return
+	}
+	if errs := validation.ValidateNodePoolAWSTagBudget(cluster.Spec.Tags, req.Spec.Tags, "spec.tags"); len(errs) > 0 {
+		writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
 		return
 	}
 	h.logger.Info("creating nodepool", "account_id", accountID, "cluster_uid", cluster.UID, "nodepool_name", req.Name)
@@ -414,6 +421,18 @@ func (h *NodePoolHandler) updateOnce(w http.ResponseWriter, r *http.Request, nod
 	if !h.authorizeNodePool(w, r, authz.UpdateNodePool, cr, nodePoolUpdateActions(&cr.Spec, &candidate.Spec)...) {
 		return nil, errResponded
 	}
+	if nodePoolTagsSupplied(rawSpec) {
+		errs, err := h.validateUpdatedNodePoolTags(ctx, candidate)
+		if len(errs) > 0 {
+			writeAPIError(w, ErrNodePoolValidation.WithErrors(errs), h.logger)
+			return nil, errResponded
+		}
+		if err != nil {
+			h.logger.Error("failed to validate nodepool AWS tags", "error", err, "account_id", accountID, "nodepool_name", nodepoolName)
+			writeAPIError(w, ErrNodePoolUpdateFailed, h.logger)
+			return nil, errResponded
+		}
+	}
 	if err := h.db.UpdateNodePool(ctx, candidate); err != nil {
 		if seaplanedb.IsConflict(err) {
 			return nil, err
@@ -427,6 +446,33 @@ func (h *NodePoolHandler) updateOnce(w http.ResponseWriter, r *http.Request, nod
 		return nil, errResponded
 	}
 	return candidate, nil
+}
+
+// validateUpdatedNodePoolTags checks the pool's AWS tags and its budget under the parent's tags.
+func (h *NodePoolHandler) validateUpdatedNodePoolTags(ctx context.Context, np *seaplanev1alpha1.NodePool) (validation.ValidationErrors, error) {
+	if errs := validation.ValidateCustomerAWSTags(np.Spec.Tags, "spec.tags"); len(errs) > 0 {
+		return errs, nil
+	}
+	clusterName := np.Spec.NodePool.ClusterName
+	if clusterName == "" {
+		var err error
+		if clusterName, _, err = validation.ParseNodePoolName(np.Name); err != nil {
+			return validation.ValidationErrors{&validation.ValidationError{Field: "spec.tags", Reason: "unable to resolve the parent Cluster for tag budget validation"}}, nil
+		}
+	}
+	cluster, err := h.db.GetCluster(ctx, clusterName)
+	if seaplanedb.IsNotFound(err) {
+		return validation.ValidationErrors{&validation.ValidationError{Field: "spec.tags", Reason: "parent Cluster must be available for tag budget validation"}}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get parent Cluster for tag budget validation: %w", err)
+	}
+	return validation.ValidateNodePoolAWSTagBudget(cluster.Spec.Tags, np.Spec.Tags, "spec.tags"), nil
+}
+
+func nodePoolTagsSupplied(rawSpec map[string]any) bool {
+	_, exists := rawSpec["tags"]
+	return exists
 }
 
 func (h *NodePoolHandler) Delete(w http.ResponseWriter, r *http.Request) {

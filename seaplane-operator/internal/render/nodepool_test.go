@@ -2,6 +2,7 @@ package render
 
 import (
 	"testing"
+	"time"
 
 	seaplanev1alpha1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
@@ -423,8 +424,16 @@ func TestNodePoolInheritsClusterCustomerTags(t *testing.T) {
 		"cost-center": "cc-1234",
 		"environment": "production",
 	}
+	nodePool := testNodePool()
+	nodePool.Spec.Tags = map[string]string{
+		"environment": "staging",
+		"team":        "workers",
+	}
+	nodePool.Spec.NodePool.Platform.AWS.ResourceTags = []hypershiftv1beta1.AWSResourceTag{
+		{Key: "legacy", Value: "ignored"},
+	}
 
-	resource, err := NodePoolResource(testNodePool(), cluster)
+	resource, err := NodePoolResource(nodePool, cluster)
 	if err != nil {
 		t.Fatalf("NodePoolResource: %v", err)
 	}
@@ -434,8 +443,17 @@ func TestNodePoolInheritsClusterCustomerTags(t *testing.T) {
 	if got["cost-center"] != "cc-1234" {
 		t.Errorf("cost-center = %q, want %q", got["cost-center"], "cc-1234")
 	}
-	if got["environment"] != "production" {
-		t.Errorf("environment = %q, want %q", got["environment"], "production")
+	if got["environment"] != "staging" {
+		t.Errorf("environment = %q, want NodePool override %q", got["environment"], "staging")
+	}
+	if got["team"] != "workers" {
+		t.Errorf("team = %q, want %q", got["team"], "workers")
+	}
+	if len(got) != 4 {
+		t.Errorf("resourceTags = %v, want inherited, NodePool, and system tags only", got)
+	}
+	if _, exists := got["legacy"]; exists {
+		t.Errorf("direct resourceTags passthrough should not be rendered: %v", got)
 	}
 	if got["red-hat-managed"] != "true" {
 		t.Errorf("red-hat-managed = %q, want %q", got["red-hat-managed"], "true")
@@ -595,5 +613,41 @@ func TestNodePoolUpgradeBudgetDoesNotAliasSource(t *testing.T) {
 	}
 	if np.Spec.Management.Replace.RollingUpdate.MaxSurge == nodePool.Spec.MaxSurge {
 		t.Error("MaxSurge aliases the source NodePool")
+	}
+}
+
+// nodeVolumeDetachTimeout is a passthrough field, so enabling it in the public
+// API is only useful if the value actually reaches the HyperShift NodePool.
+func TestNodePoolPassesThroughNodeVolumeDetachTimeout(t *testing.T) {
+	nodePool := testNodePool()
+	nodePool.Spec.NodePool.NodeVolumeDetachTimeout = &metav1.Duration{Duration: 25 * time.Minute}
+	nodePool.Spec.NodePool.NodeDrainTimeout = &metav1.Duration{Duration: 10 * time.Minute}
+
+	resource, err := NodePoolResource(nodePool, testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
+	np := resource.Object.(*hypershiftv1beta1.NodePool)
+
+	if got := np.Spec.NodeVolumeDetachTimeout; got == nil || got.Duration != 25*time.Minute {
+		t.Errorf("NodeVolumeDetachTimeout = %v, want 25m", got)
+	}
+	if got := np.Spec.NodeDrainTimeout; got == nil || got.Duration != 10*time.Minute {
+		t.Errorf("NodeDrainTimeout = %v, want 10m", got)
+	}
+}
+
+func TestNodePoolOmitsUnsetDrainTimeouts(t *testing.T) {
+	resource, err := NodePoolResource(testNodePool(), testCluster())
+	if err != nil {
+		t.Fatalf("NodePoolResource: %v", err)
+	}
+	np := resource.Object.(*hypershiftv1beta1.NodePool)
+
+	if np.Spec.NodeVolumeDetachTimeout != nil {
+		t.Errorf("NodeVolumeDetachTimeout = %v, want nil", np.Spec.NodeVolumeDetachTimeout)
+	}
+	if np.Spec.NodeDrainTimeout != nil {
+		t.Errorf("NodeDrainTimeout = %v, want nil", np.Spec.NodeDrainTimeout)
 	}
 }

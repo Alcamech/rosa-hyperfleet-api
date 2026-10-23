@@ -2,11 +2,13 @@ package validation
 
 import (
 	"testing"
+	"time"
 
 	rest "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1/public"
 	"github.com/openshift-online/rosa-seaplane-api/hack/api-codegen/pkg/registry"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/internal/codegen/featuregate"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func newTestValidator(entries map[string]registry.FieldMeta) *FieldValidator {
@@ -130,6 +132,74 @@ func TestValidateCreate_AllowsMutableFieldsInsideServiceSetContainer(t *testing.
 	if errs != nil {
 		t.Errorf("expected mutable child field to be accepted, got %v", errs)
 	}
+}
+
+func TestValidateResourceTagsPassthroughIsServiceSet(t *testing.T) {
+	tests := []struct {
+		name         string
+		resourceType string
+		parentField  string
+		fieldPath    string
+	}{
+		{
+			name:         "cluster",
+			resourceType: "Cluster",
+			parentField:  "hostedCluster",
+			fieldPath:    "spec.hostedCluster.platform.aws.resourceTags",
+		},
+		{
+			name:         "nodepool",
+			resourceType: "NodePool",
+			parentField:  "nodePool",
+			fieldPath:    "spec.nodePool.platform.aws.resourceTags",
+		},
+	}
+	passthroughSpec := func(parentField, value string) map[string]any {
+		return map[string]any{
+			"tags": map[string]any{"owner": "root-level"},
+			parentField: map[string]any{
+				"platform": map[string]any{
+					"aws": map[string]any{
+						"resourceTags": []any{map[string]any{"key": "legacy", "value": value}},
+					},
+				},
+			},
+		}
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			validator := NewFieldValidator(test.resourceType)
+			createErrs := validator.ValidateCreate(passthroughSpec(test.parentField, "value"), featuregate.Default)
+			if !hasFieldError(createErrs, test.fieldPath) {
+				t.Fatalf("expected create error for %s, got %v", test.fieldPath, createErrs)
+			}
+			if hasFieldError(createErrs, "spec.tags") {
+				t.Fatal("root-level tags should remain writable")
+			}
+
+			oldSpec := passthroughSpec(test.parentField, "old-value")
+			if errs := validator.ValidateUpdate(oldSpec, oldSpec, featuregate.Default); len(errs) != 0 {
+				t.Fatalf("unchanged service-set field should be allowed during update, got %v", errs)
+			}
+			updateErrs := validator.ValidateUpdate(passthroughSpec(test.parentField, "new-value"), oldSpec, featuregate.Default)
+			if !hasFieldError(updateErrs, test.fieldPath) {
+				t.Fatalf("expected update error for %s, got %v", test.fieldPath, updateErrs)
+			}
+			if hasFieldError(updateErrs, "spec.tags") {
+				t.Fatal("root-level tags should remain writable")
+			}
+		})
+	}
+}
+
+func hasFieldError(errs ValidationErrors, field string) bool {
+	for _, err := range errs {
+		if err.Field == field {
+			return true
+		}
+	}
+	return false
 }
 
 func TestValidateCreate_AllowsProxyConfiguration(t *testing.T) {
@@ -929,5 +999,43 @@ func TestValidateUpdate_RejectsHiddenServiceSetChange(t *testing.T) {
 	}
 	if errs := v.ValidateUpdate(existing, existing, featuregate.Default); errs != nil {
 		t.Fatalf("echo of hidden service-set field should pass, got %v", errs)
+	}
+}
+
+// nodeVolumeDetachTimeout was platform-managed until it was enabled for v2
+// alongside its sibling nodeDrainTimeout. Customers can now set it on create
+// and retune it afterwards.
+func TestValidateCreate_AllowsNodeVolumeDetachTimeout(t *testing.T) {
+	v := NewFieldValidator("NodePool")
+
+	spec := &rest.NodePoolSpec{
+		NodePool: rest.NodePoolSpecPassthrough{
+			NodeVolumeDetachTimeout: &metav1.Duration{Duration: 25 * time.Minute},
+		},
+	}
+
+	errs := v.ValidateCreate(spec, featuregate.Default)
+	if errs != nil {
+		t.Errorf("expected no errors setting nodeVolumeDetachTimeout on create, got %v", errs)
+	}
+}
+
+func TestValidateUpdate_AllowsNodeVolumeDetachTimeoutChange(t *testing.T) {
+	v := NewFieldValidator("NodePool")
+
+	existing := &rest.NodePoolSpec{
+		NodePool: rest.NodePoolSpecPassthrough{
+			NodeVolumeDetachTimeout: &metav1.Duration{Duration: 25 * time.Minute},
+		},
+	}
+	updated := &rest.NodePoolSpec{
+		NodePool: rest.NodePoolSpecPassthrough{
+			NodeVolumeDetachTimeout: &metav1.Duration{Duration: 45 * time.Minute},
+		},
+	}
+
+	errs := v.ValidateUpdate(updated, existing, featuregate.Default)
+	if errs != nil {
+		t.Errorf("expected no errors retuning nodeVolumeDetachTimeout, got %v", errs)
 	}
 }
