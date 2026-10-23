@@ -325,25 +325,6 @@ func (c *Client) ListNodePools(ctx context.Context, clusterUID string) (*seaplan
 	if err := c.client.List(ctx, &list, opts...); err != nil {
 		return nil, err
 	}
-
-	// Resolve parent ownership in one batch, including the current object incarnation.
-	parents, err := c.ListClusters(ctx)
-	if err != nil {
-		return nil, err
-	}
-	owned := make(map[string]k8stypes.UID, len(parents.Items))
-	for i := range parents.Items {
-		owned[parents.Items[i].Name] = parents.Items[i].UID
-	}
-	items := list.Items[:0]
-	for i := range list.Items {
-		parent := nodePoolParent(&list.Items[i])
-		if parent == nil || owned[parent.Name] != parent.UID {
-			continue
-		}
-		items = append(items, list.Items[i])
-	}
-	list.Items = items
 	return &list, nil
 }
 

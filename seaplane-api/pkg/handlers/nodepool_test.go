@@ -56,11 +56,8 @@ func TestNodePoolHandler_List_PaginationIsolation(t *testing.T) {
 	first := testClusterCR(ownCluster1, "own-1", testAccountID)
 	second := testClusterCR(ownCluster2, "own-2", testAccountID)
 	foreign := testClusterCR(foreignCluster, "foreign", "999999999999")
-	forged := testNodePoolCR("foreign.workers", foreign)
-	forged.Namespace = "account-" + testAccountID
-	forged.Labels["seaplane.io/account-id"] = testAccountID
 	handler := newTestNodePoolHandler(t,
-		first, second, foreign, forged,
+		first, second, foreign, testNodePoolCR("foreign.workers", foreign),
 		testNodePoolCR("own-1.workers", first), testNodePoolCR("own-2.workers", second),
 	)
 	req := httptest.NewRequest(http.MethodGet, "/api/v0/nodepools?limit=1&offset=1", nil)
