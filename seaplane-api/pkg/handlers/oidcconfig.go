@@ -247,7 +247,7 @@ func (h *OidcConfigHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Authorize before probing the global issuer index, so a caller without
 	// CreateOIDCConfig cannot learn which issuers are registered.
-	if !authorizeResource(w, r, h.authorizer, h.logger, authz.CreateOIDCConfig, candidateResource(oidcConfigResource(cr), cr.Name)) {
+	if !authorizeResource(w, withRequestLabels(r, cr.Annotations), h.authorizer, h.logger, authz.CreateOIDCConfig, candidateResource(oidcConfigResource(cr), cr.Name)) {
 		return
 	}
 

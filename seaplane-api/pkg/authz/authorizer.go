@@ -75,13 +75,16 @@ func (a *Authorizer) Prepare(ctx context.Context, id Identity, req RequestContex
 	if day == 0 {
 		day = 7
 	}
+	requestLabels := entityUID("RequestLabels", "request")
 	prepared := &Prepared{identity: id, region: a.region, principal: entityUID("Principal", id.CallerARN), entities: make(cedar.EntityMap), policies: cedar.NewPolicySet(), provenance: make(map[cedar.PolicyID]Provenance), validator: a.validator, evaluate: a.evaluate,
 		requestContext: cedar.NewRecord(cedar.RecordMap{
 			"region": cedar.String(a.region), "accountId": cedar.String(id.AccountID), "principalArn": cedar.String(id.CallerARN),
 			"sourceIp": cedar.String(req.SourceIP), "userAgent": cedar.String(req.UserAgent),
-			"requestTime": cedar.NewRecord(cedar.RecordMap{"unixSeconds": cedar.Long(timestamp.Unix()), "dayOfWeek": cedar.Long(day), "hour": cedar.Long(timestamp.Hour())}),
+			"requestTime":   cedar.NewRecord(cedar.RecordMap{"unixSeconds": cedar.Long(timestamp.Unix()), "dayOfWeek": cedar.Long(day), "hour": cedar.Long(timestamp.Hour())}),
+			"requestLabels": requestLabels,
 		}),
 	}
+	prepared.entities[requestLabels] = cedar.Entity{UID: requestLabels, Tags: resourceTags(req.RequestLabels)}
 	for uid, action := range a.model.Actions {
 		prepared.entities[uid] = action.Entity
 	}

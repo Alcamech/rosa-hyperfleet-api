@@ -261,7 +261,7 @@ func (h *NodePoolHandler) Create(w http.ResponseWriter, r *http.Request) {
 	cr.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(cluster, seaplanev1alpha1.GroupVersion.WithKind("Cluster"))}
 	cr.Labels["seaplane.io/cluster-uid"] = string(cluster.UID)
 
-	if !h.authorizeNodePool(w, r, authz.CreateNodePool, cr) {
+	if !h.authorizeNodePool(w, withRequestLabels(r, cr.Annotations), authz.CreateNodePool, cr) {
 		return
 	}
 	if err := h.db.CreateNodePool(ctx, cr); err != nil {

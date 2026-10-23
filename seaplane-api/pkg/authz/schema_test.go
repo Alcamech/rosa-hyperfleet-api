@@ -43,7 +43,8 @@ func schemaRequest(action, resource cedar.EntityUID) cedar.Request {
 	return cedar.Request{Principal: entityUID("Principal", sessionARN), Action: action, Resource: resource, Context: cedar.NewRecord(cedar.RecordMap{
 		"region": cedar.String(region), "accountId": cedar.String(accountID), "principalArn": cedar.String(sessionARN),
 		"sourceIp": cedar.String("192.0.2.1"), "userAgent": cedar.String("authz-test"),
-		"requestTime": cedar.NewRecord(cedar.RecordMap{"unixSeconds": cedar.Long(1), "dayOfWeek": cedar.Long(1), "hour": cedar.Long(12)}),
+		"requestTime":   cedar.NewRecord(cedar.RecordMap{"unixSeconds": cedar.Long(1), "dayOfWeek": cedar.Long(1), "hour": cedar.Long(12)}),
+		"requestLabels": entityUID("RequestLabels", "request"),
 	})}
 }
 
@@ -52,7 +53,7 @@ func TestSchemaValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(model.Entities) != 7 || len(model.Actions) != 32 {
+	if len(model.Entities) != 8 || len(model.Actions) != 32 {
 		t.Fatalf("resolved declarations: %d entities, %d actions", len(model.Entities), len(model.Actions))
 	}
 	cluster := model.Entities["Seaplane::Cluster"]

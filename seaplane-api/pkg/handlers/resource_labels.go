@@ -77,7 +77,8 @@ func resourceLabels[T client.Object](w http.ResponseWriter, r *http.Request, aut
 			writeAPIError(w, errLabelBody, logger)
 			return
 		}
-		hasSet, hasRemove := false, false
+		hasRemove := false
+		requested := map[string]string{}
 		for key, value := range patch {
 			if !isValidLabel(key, value) {
 				writeAPIError(w, errLabelSyntax, logger)
@@ -86,9 +87,11 @@ func resourceLabels[T client.Object](w http.ResponseWriter, r *http.Request, aut
 			if value == nil {
 				hasRemove = true
 			} else {
-				hasSet = true
+				requested[key] = *value
 			}
 		}
+		hasSet := len(requested) > 0
+		r = withRequestLabels(r, requested)
 		operation = authz.UnlabelResource
 		if hasSet {
 			operation = authz.LabelResource

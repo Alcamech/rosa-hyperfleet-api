@@ -101,7 +101,7 @@ func (h *DNSReservationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reservation := seaplanedb.PublicToInternalDNSReservation(&req, accountID)
-	if !authorizeResource(w, r, h.authorizer, h.logger, authz.CreateDNSReservation, candidateResource(dnsReservationResource(reservation), reservation.Name)) {
+	if !authorizeResource(w, withRequestLabels(r, reservation.Annotations), h.authorizer, h.logger, authz.CreateDNSReservation, candidateResource(dnsReservationResource(reservation), reservation.Name)) {
 		return
 	}
 	reservation.Status.Phase = "Pending"

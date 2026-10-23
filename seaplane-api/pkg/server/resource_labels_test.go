@@ -100,3 +100,22 @@ func TestResourceLabels(t *testing.T) {
 		}
 	}
 }
+
+// context.requestLabels lets a label grant limit the values a caller may write, on PATCH and create.
+func TestRequestLabelsContext(t *testing.T) {
+	policy := `permit(principal, action, resource) unless { context.requestLabels.hasTag("team") && context.requestLabels.getTag("team") != "blue" };`
+	for _, tc := range []struct {
+		method, path, body string
+		status             int
+	}{
+		{"PATCH", "clusters/parent/labels", `{"team":"red"}`, 403},
+		{"PATCH", "clusters/parent/labels", `{"team":"blue","other":"x"}`, 204},
+		{"POST", "dns_reservations", `{"metadata":{"name":"new","annotations":{"team":"red"}}}`, 403},
+		{"POST", "dns_reservations", `{"metadata":{"name":"new","annotations":{"team":"blue"}}}`, 201},
+	} {
+		srv, _ := resourceServer(t, []string{policy}, interceptor.Funcs{}, resourceFixtures()...)
+		if w := resourceRequest(srv, tc.method, tc.path, tc.body); w.Code != tc.status {
+			t.Errorf("%s %s %s: status=%d, want %d: %s", tc.method, tc.path, tc.body, w.Code, tc.status, w.Body.String())
+		}
+	}
+}

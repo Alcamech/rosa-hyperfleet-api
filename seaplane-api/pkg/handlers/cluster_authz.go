@@ -66,15 +66,23 @@ func writeAuthzDenied(w http.ResponseWriter, r *http.Request, attempt *authz.Att
 	writeAPIError(w, errAuthzDenied, logger)
 }
 
+type requestLabelsKey struct{}
+
+// withRequestLabels sets the customer labels the request writes, Cedar's context.requestLabels.
+func withRequestLabels(r *http.Request, labels map[string]string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), requestLabelsKey{}, labels))
+}
+
 func prepareResourceAuthz(r *http.Request, authorizer *authz.Authorizer) (*authz.Prepared, error) {
 	shared, _ := r.Context().Value(authzOutcomeKey{}).(*requestAuthz)
 	if shared != nil && shared.prepared != nil {
 		return shared.prepared, nil
 	}
+	requestLabels, _ := r.Context().Value(requestLabelsKey{}).(map[string]string)
 	prepared, err := authorizer.Prepare(r.Context(), authz.Identity{
 		AccountID: middleware.GetAccountID(r.Context()), CallerARN: middleware.GetCallerARN(r.Context()),
 		IsAllowlisted: middleware.IsAllowlisted(r.Context()),
-	}, authz.RequestContext{SourceIP: middleware.GetSourceIP(r.Context()), UserAgent: r.UserAgent(), RequestTime: time.Now()})
+	}, authz.RequestContext{SourceIP: middleware.GetSourceIP(r.Context()), UserAgent: r.UserAgent(), RequestTime: time.Now(), RequestLabels: requestLabels})
 	if shared != nil && err == nil {
 		shared.prepared = prepared
 	}

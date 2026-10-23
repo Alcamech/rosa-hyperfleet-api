@@ -4,8 +4,12 @@ namespace Seaplane {
     type RequestContext = {
         region: Region, accountId: AccountID, principalArn: String,
         sourceIp: String, userAgent: String,
-        requestTime: { unixSeconds: Long, dayOfWeek: Long, hour: Long }
+        requestTime: { unixSeconds: Long, dayOfWeek: Long, hour: Long },
+        requestLabels: RequestLabels
     };
+
+    // Carries the request's labels as tags; Cedar has no map type.
+    entity RequestLabels tags String;
 
     entity Role { account: AccountID };
     entity Principal in [Role] { account: AccountID };

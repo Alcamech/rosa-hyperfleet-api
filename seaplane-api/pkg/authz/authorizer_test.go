@@ -299,7 +299,7 @@ func TestPreparedRequest(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		want := cedar.NewRecord(cedar.RecordMap{"accountId": cedar.String(accountID), "region": cedar.String(region), "principalArn": cedar.String(sessionARN), "sourceIp": cedar.String("192.0.2.5"), "userAgent": cedar.String("customer agent"), "requestTime": cedar.NewRecord(cedar.RecordMap{"unixSeconds": cedar.Long(time.Date(2026, 1, 5, 0, 30, 0, 0, time.UTC).Unix()), "dayOfWeek": cedar.Long(1), "hour": cedar.Long(0)})})
+		want := cedar.NewRecord(cedar.RecordMap{"accountId": cedar.String(accountID), "region": cedar.String(region), "principalArn": cedar.String(sessionARN), "sourceIp": cedar.String("192.0.2.5"), "userAgent": cedar.String("customer agent"), "requestTime": cedar.NewRecord(cedar.RecordMap{"unixSeconds": cedar.Long(time.Date(2026, 1, 5, 0, 30, 0, 0, time.UTC).Unix()), "dayOfWeek": cedar.Long(1), "hour": cedar.Long(0)}), "requestLabels": entityUID("RequestLabels", "request")})
 		for i, c := range observed {
 			if !reflect.DeepEqual(c, want) {
 				t.Fatalf("check %d context = %v, want %v", i, c, want)
@@ -380,5 +380,25 @@ func TestAllowlistedFullAccess(t *testing.T) {
 	}
 	if _, err := p.Check(t.Context(), DescribeCluster, foreign); err == nil {
 		t.Fatal("allowlist grant reached another account's resource")
+	}
+}
+
+// A label grant can be limited to the labels the request writes (typeid's relabel escalation).
+func TestRequestLabels(t *testing.T) {
+	a := fixtureAuthorizer(t, grantBundle([]grant{{id: "g", principal: roleARN, content: `permit(principal, action == Seaplane::Action::"LabelResource", resource)
+unless { context.requestLabels.hasTag("team") && context.requestLabels.getTag("team") != "blue" };`}}))
+	for _, tc := range []struct {
+		labels  map[string]string
+		allowed bool
+	}{{nil, true}, {map[string]string{"team": "blue"}, true}, {map[string]string{"team": "red", "other": "x"}, false}} {
+		req := testRequestContext()
+		req.RequestLabels = tc.labels
+		p, err := a.Prepare(t.Context(), testIdentity(sessionARN), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d, err := p.Check(t.Context(), LabelResource, testCluster()); err != nil || d.Allowed != tc.allowed {
+			t.Errorf("labels %v: allowed = %v (%v), want %v", tc.labels, d.Allowed, err, tc.allowed)
+		}
 	}
 }

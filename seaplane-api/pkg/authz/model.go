@@ -58,6 +58,8 @@ type RequestContext struct {
 	SourceIP    string
 	UserAgent   string
 	RequestTime time.Time
+	// RequestLabels are the customer labels the request writes, like aws:RequestTag.
+	RequestLabels map[string]string
 }
 
 type ParentCluster struct {

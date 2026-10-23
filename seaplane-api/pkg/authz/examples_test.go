@@ -13,8 +13,8 @@ func TestDocumentationExamplesPinnedCedar(t *testing.T) {
 		t.Fatal(err)
 	}
 	examples := regexp.MustCompile("(?s)```cedar\\n(.*?)\\n```").FindAllSubmatch(content, -1)
-	if len(examples) != 8 {
-		t.Fatalf("expected 8 runnable examples, found %d", len(examples))
+	if len(examples) != 9 {
+		t.Fatalf("expected 9 runnable examples, found %d", len(examples))
 	}
 	for _, example := range examples {
 		policy := string(example[1])

@@ -158,8 +158,9 @@ labels are dropped on create. The routes keep the `labels` name.
   return 409. Denials/evaluation failures do not write or retry.
 
 Label administration controls authorization inputs. Grant it only to principals
-trusted to transfer access through customer labels; reserving system keys does
-not prevent that transfer.
+trusted to transfer access through customer labels, or limit the values they may
+write with `context.requestLabels`; reserving system keys does not prevent that
+transfer.
 
 ## Entities
 
@@ -191,6 +192,15 @@ Namespace `Seaplane`. The schema is embedded from
 Frozen once per request: `region`, `accountId`, `principalArn`, `sourceIp`,
 `userAgent`, and `requestTime {unixSeconds, dayOfWeek (Mon=1), hour}` in UTC.
 `sourceIp` comes from the gateway. `userAgent` is caller-controlled; do not trust it.
+
+`requestLabels` holds, as tags, the customer labels the request writes: the
+annotations on a create, or the keys a label PATCH sets (not removals). Like
+`aws:RequestTag`, it limits what a label grant may write:
+
+```cedar
+forbid(principal, action, resource)
+when { context.requestLabels.hasTag("Team") && context.requestLabels.getTag("Team") != "a" };
+```
 
 ## Groups and examples
 
