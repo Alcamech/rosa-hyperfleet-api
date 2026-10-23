@@ -1,4 +1,4 @@
-# Seaplane Resource Identity and Lifecycle Plan
+# Seaplane Resource Identity and Lifecycle Implementation Plan
 
 **Status:** Active target and implementation roadmap
 **Scope:** `seaplane-db`, `seaplane-api`, `seaplane-operator`, `api`, and `clientset`
@@ -8,12 +8,12 @@ one identity and ownership model. It records the target contract, the current
 implementation baseline, the changes needed in dependency order, and the tests that
 demonstrate the target behavior. It is kept with seaplane-db because PR 1 established
 the database primitives that later identity phases rely on; PR 2 is coordinated across
-the API, operator, and clientset as well as FleetDB.
+the API, operator, and clientset as well as seaplane-db.
 
 ## 1. Target contract
 
 1. **Customer account namespace rule.** Customer-created resources and resources
-   tied to them in the customer-facing API/FleetDB use `account-<accountID>`. The
+   tied to them in the customer-facing API/seaplane-db use `account-<accountID>`. The
    account ID comes from the authenticated caller, never from an untrusted body
    value. Independent operator-internal resources, such as `ManagementCluster`, may
    use operator-controlled namespaces; internal namespaces used for `Index` claims
@@ -22,7 +22,7 @@ the API, operator, and clientset as well as FleetDB.
    immutable. A Cluster name is one DNS label of at most 63 characters. A child name
    is `<cluster>.<child>`; each part is a DNS label of at most 63 characters. The API
    validates the full name but does not rewrite it.
-3. **UID identifies the object incarnation.** FleetDB mints the UID. Clients cannot
+3. **UID identifies the object incarnation.** seaplane-db mints the UID. Clients cannot
    choose or change it. Delete and recreate at the same name produces a new UID.
 4. **References identify UIDs.** When a name is used as a lookup hint, compare the
    fetched object's UID with the stored expected UID before acting on it.
@@ -37,7 +37,7 @@ the API, operator, and clientset as well as FleetDB.
 7. **Uniqueness uses existing primitives.** The primary key
    `(kind, namespace, name)` handles per-account name uniqueness. An `Index` create
    claims a value in a wider scope. Do not add business-specific database constraints.
-8. **Business rules stay in code.** FleetDB provides object storage, selectors,
+8. **Business rules stay in code.** seaplane-db provides object storage, selectors,
    versions, and atomic single-row writes, but no admission or multi-object
    transactions. Reconcilers converge through retries and are safe to run more than
    once.
@@ -74,7 +74,7 @@ claim, not an internal mirror that can be deleted from the product flow:
 - The DNS Index holder is the DNSReservation UID, not the Cluster UID: the claim
   exists before a Cluster does, and its holder remains stable when the reservation
   is claimed. `claimed-by-cluster-uid` records which Cluster currently consumes it.
-- Cluster creation references the reservation by UID. The platform API validates
+- Cluster creation references the reservation by UID. seaplane-api validates
   that it is ready, belongs to the caller's account, and is not already claimed.
   Once the database returns the new Cluster UID, the API claims the reservation with
   `claimed-by-cluster-uid`; persist the reservation UID, not its name, in the
@@ -95,17 +95,17 @@ collector initially applies to Cluster-owned NodePool and Placement objects.
 
 ## 2. Current implementation status after PR 1
 
-| Area               | Current implementation                                                                                                                                                                                                                                                                                                                  | Remaining gap to the target                                                                                                                                                                                   |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| FleetDB UID        | UID is database-generated and returned by Create; client-sent UIDs are ignored; tombstone revival assigns a fresh UID. Controller-runtime updates, status writes, and deletes use UID plus resourceVersion preconditions.                                                                                                               | Platform conversions still replace the FleetDB UID in public Cluster, NodePool, and OidcConfig responses.                                                                                                     |
-| FleetDB selectors  | `metadata.name`, `metadata.namespace`, and `metadata.uid` field selectors map to columns. Label selectors are translated to SQL before pagination, with a GIN index on labels. Equality, set, existence, negative, and numeric range selectors are supported; invalid/missing/out-of-int64 label values do not match numeric selectors. | Public API and clientset do not yet expose label selectors.                                                                                                                                                   |
-| Create semantics   | Duplicate Create returns `AlreadyExists`, even for identical content. Content-equal updates are suppressed only when UID and resourceVersion are current; stale versions or UIDs conflict.                                                                                                                                              | API-level idempotency keys for safely replaying POSTs after a lost response are deferred future work; see §4.                                                                                                 |
-| Platform identity  | Cluster names are client-facing; OidcConfig storage already uses an account namespace.                                                                                                                                                                                                                                                  | Cluster and NodePool storage uses `cluster-<generated UUID>`. Cluster, NodePool, and OidcConfig responses override database UIDs. Namespace and DNS-label validation is incomplete.                           |
-| Protected metadata | FleetDB stores and returns labels and ownerReferences. Platform update handlers fetch the stored object and merge spec, preserving its metadata.                                                                                                                                                                                        | Create conversions copy request ObjectMeta; reserved labels and ownerReferences are not consistently stripped or set by the server.                                                                           |
-| Operator ownership | Cluster, NodePool, and OidcConfig finalizers exist.                                                                                                                                                                                                                                                                                     | No generic garbage collector or Cluster ownerReferences/UID labels are set. NodePool parent lookup lists by namespace and selects the first Cluster. Cluster deletion manually deletes children by namespace. |
-| DNS/OIDC claims    | `Index` uses FleetDB's primary-key uniqueness; issuer URLs are normalized and hashed. The operator has an internal DNSReservation type.                                                                                                                                                                                                 | DNSReservation is currently created by the Cluster reconciler after the Index claim; there is no customer-facing reservation API. DNS and OIDC claim ownership uses namespace/name labels rather than UIDs.   |
-| Clientset          | SigV4 signing and polling waiters exist.                                                                                                                                                                                                                                                                                                | Namespace paths currently influence account headers and NodePool `clusterId`; updates route by UID; waiters do not treat a changed UID as gone.                                                               |
-| Sharding/docs      | List/Watch sharding and unsharded GVKs are implemented.                                                                                                                                                                                                                                                                                 | Sharding hashes namespace. Docs still describe namespace hashing and claim rescale overlap is safe because of fenced writes.                                                                                  |
+| Area                  | Current implementation                                                                                                                                                                                                                                                                                                                  | Remaining gap to the target                                                                                                                                                                                   |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| seaplane-db UID       | UID is database-generated and returned by Create; client-sent UIDs are ignored; tombstone revival assigns a fresh UID. Controller-runtime updates, status writes, and deletes use UID plus resourceVersion preconditions.                                                                                                               | seaplane-api conversions still replace the seaplane-db UID in public Cluster, NodePool, and OidcConfig responses.                                                                                             |
+| seaplane-db selectors | `metadata.name`, `metadata.namespace`, and `metadata.uid` field selectors map to columns. Label selectors are translated to SQL before pagination, with a GIN index on labels. Equality, set, existence, negative, and numeric range selectors are supported; invalid/missing/out-of-int64 label values do not match numeric selectors. | Public API and clientset do not yet expose label selectors.                                                                                                                                                   |
+| Create semantics      | Duplicate Create returns `AlreadyExists`, even for identical content. Content-equal updates are suppressed only when UID and resourceVersion are current; stale versions or UIDs conflict.                                                                                                                                              | API-level idempotency keys for safely replaying POSTs after a lost response are deferred future work; see §4.                                                                                                 |
+| Platform identity     | Cluster names are client-facing; OidcConfig storage already uses an account namespace.                                                                                                                                                                                                                                                  | Cluster and NodePool storage uses `cluster-<generated UUID>`. Cluster, NodePool, and OidcConfig responses override database UIDs. Namespace and DNS-label validation is incomplete.                           |
+| Protected metadata    | seaplane-db stores and returns labels and ownerReferences. seaplane-api update handlers fetch the stored object and merge spec, preserving its metadata.                                                                                                                                                                                | Create conversions copy request ObjectMeta; reserved labels and ownerReferences are not consistently stripped or set by the server.                                                                           |
+| Operator ownership    | Cluster, NodePool, and OidcConfig finalizers exist.                                                                                                                                                                                                                                                                                     | No generic garbage collector or Cluster ownerReferences/UID labels are set. NodePool parent lookup lists by namespace and selects the first Cluster. Cluster deletion manually deletes children by namespace. |
+| DNS/OIDC claims       | `Index` uses seaplane-db's primary-key uniqueness; issuer URLs are normalized and hashed. The operator has an internal DNSReservation type.                                                                                                                                                                                             | DNSReservation is currently created by the Cluster reconciler after the Index claim; there is no customer-facing reservation API. DNS and OIDC claim ownership uses namespace/name labels rather than UIDs.   |
+| Clientset             | SigV4 signing and polling waiters exist.                                                                                                                                                                                                                                                                                                | Namespace paths currently influence account headers and NodePool `clusterId`; updates route by UID; waiters do not treat a changed UID as gone.                                                               |
+| Sharding/docs         | List/Watch sharding and unsharded GVKs are implemented.                                                                                                                                                                                                                                                                                 | Sharding hashes namespace. Docs still describe namespace hashing and claim rescale overlap is safe because of fenced writes.                                                                                  |
 
 The conversion layer already projects ObjectMeta on reads, so returning labels and
 ownerReferences is partly supported once the correct metadata is stored. The required
@@ -116,11 +116,11 @@ behavior, and expose selectors on list endpoints.
 
 This plan assumes the code changes are completed and verified first, then the **whole
 environment is recreated** using the new modules. The new environment starts with an
-empty FleetDB and no active external state from the old deployment. This is the chosen
+empty seaplane-db and no active external state from the old deployment. This is the chosen
 cutover path; this plan does not include an in-place row migration, data backfill,
 dual-read period, or compatibility shim.
 
-Recreate the external state along with FleetDB: DynamoDB Apply/Read desires,
+Recreate the external state along with seaplane-db: DynamoDB Apply/Read desires,
 management-cluster resources and namespaces, and any old DNS reservations/Indexes.
 Recreating only the database would leave old external resources without the records
 the old operator used to manage them.
@@ -135,14 +135,14 @@ These choices are settled for the PR 2 identity switch. They are recorded here t
 keep the cross-component implementation aligned, not as reasons to add database
 constraints:
 
-- **OidcConfig identity:** clients choose `metadata.name`; FleetDB UID is the machine
+- **OidcConfig identity:** clients choose `metadata.name`; seaplane-db UID is the machine
   identity. Cluster references and claim ownership use the UID, while the name remains
   the API lookup value.
 - **OIDC claim ordering:** create the Cluster first, then claim the OidcConfig using
-  the FleetDB-minted Cluster UID. Roll back the Cluster on claim conflict, and gate
+  the seaplane-db-minted Cluster UID. Roll back the Cluster on claim conflict, and gate
   operator provisioning until the claim is confirmed.
 - **Managed issuer URL:** retain a separate server-generated issuer path identifier.
-  It is independent of both the client-selected OidcConfig name and the FleetDB UID,
+  It is independent of both the client-selected OidcConfig name and the seaplane-db UID,
   preserving the managed issuer URL path without substituting object identity.
 - **Stored references:** `Cluster.Spec.OidcConfigID` and
   `Cluster.Spec.DNSReservationID` store UIDs. Placement names and
@@ -172,14 +172,14 @@ constraints:
 - **Future API idempotency keys:** an optional key may make client POST retries safe
   after a lost response. Design this separately, including account/operation scope,
   request-digest checks, replayed responses, and retention. It does not change
-  FleetDB Create semantics: a duplicate name still returns `AlreadyExists`.
+  seaplane-db Create semantics: a duplicate name still returns `AlreadyExists`.
 - **Labels index:** add a non-unique GIN index for the JSON labels selector path.
   This is an additive index, not a business uniqueness constraint. Define its schema
-  installation alongside the FleetDB migration work.
+  installation alongside the seaplane-db migration work.
 
 ## 5. Implementation phases
 
-### Phase 1 — FleetDB query and identity correctness (PR 1 — implemented)
+### Phase 1 — seaplane-db query and identity correctness (PR 1 — implemented)
 
 **Primary files:** `seaplane-db/pgclient.go`, `pgcache.go`, `fieldselector.go`,
 `internal/reader/list.go`, `internal/schema/`, and `internal/writer/`.
@@ -219,10 +219,10 @@ This phase is coordinated across `api`, `seaplane-api`, `seaplane-operator`, and
 - Update comments and generated validation markers for account namespaces, Cluster
   names, child-name parts, and the public DNSReservation API. Regenerate public types
   and OpenAPI and verify generated output.
-- Keep FleetDB's lack of schema/admission validation explicit: enforce request rules
+- Keep seaplane-db's lack of schema/admission validation explicit: enforce request rules
   in seaplane-api.
 
-**Platform API and FleetDB wrapper**
+**seaplane-api and seaplane-db wrapper**
 
 - Store customer-facing Cluster, NodePool, OidcConfig, and DNSReservation resources,
   and resources tied to them, in the authenticated account namespace. Require
@@ -232,7 +232,7 @@ This phase is coordinated across `api`, `seaplane-api`, `seaplane-operator`, and
   creates a reservation before its Cluster and waits for the assigned base domain;
   the API never exposes the internal Index namespace or object.
 - Remove application-generated Cluster IDs and conversion UID overrides. Return
-  FleetDB UIDs without substitution.
+  seaplane-db UIDs without substitution.
 - Route Cluster get/update/delete by name. Use the account namespace and name for
   storage lookups.
 - Remove Cluster list-before-create uniqueness as the enforcement point and map the
@@ -256,7 +256,7 @@ This phase is coordinated across `api`, `seaplane-api`, `seaplane-operator`, and
 
 **DNSReservation and Index claim lifecycle**
 
-- Create the DNSReservation row first so FleetDB assigns its UID. A reservation
+- Create the DNSReservation row first so seaplane-db assigns its UID. A reservation
   reconciler creates the Index in the internal DNS shard namespace with
   `owner-uid=<DNSReservation UID>`, then stores the assigned domain in reservation
   status.
@@ -283,7 +283,7 @@ This phase is coordinated across `api`, `seaplane-api`, `seaplane-operator`, and
 **Operator and rendering**
 
 - Use `cluster-<Cluster UID>` for management-cluster namespaces; stop extracting a
-  Cluster ID from the FleetDB namespace.
+  Cluster ID from the seaplane-db namespace.
 - Create Placement with a dotted child name, ownerReference, and `cluster-uid`
   label. Use `Owns()` mappings instead of name-based map functions where ownership
   is the relation.
@@ -360,7 +360,7 @@ Tests:
 **Primary files:** platform list handlers, clientset list options/wrappers, OpenAPI,
 SDK helper tests.
 
-- Parse public `labelSelector` query parameters and pass them through to FleetDB.
+- Parse public `labelSelector` query parameters and pass them through to seaplane-db.
 - Expose label selectors and explicit Cluster UID filtering in clientset list
   options. Push filters and pagination into the DB rather than fetching the full
   account list and filtering/paginating in memory.
