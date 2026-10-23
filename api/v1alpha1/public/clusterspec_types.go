@@ -37,6 +37,7 @@ type ClusterSpec struct {
 	// tags consume part of that budget; NodePool-specific tags share the same
 	// rendered limit.
 	// +seaplane:write-mode=mutable
+	// +seaplane:resettable=true
 	// +kubebuilder:validation:MaxProperties=23
 	// +optional
 	Tags map[string]string `json:"tags,omitempty"`

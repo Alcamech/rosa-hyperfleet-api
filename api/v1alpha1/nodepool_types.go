@@ -84,6 +84,7 @@ type NodePoolSpec struct {
 	// precedence when keys overlap. Reserved system tags share the rendered AWS
 	// resource tag budget.
 	// +seaplane:write-mode=mutable
+	// +seaplane:resettable=true
 	// +kubebuilder:validation:MaxProperties=25
 	// +optional
 	Tags map[string]string `json:"tags,omitempty"`
@@ -293,10 +294,10 @@ type AWSNodePoolPlatform struct {
 	// +optional
 	RootVolume *Volume `json:"rootVolume,omitempty"`
 
-	// resourceTags is an optional list of additional tags to apply to AWS node
-	// instances.
-	// +k8s:openapi-gen=true
-	// +seaplane:write-mode=mutable
+	// resourceTags is an internal HyperShift passthrough. Customer tags must use
+	// NodePoolSpec.Tags instead.
+	// +k8s:openapi-gen=false
+	// +seaplane:write-mode=service-set
 	// +kubebuilder:validation:MaxItems=25
 	// +optional
 	ResourceTags []hypershiftv1beta1.AWSResourceTag `json:"resourceTags,omitempty"`

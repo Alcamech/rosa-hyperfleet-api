@@ -35,6 +35,7 @@ type NodePoolSpec struct {
 	// precedence when keys overlap. Reserved system tags share the rendered AWS
 	// resource tag budget.
 	// +seaplane:write-mode=mutable
+	// +seaplane:resettable=true
 	// +kubebuilder:validation:MaxProperties=25
 	// +optional
 	Tags map[string]string `json:"tags,omitempty"`

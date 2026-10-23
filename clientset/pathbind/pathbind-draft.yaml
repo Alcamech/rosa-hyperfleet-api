@@ -303,11 +303,6 @@ resources:
               operations:
                 - create
                 - update
-            - path: spec.hostedCluster.platform.aws.resourceTags
-              goType: array(object)
-              operations:
-                - create
-                - update
             - path: spec.hostedCluster.platform.aws.rolesRef.controlPlaneOperatorARN
               goType: string
               operations:
@@ -391,6 +386,7 @@ resources:
               operations:
                 - create
                 - update
+              resettable: true
     nodePool:
         sdkType: v1alpha1.NodePool
         fields:
@@ -511,11 +507,6 @@ resources:
               operations:
                 - create
                 - update
-            - path: spec.nodePool.platform.aws.resourceTags
-              goType: array(object)
-              operations:
-                - create
-                - update
             - path: spec.nodePool.platform.aws.rootVolume.size
               goType: integer(int64)
               operations:
@@ -565,6 +556,7 @@ resources:
               operations:
                 - create
                 - update
+              resettable: true
     oidcConfig:
         sdkType: v1alpha1.OidcConfig
         fields:
