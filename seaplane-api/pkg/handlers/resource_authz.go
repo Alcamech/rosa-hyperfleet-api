@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"maps"
 	"net/http"
 	"reflect"
@@ -10,6 +9,8 @@ import (
 
 	v1 "github.com/openshift-online/rosa-seaplane-api/api/v1alpha1"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/authz"
+	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/clients/seaplanedb"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -31,22 +32,42 @@ func (h *ClusterHandler) clusterResource(cr *v1.Cluster) authz.Resource {
 
 func (h *NodePoolHandler) nodePoolResource(ctx context.Context, np *v1.NodePool) (authz.Resource, error) {
 	owner := metav1.GetControllerOf(np)
+	// A pool without its current owned parent reads as not found; this is the only parent load.
+	notFound := &authz.Failure{Stage: authz.StageResourceLoading, Err: apierrors.NewNotFound(v1.GroupVersion.WithResource("nodepools").GroupResource(), np.Name)}
 	if owner == nil || owner.Kind != "Cluster" || owner.UID == "" || np.Labels[clusterUIDLabel] != string(owner.UID) {
-		return authz.Resource{}, &authz.Failure{Stage: authz.StageEntityValidation, Err: fmt.Errorf("invalid node pool parent binding")}
+		return authz.Resource{}, notFound
 	}
-	// Resolve the stored controller reference within the caller's account and pin its incarnation.
 	parent, err := h.db.GetCluster(ctx, owner.Name)
+	if seaplanedb.IsNotFound(err) || (err == nil && parent.UID != owner.UID) {
+		return authz.Resource{}, notFound
+	}
 	if err != nil {
 		return authz.Resource{}, &authz.Failure{Stage: authz.StageResourceLoading, Err: err}
-	}
-	if parent.UID != owner.UID {
-		return authz.Resource{}, &authz.Failure{Stage: authz.StageEntityValidation, Err: fmt.Errorf("node pool parent UID does not match")}
 	}
 	return authz.Resource{Kind: authz.NodePool, ID: string(np.UID), AccountID: np.Labels["seaplane.io/account-id"], Labels: maps.Clone(np.Annotations),
 		ParentCluster: &authz.ParentCluster{ID: string(parent.UID), AccountID: parent.Labels["seaplane.io/account-id"], Labels: maps.Clone(parent.Annotations)}}, nil
 }
+
+// nodePoolNotFound is each loaded-pool operation's response when the parent check hides the pool.
+// A function, not a map: the error values are assigned in init.
+func nodePoolNotFound(operation authz.Action) (APIError, bool) {
+	switch operation {
+	case authz.DescribeNodePool:
+		return ErrNodePoolGetNotFound, true
+	case authz.UpdateNodePool:
+		return ErrNodePoolUpdateNotFound, true
+	case authz.DeleteNodePool:
+		return ErrNodePoolDeleteNotFound, true
+	}
+	return APIError{}, false
+}
+
 func (h *NodePoolHandler) authorizeNodePool(w http.ResponseWriter, r *http.Request, operation authz.Action, np *v1.NodePool, additional ...authz.Action) bool {
 	resource, err := h.nodePoolResource(r.Context(), np)
+	if notFound, isLoaded := nodePoolNotFound(operation); isLoaded && seaplanedb.IsNotFound(err) {
+		writeAPIError(w, notFound, h.logger)
+		return false
+	}
 	if err != nil {
 		attempt := startResourceAuthz(r, operation)
 		writeResourceAuthzError(w, r, attempt, operation, err, h.logger)

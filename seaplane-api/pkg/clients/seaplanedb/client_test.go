@@ -233,7 +233,7 @@ func TestClient_GetNodePool_NotFoundOutsideAccount(t *testing.T) {
 	}
 }
 
-func TestClient_GetNodePool_RequiresOwnedParent(t *testing.T) {
+func TestClient_NodePoolReadsIgnoreParent(t *testing.T) {
 	ctx := ctxAccount("acct-1")
 	owned := &seaplanev1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -271,8 +271,9 @@ func TestClient_GetNodePool_RequiresOwnedParent(t *testing.T) {
 			fc := fake.NewClientBuilder().WithScheme(testScheme()).WithObjects(owned, foreign, valid, tc.pool).Build()
 			c := NewClientFrom(fc, slog.New(slog.NewTextHandler(os.Stdout, nil)))
 
-			if _, err := c.GetNodePool(ctx, tc.pool.Name); !IsNotFound(err) {
-				t.Errorf("GetNodePool(%q) should hide an unowned parent, got %v", tc.pool.Name, err)
+			// Storage reads stay namespace-scoped; handlers check the parent while authorizing.
+			if _, err := c.GetNodePool(ctx, tc.pool.Name); err != nil {
+				t.Errorf("GetNodePool(%q): %v", tc.pool.Name, err)
 			}
 			list, err := c.ListNodePools(ctx, "")
 			if err != nil {

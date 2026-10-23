@@ -296,6 +296,7 @@ func nodePoolParent(np *seaplanev1alpha1.NodePool) *metav1.OwnerReference {
 }
 
 // GetNodePool retrieves a NodePool by name in the account namespace from ctx.
+// Callers check the parent binding; handlers do it while building the authz resource.
 func (c *Client) GetNodePool(ctx context.Context, name string) (*seaplanev1alpha1.NodePool, error) {
 	accountID := middleware.GetAccountID(ctx)
 	var nodePool seaplanev1alpha1.NodePool
@@ -304,9 +305,6 @@ func (c *Client) GetNodePool(ctx context.Context, name string) (*seaplanev1alpha
 		Name:      name,
 	}, &nodePool)
 	if err != nil {
-		return nil, err
-	}
-	if err := c.requireOwnedCluster(ctx, &nodePool); err != nil {
 		return nil, err
 	}
 	return &nodePool, nil

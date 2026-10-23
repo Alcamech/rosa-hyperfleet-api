@@ -251,3 +251,30 @@ func TestOidcCreateAuthorizesBeforeIssuerProbe(t *testing.T) {
 		t.Fatalf("caller without CreateOIDCConfig got %d instead of 403: %s", w.Code, w.Body.String())
 	}
 }
+
+// NodePool Get loads its parent once; a stale parent binding still reads as not found.
+func TestNodePoolGetLoadsParentOnce(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		parentUID types.UID
+		status    int
+	}{{"owned", types.UID(resourceTestClusterID), 200}, {"stale parent", "old-uid", 404}} {
+		t.Run(tc.name, func(t *testing.T) {
+			objects := resourceFixtures()
+			pool := objects[1].(*v1.NodePool)
+			pool.OwnerReferences[0].UID = tc.parentUID
+			pool.Labels["seaplane.io/cluster-uid"] = string(tc.parentUID)
+			reads := 0
+			hooks := interceptor.Funcs{Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+				if _, isCluster := obj.(*v1.Cluster); isCluster {
+					reads++
+				}
+				return c.Get(ctx, key, obj, opts...)
+			}}
+			srv, _ := resourceServer(t, []string{actionPermit("DescribeNodePool")}, hooks, objects...)
+			if w := resourceRequest(srv, "GET", "nodepools/parent.workers", ""); w.Code != tc.status || reads != 1 {
+				t.Fatalf("status=%d parent reads=%d, want %d/1: %s", w.Code, reads, tc.status, w.Body.String())
+			}
+		})
+	}
+}

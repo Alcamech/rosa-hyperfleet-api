@@ -20,8 +20,8 @@ func TestRetryAuthzFailure(t *testing.T) {
 		path, body, operation string
 		failingRead           int
 	}{
-		{"nodepools/parent.workers", `{"spec":{"labels":{"change":"requested"}}}`, "UpdateNodePool", 5},
-		{"nodepools/parent.workers/labels", `{"change":"requested"}`, "LabelResource", 4},
+		{"nodepools/parent.workers", `{"spec":{"labels":{"change":"requested"}}}`, "UpdateNodePool", 3},
+		{"nodepools/parent.workers/labels", `{"change":"requested"}`, "LabelResource", 2},
 	} {
 		t.Run(tc.operation, func(t *testing.T) {
 			objects := resourceFixtures()

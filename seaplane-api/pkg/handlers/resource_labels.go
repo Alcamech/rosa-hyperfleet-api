@@ -135,6 +135,10 @@ func resourceLabels[T client.Object](w http.ResponseWriter, r *http.Request, aut
 		}
 		uid = obj.GetUID()
 		snapshot, err := resource(r.Context(), obj)
+		if seaplanedb.IsNotFound(err) {
+			writeAPIError(w, errLabelNotFound, logger)
+			return errResponded
+		}
 		if err != nil {
 			writeResourceAuthzError(w, r, startResourceAuthz(r, operation), operation, err, logger)
 			return errResponded
