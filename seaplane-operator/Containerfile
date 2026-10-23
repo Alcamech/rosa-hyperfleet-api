@@ -18,6 +18,9 @@ COPY api/ ./api/
 COPY seaplane-db/ ./seaplane-db/
 COPY seaplane-operator/ ./seaplane-operator/
 
+ENV GOMEMLIMIT=3500MiB
+ENV GOMAXPROCS=4
+
 RUN cd seaplane-operator && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /workspace/manager ./cmd/manager
 RUN cd seaplane-operator && \
