@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"maps"
@@ -22,13 +23,18 @@ import (
 
 var (
 	errLabelBody     = APIError{Code: "LABEL-BODY-001", HTTPStatus: http.StatusBadRequest, Message: "Expected a non-empty JSON object of strings or null"}
+	errLabelLimit    = APIError{Code: "LABEL-VALIDATION-002", HTTPStatus: http.StatusUnprocessableEntity, Message: fmt.Sprintf("A resource may have at most %d customer labels", maxCustomerLabels)}
 	errLabelSyntax   = APIError{Code: "LABEL-VALIDATION-001", HTTPStatus: http.StatusUnprocessableEntity, Message: "Invalid customer label key or value"}
 	errLabelNotFound = APIError{Code: "LABEL-NOTFOUND-001", HTTPStatus: http.StatusNotFound, Message: "Resource not found"}
 	errLabelFailed   = APIError{Code: "LABEL-FAILED-001", HTTPStatus: http.StatusInternalServerError, Message: "Label operation failed"}
 )
 
+// maxCustomerLabels matches the AWS per-resource tag limit; every label is a Cedar tag on each check.
+const maxCustomerLabels = 50
+
 // Customer creates discard system labels; validate only the customer-controlled entries.
 func validateCreateLabels(w http.ResponseWriter, labels map[string]string, logger *slog.Logger) bool {
+	count := 0
 	for key, value := range labels {
 		if strings.HasPrefix(key, "seaplane.io/") {
 			continue
@@ -37,6 +43,11 @@ func validateCreateLabels(w http.ResponseWriter, labels map[string]string, logge
 			writeAPIError(w, errLabelSyntax, logger)
 			return false
 		}
+		count++
+	}
+	if count > maxCustomerLabels {
+		writeAPIError(w, errLabelLimit, logger)
+		return false
 	}
 	return true
 }
@@ -144,6 +155,10 @@ func resourceLabels[T client.Object](w http.ResponseWriter, r *http.Request, aut
 		tags := applyLabelPatch(obj.GetAnnotations(), patch)
 		if maps.Equal(tags, obj.GetAnnotations()) {
 			return nil
+		}
+		if len(tags) > maxCustomerLabels {
+			writeAPIError(w, errLabelLimit, logger)
+			return errResponded
 		}
 		obj.SetAnnotations(tags)
 		if err := save(r.Context(), obj); err != nil {

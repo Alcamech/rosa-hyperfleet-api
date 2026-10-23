@@ -142,6 +142,8 @@ labels are dropped on create. The routes keep the `labels` name.
 - Malformed, non-object, null, empty, or wrong-value-type bodies return 400.
   Kubernetes key/value syntax errors and any set/removal under `seaplane.io/`
   return 422. Validation rejects the entire request, never just some keys.
+- A resource holds at most 50 customer labels, as AWS tags; a create or PATCH
+  past that returns 422. Request bodies are limited to 1 MiB.
 - Creates discard caller-supplied labels and system-prefix annotations, validate
   customer syntax, install trusted system labels, and check only the resource
   Create action against the candidate. These are metadata annotations, not

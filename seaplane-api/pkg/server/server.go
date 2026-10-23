@@ -64,6 +64,7 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 		}
 	})
 	apiRouter.Use(middleware.Identity)
+	apiRouter.Use(limitBody)
 
 	// Rate limiting middleware
 	var redisCloser io.Closer
@@ -260,6 +261,16 @@ func (s *Server) shutdown() error {
 
 	s.logger.Info("all servers stopped")
 	return nil
+}
+
+// maxRequestBytes caps request bodies; an oversized body fails the handler's read with 400.
+const maxRequestBytes = 1 << 20
+
+func limitBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
+		next.ServeHTTP(w, r)
+	})
 }
 
 // allowlistAccounts marks requests from accounts outside the bundle that are on the

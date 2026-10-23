@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"reflect"
+	"strings"
 	"testing"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -116,6 +117,32 @@ func TestRequestLabelsContext(t *testing.T) {
 		srv, _ := resourceServer(t, []string{policy}, interceptor.Funcs{}, resourceFixtures()...)
 		if w := resourceRequest(srv, tc.method, tc.path, tc.body); w.Code != tc.status {
 			t.Errorf("%s %s %s: status=%d, want %d: %s", tc.method, tc.path, tc.body, w.Code, tc.status, w.Body.String())
+		}
+	}
+}
+
+// Customer labels are capped like AWS tags, and request bodies are size-limited.
+func TestLabelAndBodyLimits(t *testing.T) {
+	labels := func(n int) string {
+		set := map[string]string{}
+		for i := range n {
+			set[fmt.Sprintf("key-%d", i)] = "v"
+		}
+		body, _ := json.Marshal(set)
+		return string(body)
+	}
+	for _, tc := range []struct {
+		method, path, body string
+		status             int
+	}{
+		{"PATCH", "clusters/parent/labels", labels(49), 204}, // plus the stored "team" is 50
+		{"PATCH", "clusters/parent/labels", labels(50), 422},
+		{"POST", "dns_reservations", `{"metadata":{"name":"new","annotations":` + labels(51) + `}}`, 422},
+		{"POST", "dns_reservations", `{"metadata":{"name":"new","annotations":{"pad":"` + strings.Repeat("x", 1<<20) + `"}}}`, 400},
+	} {
+		srv, _ := resourceServer(t, []string{`permit(principal, action, resource);`}, interceptor.Funcs{}, resourceFixtures()...)
+		if w := resourceRequest(srv, tc.method, tc.path, tc.body); w.Code != tc.status {
+			t.Errorf("%s %s (%d bytes): status=%d, want %d: %.200s", tc.method, tc.path, len(tc.body), w.Code, tc.status, w.Body.String())
 		}
 	}
 }
