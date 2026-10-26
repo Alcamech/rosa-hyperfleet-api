@@ -77,14 +77,6 @@ var _ = Describe("Platform API", Ordered, func() {
 		Expect(response.Headers).To(HaveKey("X-Amz-Apigw-Id"))
 	})
 
-	It("should successfully call the API GET /v0/ready endpoint", func() {
-		response := getAndExpectOK(apiClient, "/v0/ready", accountID, "ok")
-		Expect(response.StatusCode).To(Equal(http.StatusOK))
-		Expect(string(response.Body)).To(ContainSubstring("ok"))
-		Expect(response.Headers).To(HaveKey("Content-Type"))
-		Expect(response.Headers).To(HaveKey("X-Amz-Apigw-Id"))
-	})
-
 	It("should successfully call the API GET /api/v0/ready endpoint", func() {
 		response := getAndExpectOK(apiClient, "/api/v0/ready", accountID, "ok")
 		Expect(response.StatusCode).To(Equal(http.StatusOK))
