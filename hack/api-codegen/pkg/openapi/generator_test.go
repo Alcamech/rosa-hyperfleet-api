@@ -141,6 +141,55 @@ func TestFilterHiddenFieldsPrunesResourceTagsFromResourceLists(t *testing.T) {
 	}
 }
 
+func TestFilterHiddenFieldsPrunesHiddenStatusFields(t *testing.T) {
+	definitions := map[string]apiextensionsv1.JSONSchemaProps{
+		"ClusterStatus": {
+			Type: "object",
+			Properties: map[string]apiextensionsv1.JSONSchemaProps{
+				"provisioned": {Type: "boolean"},
+				"baseDomain":  {Type: "string"},
+			},
+		},
+	}
+	// A status field marked +k8s:openapi-gen=false is registered by the
+	// marker scanner as "status.<field>" under the root kind.
+	hidden := map[string]bool{"status.baseDomain": true}
+
+	if err := filterDefinitionsWithPaths(definitions, hidden); err != nil {
+		t.Fatalf("filterDefinitionsWithPaths(): %v", err)
+	}
+	properties := definitions["ClusterStatus"].Properties
+	if _, found := properties["provisioned"]; !found {
+		t.Error("visible status field provisioned was filtered from the public schema")
+	}
+	if _, found := properties["baseDomain"]; found {
+		t.Error("hidden status field baseDomain leaked into the public schema")
+	}
+}
+
+func TestFilterHiddenFieldsFailsOnUnmappedDefinitionWithDottedHiddenPath(t *testing.T) {
+	// The guard must compare dotted registry paths, not bare property names:
+	// a hidden "status.baseDomain" entry previously slipped past a definition
+	// with no typeToRegistryPrefix entry because the bare names never matched.
+	definitions := map[string]apiextensionsv1.JSONSchemaProps{
+		"UnmappedStatusLike": {
+			Type: "object",
+			Properties: map[string]apiextensionsv1.JSONSchemaProps{
+				"baseDomain": {Type: "string"},
+			},
+		},
+	}
+	hidden := map[string]bool{"status.baseDomain": true}
+
+	err := filterDefinitionsWithPaths(definitions, hidden)
+	if err == nil {
+		t.Fatal("expected an error for an unmapped definition carrying a hidden field")
+	}
+	if !strings.Contains(err.Error(), "UnmappedStatusLike") || !strings.Contains(err.Error(), "baseDomain") {
+		t.Errorf("error should name the definition and leaked field, got: %v", err)
+	}
+}
+
 func TestConfigurationUsesLocalType(t *testing.T) {
 	output := generateConfigurationSchema(t)
 
@@ -157,14 +206,15 @@ func generateConfigurationSchema(t *testing.T) schemaOutput {
 	t.Helper()
 	tmpFile := t.TempDir() + "/openapi.json"
 
-	// Resolve the v1alpha1 package relative to this test file's location
-	// (hack/api-codegen/pkg/openapi/) → ../../../../api/v1alpha1
-	v2alpha1Dir := "../../../../api/v1alpha1"
-	if _, err := os.Stat(v2alpha1Dir); err != nil {
-		t.Skipf("v1alpha1 source not available: %v", err)
+	// Resolve the public API package relative to this test file's location
+	// (hack/api-codegen/pkg/openapi/) → ../../../../api/v1alpha1/public.
+	// Production generation (make generate-openapi) scans the same directory.
+	publicDir := "../../../../api/v1alpha1/public"
+	if _, err := os.Stat(publicDir); err != nil {
+		t.Skipf("public API source not available: %v", err)
 	}
 
-	gen := NewGenerator([]string{v2alpha1Dir}, tmpFile)
+	gen := NewGenerator([]string{publicDir}, tmpFile)
 	gen.Title = "Test"
 	gen.Version = "v1"
 

@@ -157,6 +157,9 @@ func (g *Generator) generateDefinitions(roots []*loader.Package) (map[string]api
 // used in the FieldRegistry. The scanner stores paths like "spec.accountId"
 // (rooted at the Cluster/NodePool root type) while openapi-gen definitions
 // are keyed by the Go struct name (e.g., "ClusterSpec").
+//
+// Types without an explicit entry still get a prefix derived generically:
+// *Status definitions are rooted at "status" (see registryPrefixForDefinition).
 var typeToRegistryPrefix = map[string]string{
 	"ClusterSpec":                  "spec",
 	"Cluster":                      "",
@@ -181,8 +184,9 @@ var typeToRegistryPrefix = map[string]string{
 // from all schema definitions. Mutable fields marked +k8s:openapi-gen=false
 // remain in Seaplane's custom public schema.
 //
-// Every definition that carries hidden fields must have an entry in
-// typeToRegistryPrefix; an unmapped definition whose properties match
+// Every definition that carries hidden fields must resolve to a registry
+// prefix — either via typeToRegistryPrefix or the generic *Status rule in
+// registryPrefixForDefinition. An unmapped definition whose properties match
 // hidden registry entries is an error (the mapping was forgotten).
 func filterHiddenFields(definitions map[string]apiextensionsv1.JSONSchemaProps) error {
 	hiddenPaths := make(map[string]bool)
@@ -199,6 +203,13 @@ func filterHiddenFields(definitions map[string]apiextensionsv1.JSONSchemaProps) 
 		return nil
 	}
 
+	return filterDefinitionsWithPaths(definitions, hiddenPaths)
+}
+
+// filterDefinitionsWithPaths prunes hidden fields from definitions using the
+// supplied hidden path set. Split from filterHiddenFields so tests can exercise
+// pruning and the leak guard with synthetic registry paths.
+func filterDefinitionsWithPaths(definitions map[string]apiextensionsv1.JSONSchemaProps, hiddenPaths map[string]bool) error {
 	for typeName, schema := range definitions {
 		prefix, ok := registryPrefixForDefinition(typeName)
 		if !ok {
@@ -226,6 +237,13 @@ func registryPrefixForDefinition(typeName string) (string, bool) {
 			return prefix, true
 		}
 	}
+	// Status sub-resources are scanned from the CRD root, so their fields are
+	// registered under dotted paths rooted at "status" (e.g. ClusterStatus
+	// fields are registered as "status.<field>" owned by the root kind).
+	// Derive the prefix generically instead of maintaining an allowlist.
+	if strings.HasSuffix(typeName, "Status") {
+		return "status", true
+	}
 	return "", false
 }
 
@@ -241,14 +259,27 @@ func pruneHiddenResourceListItems(schema *apiextensionsv1.JSONSchemaProps, prefi
 	schema.Properties["items"] = items
 }
 
-// leakedHiddenProps returns property names from schema whose bare name
-// matches a hidden entry in the registry. This catches definitions that
-// should be mapped but aren't.
+// leakedHiddenProps returns property names from schema that match a hidden
+// entry in the registry. Because the definition has no entry in
+// typeToRegistryPrefix, its registry prefix is unknown, so a property is
+// considered leaked when it matches either a top-level hidden path (e.g.
+// "resourceTags") or the final segment of a dotted hidden path (e.g.
+// "baseDomain" for "status.baseDomain"). Comparing full dotted paths — not
+// bare property names — is what lets this guard catch hidden status and other
+// non-spec fields leaking through unmapped definitions.
 func leakedHiddenProps(schema apiextensionsv1.JSONSchemaProps, hidden map[string]bool) []string {
 	var leaked []string
 	for propName := range schema.Properties {
 		if hidden[propName] {
 			leaked = append(leaked, propName)
+			continue
+		}
+		suffix := "." + propName
+		for path := range hidden {
+			if strings.HasSuffix(path, suffix) {
+				leaked = append(leaked, propName)
+				break
+			}
 		}
 	}
 	sort.Strings(leaked)
