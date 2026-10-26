@@ -1,5 +1,10 @@
 # Changes
 
+## 0.1.24 Oct 26 2026
+
+- ROSAENG-68147 | feat(pathbind): support Terraform partial updates
+
+
 ## 0.1.23 Oct 23 2026
 
 - ROSAENG-68195 | refactor: mirror awsplatform spec to curate fields
