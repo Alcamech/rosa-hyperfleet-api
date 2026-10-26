@@ -10,6 +10,73 @@ demonstrate the target behavior. It is kept with seaplane-db because PR 1 establ
 the database primitives that later identity phases rely on; PR 2 is coordinated across
 the API, operator, and clientset as well as seaplane-db.
 
+## Guidelines at a glance
+
+How far the code follows each rule in
+[seaplane-db-guidelines.md](../../docs/seaplane-db-guidelines.md). The phase that
+closes each gap is listed under [Remaining work](#remaining-work).
+
+| Guideline rule                     | Status  | Implemented                                                                                                                                                         | Missing                                                                                                                                                                                          |
+| ---------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1. Namespace is the account        | Partial | Cluster, NodePool, OidcConfig, and DNSReservation live in `account-<id>`; a different namespace returns 400; `Index` scopes are server-only.                        | An empty request namespace is filled in instead of rejected (Phase 6).                                                                                                                           |
+| 2. Name is for humans              | Done    | Client-chosen, immutable names validated as DNS labels; children are `<cluster>.<child>`; the API never rewrites them.                                              | SDK helper that builds `<cluster>.<child>` (Phase 4).                                                                                                                                            |
+| 3. UID is for machines             | Partial | seaplane-db mints UIDs; Cluster references to OidcConfig and DNSReservation, ownerReferences, and DNS/OIDC claims store UIDs.                                       | SDK waiters don't check UIDs (Phase 4). The Spot termination queue claim is held by the Cluster name; the DNSReservation controller finds its Cluster by listing the namespace (Phase 6).        |
+| 4. Labels belong to the platform   | Partial | Client `seaplane.io/*` labels are discarded; NodePool and Placement carry an ownerReference and `cluster-uid`; claims use `owner-uid` and `claimed-by-cluster-uid`. | Customer labels outside `seaplane.io/` are stored; annotations aren't validated; Cedar reads labels; the storage client sets the namespace and account label instead of checking them (Phase 6). |
+| 5. Every controller cleans up      | Partial | The Cluster finalizer deletes its children by `cluster-uid`, waits for them, and releases its DNS and OIDC claims; DNSReservation releases its own Indexes.         | No generic collector for orphaned children (Phase 3). No finalizer releases the Spot queue claim; it is reclaimed after a timeout (Phase 6).                                                     |
+| 6. Uniqueness from name or `Index` | Partial | Duplicate Create returns `AlreadyExists` (409); DNS prefixes and OIDC issuer URLs are `Index` claims held by a UID.                                                 | The Spot queue `Index` is held by a name (Phase 6).                                                                                                                                              |
+| 7. Business rules in code          | Done    | The only schema addition is the non-unique GIN labels index.                                                                                                        | `architecture.md` still describes fenced writes and stored procedures (Phase 5).                                                                                                                 |
+| 8. Write what you checked          | Partial | Updates re-read, re-validate, and write the read snapshot on each retry; DNSReservation and OidcConfig deletes write the checked snapshot.                          | Cluster and NodePool deletes re-read by name in the storage client (Phase 6).                                                                                                                    |
+| 9. Reconcilers are idempotent      | Partial | DNSReservation allocation recovers its prefix on retry and removes duplicate Indexes after overlapping reconciles.                                                  | Sharding hashes the namespace, not `cluster-uid`, so a cluster and its children aren't kept on one replica (Phase 5). The rest of the operator hasn't been reviewed against this rule (Phase 7). |
+
+Guidelines §4 also says not to re-check parents on reads, and recommends batching
+instead of calling `Get` inside loops. Read paths haven't been reviewed against
+either yet (Phase 7). List endpoints still paginate in memory (Phase 4).
+
+## Remaining work
+
+Phases 1 and 2 are implemented. Every gap above belongs to one of the phases below.
+Phases 3–5 are detailed in [§5](#5-implementation-phases); phases 6 and 7 are only
+listed here until they are designed.
+
+**Phase 3 — Garbage collection**
+
+- Add a collector that deletes NodePools and Placements whose Cluster is missing,
+  recreated, or deleting.
+- The Cluster finalizer waits for its children instead of deleting them itself.
+
+**Phase 4 — Public selectors and SDK**
+
+- Label selectors on the public API and clientset, matching platform labels only.
+  Land them after Phase 6 stops storing customer labels.
+- Filter and paginate list endpoints in the database, not in memory.
+- SDK helper that builds `<cluster>.<child>`.
+- SDK waiters treat a changed UID as the object being gone.
+
+**Phase 5 — Sharding and docs**
+
+- Shard by `cluster-uid`, falling back to the row's own UID.
+- Remove fenced writes and stored procedures from `architecture.md` and
+  `sharding.md`.
+
+**Phase 6 — Metadata, namespaces, and checked writes**
+
+- Store no customer labels; customer metadata goes in validated annotations, with
+  `seaplane.io/` reserved. Cedar and `docs/authz.md` read annotations.
+- Reject an empty request namespace with 400.
+- The storage client checks the namespace and account label instead of setting them.
+- Cluster and NodePool deletes write the snapshot the handler checked.
+- Claim the Spot termination queue after the Cluster is created, held by the Cluster
+  UID, and release it in the Cluster finalizer. Remove the timeout reclaim.
+- The DNSReservation controller finds its Cluster by UID.
+
+**Phase 7 — Guideline review**
+
+- Remove parent re-checks from read paths; skip children whose parent can't be
+  resolved.
+- Batch `Get`s inside loops over lists that can grow with the account.
+- Check that reconcilers are safe to run twice and make no cross-cluster decisions
+  from local counts.
+
 ## 1. Target contract
 
 1. **Customer account namespace rule.** Customer-created resources and resources
@@ -397,6 +464,8 @@ SDK helper tests.
   implementation.
 - Add the target development rules to root `CLAUDE.md` and update the documented
   component/CRD list to describe the customer-facing DNSReservation workflow.
+
+Phases 6 and 7 are listed under [Remaining work](#remaining-work).
 
 ## 6. End-to-end acceptance criteria
 

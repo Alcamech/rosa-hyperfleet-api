@@ -176,9 +176,11 @@ selector or the shard key.
 - **Never key cached state by name alone.** A delete followed by a create can reach a
   watcher as a single "update" whose uid changed.
 
-**Don't read inside loops.** Every `Get` is a query. When you need related objects,
-such as each node pool's parent cluster, load them once in a batch and reuse the
-result. Don't fetch an object again when the caller already loaded it; pass it down.
+**Avoid reads inside loops.** Every `Get` is a query, so a `Get` per item makes the
+request cost grow with the account. This is a recommendation, not a rule: a loop over
+a few items is fine. When the list can grow, such as each node pool's parent cluster,
+load the related objects once in a batch and reuse the result. Don't fetch an object
+again when the caller already loaded it; pass it down.
 
 ```go
 var clusters v1alpha1.ClusterList
@@ -316,7 +318,7 @@ reads always see every row. Details and limits are in
 - [ ] Customer metadata? **Annotations**, validated. No customer path writes labels.
 - [ ] Platform-set field? Set once in **conversion**, before authorization.
 - [ ] Storage layer changes the object? It should **check and error** instead.
-- [ ] `Get` inside a loop, or a re-fetch of something the caller loaded? **Batch** and pass it down.
+- [ ] `Get` inside a loop over a list that can grow, or a re-fetch of something the caller loaded? Prefer to **batch** and pass it down.
 - [ ] Read path re-checks parents? Remove it; **skip** unresolvable children.
 - [ ] Update or delete? Writes the **checked snapshot's** `resourceVersion`; a retry re-checks.
 - [ ] Something unique beyond the name? One **`Index`** held by a **uid**, value stored on the owner.
