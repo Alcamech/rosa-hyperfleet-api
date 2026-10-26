@@ -19,9 +19,10 @@ import (
 var _ = Describe("Observability", FlakeAttempts(2), func() {
 
 	It("should deliver authorization allow and deny metrics to Thanos", Label("authz"), func() {
-		// Cluster lists also evaluate DescribeCluster, so keep allow traffic outside the error fixture.
-		expectAuthzDelivery("/api/v0/oidc_configs", "ListOIDCConfigs", "allow", http.StatusOK)
-		expectAuthzDelivery("/api/v0/management_clusters", "ListManagementClusters", "deny", http.StatusForbidden)
+		expectAuthzDelivery("/api/v0/oidc_configs", nil, "ListOIDCConfigs", "allow", http.StatusOK)
+		// The e2e grants exclude requests carrying this tag (context.requestLabels), so Cedar denies the create.
+		probe := map[string]any{"metadata": map[string]any{"name": "authz-deny-probe", "annotations": map[string]string{"authz-deny-probe": "true"}}}
+		expectAuthzDelivery("/api/v0/dns_reservations", probe, "CreateDNSReservation", "deny", http.StatusForbidden)
 	})
 
 	It("should deliver authorization evaluation errors to Thanos", Label("authz", "authz-error"), func() {
@@ -31,7 +32,7 @@ var _ = Describe("Observability", FlakeAttempts(2), func() {
 			Skip("E2E_AUTHZ_ERROR_CLUSTER not set; deployed error-series acceptance is unverified")
 		}
 		Expect(os.Getenv("E2E_AUTHZ_PROMETHEUS_URL")).NotTo(BeEmpty(), "regional Prometheus evidence is required for the integrated error check")
-		expectAuthzDelivery("/api/v0/clusters/"+url.PathEscape(cluster), "DescribeCluster", "error", http.StatusInternalServerError)
+		expectAuthzDelivery("/api/v0/clusters/"+url.PathEscape(cluster), nil, "DescribeCluster", "error", http.StatusInternalServerError)
 	})
 
 	It("should have RC CloudWatch metrics in Thanos", func() {
@@ -100,7 +101,8 @@ func authzMetricValue(client *awstest.APIClient, query string) (float64, error) 
 }
 
 // expectAuthzDelivery requires fresh counter and duration observations after signed traffic.
-func expectAuthzDelivery(path, operation, outcome string, code int) {
+// A nil body sends GET; otherwise POST.
+func expectAuthzDelivery(path string, body any, operation, outcome string, code int) {
 	baseURL, account := os.Getenv("E2E_BASE_URL"), os.Getenv("E2E_ACCOUNT_ID")
 	Expect(baseURL).NotTo(BeEmpty(), "E2E_BASE_URL is required for authorization traffic")
 	Expect(account).NotTo(BeEmpty(), "E2E_ACCOUNT_ID is required for authorization traffic")
@@ -129,10 +131,14 @@ func expectAuthzDelivery(path, operation, outcome string, code int) {
 			baselines = append(baselines, baseline{client, name, query, value})
 		}
 	}
-	response, err := awstest.NewAPIClient(baseURL).Get(path, account)
+	method := http.MethodGet
+	if body != nil {
+		method = http.MethodPost
+	}
+	response, err := awstest.NewAPIClient(baseURL).Do(method, path, body, account)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(response.StatusCode).To(Equal(code))
-	GinkgoWriter.Printf("%s GET %s status=%d operation=%s outcome=%s\n", time.Now().UTC().Format(time.RFC3339Nano), path, code, operation, outcome)
+	GinkgoWriter.Printf("%s %s %s status=%d operation=%s outcome=%s\n", time.Now().UTC().Format(time.RFC3339Nano), method, path, code, operation, outcome)
 	if code != http.StatusOK {
 		var status struct {
 			Kind, Message string
