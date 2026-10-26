@@ -67,10 +67,10 @@ var _ = Describe("Platform API", Ordered, func() {
 		// Expect(baseURL).To(MatchRegexp("^https://[a-zA-Z0-9]+\\.execute-api\\.[a-z]+-[a-z]+-[0-9]+\\.amazonaws\\.com(/.*)?$"))
 	})
 
-	// it should successfully call the API GET /live endpoint
+	// it should successfully call the API GET /api/v0/live endpoint
 	// it should access endpoint using the sigv4 authentication protocol
-	It("should successfully call the API GET /v0/live endpoint", func() {
-		response := getAndExpectOK(apiClient, "/v0/live", accountID, "ok")
+	It("should successfully call the API GET /api/v0/live endpoint", func() {
+		response := getAndExpectOK(apiClient, "/api/v0/live", accountID, "ok")
 		Expect(response.StatusCode).To(Equal(http.StatusOK))
 		Expect(string(response.Body)).To(ContainSubstring("ok"))
 		Expect(response.Headers).To(HaveKey("Content-Type"))
