@@ -25,6 +25,8 @@ limitations under the License.
 // Optional:
 //
 //	AWS_REGION                — defaults to us-east-1
+//	RC_AWS_PROFILE            — AWS profile for the RC account (default credentials if absent)
+//	E2E_ACCOUNT_ID            — RC account ID (derived from STS if absent)
 //	E2E_CUSTOMER_ACCOUNT_ID   — customer account ID (derived from STS if absent)
 //	HCP_CLUSTER_NAME          — fixed cluster name longer than the automatic-DNS budget (generated if absent)
 //	OCP_IMAGE               — release image passed to release.image; defaults to defaultReleaseImage
@@ -53,6 +55,7 @@ import (
 	seaplane "github.com/openshift-online/rosa-seaplane-api/clientset"
 	"github.com/openshift-online/rosa-seaplane-api/clientset/platform"
 	hfrest "github.com/openshift-online/rosa-seaplane-api/clientset/rest"
+	awstest "github.com/openshift-online/rosa-seaplane-api/test/helpers/aws"
 	hypershiftv1beta1 "github.com/openshift/hypershift/api/hypershift/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -96,7 +99,9 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 		baseURL            string
 		rosactlBin         string
 		customerProfile    string
+		rcProfile          string
 		region             string
+		accountID          string
 		customerAccountID  string
 		version            string
 		instanceType       string
@@ -162,6 +167,21 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 			instanceType = defaultInstanceType
 		}
 
+		// The RC account, the only caller that may change the account allowlist.
+		rcProfile = os.Getenv("RC_AWS_PROFILE")
+		accountID = os.Getenv("E2E_ACCOUNT_ID")
+		if accountID == "" {
+			cmd := exec.Command("aws", "sts", "get-caller-identity", "--query",
+				"Account", "--output", "text", "--region", region)
+			if rcProfile != "" {
+				cmd.Env = append(os.Environ(), "AWS_PROFILE="+rcProfile)
+			}
+			out, err := cmd.CombinedOutput()
+			Expect(err).ToNot(HaveOccurred(), "getting RC account ID: %s", string(out))
+			accountID = strings.TrimSpace(string(out))
+		}
+		GinkgoWriter.Printf("RC account ID: %s\n", accountID)
+
 		customerAccountID = os.Getenv("E2E_CUSTOMER_ACCOUNT_ID")
 		if customerAccountID == "" {
 			cmd := exec.Command("aws", "sts", "get-caller-identity", "--query",
@@ -199,6 +219,11 @@ var _ = Describe("SDK E2E: cluster and nodepool lifecycle", Ordered, func() {
 			AWSConfig: awsCfg,
 		})
 		Expect(err).ToNot(HaveOccurred(), "building SDK clientset")
+
+		By("allowlisting the customer account")
+		apiClient := awstest.NewAPIClient(baseURL)
+		apiClient.AWSProfile = rcProfile
+		Expect(apiClient.AllowlistAccount(accountID, customerAccountID)).To(Succeed())
 
 		// Safety-net: runs after the Ordered container finishes using the same
 		// delete helpers as the It block, so teardown behaviour is identical

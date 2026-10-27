@@ -99,12 +99,14 @@ const defaultE2EReleaseImage = "quay.io/openshift-release-dev/ocp-release:5.0.0-
 var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 	var (
 		baseURL           string
+		accountID         string
 		customerAccountID string
 		ROSACTL_BIN       string
 		clusterName       string
 		clusterID         string
 		oidcIssuerURL     string
 		region            string
+		apiClient         *awstest.APIClient
 		customerApiClient *awstest.APIClient
 
 		// Track which resources were created so DeferCleanup knows what to tear down.
@@ -149,6 +151,19 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 			Skip("CUSTOMER_AWS_PROFILE is not set — no customer AWS profile available")
 		}
 
+		// The RC account, the only caller that may change the account allowlist.
+		accountID = os.Getenv("E2E_ACCOUNT_ID")
+		if accountID == "" {
+			GinkgoWriter.Printf("No E2E_ACCOUNT_ID set, using AWS STS caller identity\n")
+			cmd := exec.Command("aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text")
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				Fail("Failed to get AWS account ID: " + err.Error())
+			}
+			accountID = strings.TrimSpace(string(output))
+		}
+		GinkgoWriter.Printf("E2E_ACCOUNT_ID: %s\n", accountID)
+
 		customerAccountID = os.Getenv("E2E_CUSTOMER_ACCOUNT_ID")
 		if customerAccountID == "" {
 			GinkgoWriter.Printf("No E2E_CUSTOMER_ACCOUNT_ID set, using AWS STS caller identity\n")
@@ -172,6 +187,7 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 			clusterName = fmt.Sprintf("e2e-%d", time.Now().Unix())
 		}
 
+		apiClient = awstest.NewAPIClient(baseURL)
 		customerApiClient = awstest.NewAPIClient(baseURL)
 		customerApiClient.AWSProfile = os.Getenv("CUSTOMER_AWS_PROFILE")
 
@@ -348,6 +364,11 @@ var _ = Describe("ROSACTL CLI E2E Tests", Ordered, func() {
 		}
 		fmt.Println(string(output))
 		Expect(string(output)).To(ContainSubstring(clusterName))
+	})
+
+	It("should be able to allowlist the customer account with the platform api", Label("account-add", "setup"), func() {
+		GinkgoWriter.Printf("Allowlisting customer account %s as RC account %s\n", customerAccountID, accountID)
+		Expect(apiClient.AllowlistAccount(accountID, customerAccountID)).To(Succeed())
 	})
 
 	It("should be able to create the hcp cluster", Label("hcp-create", "create"), func() {

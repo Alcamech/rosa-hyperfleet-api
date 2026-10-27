@@ -198,3 +198,19 @@ func (c *APIClient) CheckReady() error {
 
 	return nil
 }
+
+// AllowlistAccount adds accountID to the temporary account allowlist. The client must sign as
+// the platform's own (RC) account, the only caller the API accepts. Enrolling twice succeeds;
+// accounts already in the authz bundle are unaffected.
+func (c *APIClient) AllowlistAccount(callerAccountID, accountID string) error {
+	resp, err := c.Post("/api/v0/accounts", map[string]string{"accountId": accountID}, callerAccountID)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("allowlisting account %s: status %d body: %s", accountID, resp.StatusCode, resp.Body)
+	}
+
+	return nil
+}

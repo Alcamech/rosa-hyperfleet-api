@@ -302,6 +302,7 @@ var _ = Describe("OIDC Config Lifecycle: Cross-Account Isolation", Label("oidcco
 		apiClientA := NewAPIClient(baseURL)
 		apiClientB := NewAPIClient(baseURL)
 		apiClientB.AWSProfile = customerProfile
+		Expect(apiClientA.AllowlistAccount(accountA, accountB)).To(Succeed(), "account B must reach the API to prove isolation")
 
 		created := createOidcConfig(apiClientA, accountA, map[string]any{"type": "managed"})
 		configID := metaUID(created)
