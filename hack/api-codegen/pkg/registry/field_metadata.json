@@ -587,7 +587,7 @@
   },
   {
     "fieldPath": "spec.hostedCluster.dns.baseDomainPrefix",
-    "writeMode": "service-set",
+    "writeMode": "immutable",
     "ownerType": "Cluster",
     "ownerGVK": "seaplane.io/v1alpha1.Cluster"
   },
@@ -1211,7 +1211,7 @@
   },
   {
     "fieldPath": "baseDomainPrefix",
-    "writeMode": "service-set",
+    "writeMode": "immutable",
     "ownerType": "ClusterDNS",
     "ownerGVK": ""
   },

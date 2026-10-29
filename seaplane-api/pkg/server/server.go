@@ -45,7 +45,7 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 	infoHandler := apphandlers.NewInfoHandler(logger)
 	clusterHandler := apphandlers.NewClusterHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, cfg.Regional.DefaultClusterExpiration, authorizer, logger)
 	nodePoolHandler := apphandlers.NewNodePoolHandler(dbClient, authorizer, logger)
-	oidcConfigHandler := apphandlers.NewOidcConfigHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, authorizer, logger)
+	oidcConfigHandler := apphandlers.NewOidcConfigHandler(dbClient, cfg.Regional.OIDCIssuerBaseURL, authorizer, logger, cfg.Regional.AWSRegion)
 	dnsReservationHandler := apphandlers.NewDNSReservationHandler(dbClient, authorizer, logger)
 	accountsHandler := apphandlers.NewAccountsHandler(dbClient, cfg.Regional.AccountID, logger)
 

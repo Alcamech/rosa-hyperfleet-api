@@ -62,20 +62,26 @@ func normalizeIssuerURL(raw string) (string, error) {
 type OidcConfigHandler struct {
 	db                *seaplanedb.Client
 	oidcIssuerBaseURL string
+	awsRegion         string
 	logger            *slog.Logger
 	generateID        func() string
 	authorizer        *authz.Authorizer
 }
 
 // NewOidcConfigHandler creates a new OIDC config handler.
-func NewOidcConfigHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, authorizer *authz.Authorizer, logger *slog.Logger) *OidcConfigHandler {
+func NewOidcConfigHandler(db *seaplanedb.Client, oidcIssuerBaseURL string, authorizer *authz.Authorizer, logger *slog.Logger, awsRegion ...string) *OidcConfigHandler {
 	if authorizer == nil {
 		panic("OIDC config authorizer is required")
+	}
+	region := ""
+	if len(awsRegion) > 0 {
+		region = awsRegion[0]
 	}
 	return &OidcConfigHandler{
 		authorizer:        authorizer,
 		db:                db,
 		oidcIssuerBaseURL: oidcIssuerBaseURL,
+		awsRegion:         region,
 		logger:            logger,
 		generateID:        func() string { return strings.ReplaceAll(uuid.New().String(), "-", "") },
 	}

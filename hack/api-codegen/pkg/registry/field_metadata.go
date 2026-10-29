@@ -617,7 +617,7 @@ var FieldRegistry = TypedFieldRegistry{
 		},
 		"spec.hostedCluster.dns.baseDomainPrefix": {
 			FieldPath: "spec.hostedCluster.dns.baseDomainPrefix",
-			WriteMode: ServiceSet,
+			WriteMode: Immutable,
 			OwnerType: "Cluster",
 			OwnerGVK:  "seaplane.io/v1alpha1.Cluster",
 		},
@@ -1247,7 +1247,7 @@ var FieldRegistry = TypedFieldRegistry{
 		},
 		"baseDomainPrefix": {
 			FieldPath: "baseDomainPrefix",
-			WriteMode: ServiceSet,
+			WriteMode: Immutable,
 			OwnerType: "ClusterDNS",
 			OwnerGVK:  "",
 		},

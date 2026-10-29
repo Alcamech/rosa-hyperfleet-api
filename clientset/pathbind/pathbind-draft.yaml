@@ -226,6 +226,10 @@ resources:
               operations:
                 - create
                 - update
+            - path: spec.hostedCluster.dns.baseDomainPrefix
+              goType: string
+              operations:
+                - create
             - path: spec.hostedCluster.imageContentSources
               goType: array(object)
               operations:

@@ -98,6 +98,22 @@ reservations) and releases the claim from retained reservations (customer
 pre-created reservations that should outlive the Cluster). The reservation's own
 finalizer releases only Indexes carrying its UID.
 
+To use a custom DNS domain, create an account-owned `DNSReservation` through
+the existing `/api/v0/dns_reservations` endpoint and wait for its
+`status.phase` to reach `Ready`. On the cluster-create request, set
+`spec.dnsReservationId` to the reservation's UID. Optionally, set
+`spec.hostedCluster.dns.baseDomainPrefix` to choose a subdomain prefix; this
+field is immutable once the cluster is created.
+
+The controller takes the base domain from the reservation's
+`status.baseDomain` when rendering the HostedCluster. The base domain itself,
+along with DNS zone IDs, is platform-managed and cannot be set by customers.
+The reservation is atomically claimed at cluster creation and released when
+the cluster is deleted.
+
+If `spec.dnsReservationId` is omitted, the operator generates and claims a DNS
+reservation automatically.
+
 ## Deletion Flow
 
 Deletion follows a strict ordering: NodePools first, then all MC resources (by upsetting existing ApplyDesires with `Type=Delete` so kube-applier removes them from the MC), then Placement, then OidcConfig/DNS claim release, then finalizer removal.
