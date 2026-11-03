@@ -1,5 +1,26 @@
 # Changes
 
+## 0.1.24 Nov 03 2026
+
+- ROSAENG-67911 | refactor: keep namespace sharding, document why
+- chore(api): bump version to api/v0.1.27
+- Remove incorrect kubelet association from ClusterConfiguration
+- ROSAENG-67911 | feat: drop name label and rely on UID instead
+- ROSAENG-67911 | feat: include namespace+label sharding
+- chore(api): bump version to api/v0.1.26
+- feat(api): support HCP custom DNS domains
+- chore(api): bump version to api/v0.1.25
+- ROSAENG-68195 | refactor: mirror awsplatform spec to curate fields
+- ROSAENG-68185 | feat: aws tags cluster/np day2
+- ROSAENG-68185 | feat: allow day2 aws tag changes
+- chore(api): bump version to api/v0.1.24
+- ROSAENG-67495: Authorize customer label operations
+- ROSAENG-65107 | chore: Enable node drain grace period for v2
+- ROSAENG-67492: Simplify authorization
+- ROSAENG-67492: Authorize resource operations
+- Reapply "ROSAENG-67489: Remove legacy authz service"
+
+
 ## 0.1.27 Nov 02 2026
 
 - Remove incorrect kubelet association from ClusterConfiguration
