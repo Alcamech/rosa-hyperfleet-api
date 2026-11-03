@@ -1,5 +1,21 @@
 # Changes
 
+## 0.1.22 Nov 03 2026
+
+- chore(clientset): bump version to clientset/v0.1.26
+- Remove incorrect kubelet association from ClusterConfiguration
+- chore(clientset): bump version to clientset/v0.1.25
+- feat(api): support HCP custom DNS domains
+- chore(clientset): bump version to clientset/v0.1.24
+- ROSAENG-68147 | feat(pathbind): support Terraform partial updates
+- chore(clientset): bump version to clientset/v0.1.23
+- ROSAENG-68195 | refactor: mirror awsplatform spec to curate fields
+- ROSAENG-68185 | feat: aws tags cluster/np day2
+- ROSAENG-68185 | feat: allow day2 aws tag changes
+- chore(clientset): bump version to clientset/v0.1.22
+- ROSAENG-65107 | chore: Enable node drain grace period for v2
+
+
 ## 0.1.26 Nov 02 2026
 
 - Remove incorrect kubelet association from ClusterConfiguration
